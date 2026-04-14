@@ -21,7 +21,7 @@ describe('AllocationLimits', () => {
   describe('getAllocationLimits', () => {
     it('should return HISTORICAL risk-3 defaults when called with no arguments', () => {
       const limits = getAllocationLimits();
-      expect(limits).toEqual({ maxAllocation: 0.12, minAllocation: 0.03 });
+      expect(limits).toEqual({ maxAllocation: 0.08, minAllocation: 0.03 });
     });
 
     it('should clamp risk level below 1 to 1', () => {
@@ -36,7 +36,7 @@ describe('AllocationLimits', () => {
 
     it('should fall back to HISTORICAL risk-3 for unknown stage', () => {
       const limits = getAllocationLimits(PipelineStage.COMPLETED, 3);
-      expect(limits).toEqual({ maxAllocation: 0.12, minAllocation: 0.03 });
+      expect(limits).toEqual({ maxAllocation: 0.08, minAllocation: 0.03 });
     });
 
     it.each([
@@ -59,12 +59,12 @@ describe('AllocationLimits', () => {
       it('should apply minAllocation override', () => {
         const limits = getAllocationLimits(PipelineStage.HISTORICAL, 3, { minAllocation: 0.01 });
         expect(limits.minAllocation).toBe(0.01);
-        expect(limits.maxAllocation).toBe(0.12);
+        expect(limits.maxAllocation).toBe(0.08);
       });
 
       it('should clamp minAllocation to not exceed maxAllocation when overridden', () => {
         const limits = getAllocationLimits(PipelineStage.OPTIMIZE, 1, { minAllocation: 0.1 });
-        expect(limits.minAllocation).toBe(0.06);
+        expect(limits.minAllocation).toBe(0.04);
       });
 
       it('should enforce ABSOLUTE_MAX_ALLOCATION_CAP on overrides', () => {

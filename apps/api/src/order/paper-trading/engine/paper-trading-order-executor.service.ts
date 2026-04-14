@@ -3,6 +3,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
 import { DataSource, EntityManager } from 'typeorm';
 
+import { MAX_PORTFOLIO_DEPLOYMENT } from '@chansey/api-interfaces';
+
 import { ExecuteOrderResult, TradingSignal, resolveMinHoldMs } from './paper-trading-engine.utils';
 
 import { SignalType as AlgoSignalType } from '../../../algorithm/interfaces';
@@ -175,6 +177,16 @@ export class PaperTradingOrderExecutorService {
     const { txManager, baseCurrency, basePrice, executionPrice, slippageBps, quoteAccount } = args;
     let { baseAccount } = args;
 
+    // Check portfolio deployment cap — reserve cash for future signals
+    const deployedValue = portfolio.totalValue - portfolio.cashBalance;
+    const deploymentRatio = portfolio.totalValue > 0 ? deployedValue / portfolio.totalValue : 0;
+    if (deploymentRatio >= MAX_PORTFOLIO_DEPLOYMENT) {
+      this.logger.debug(
+        `Portfolio deployment cap reached (${(deploymentRatio * 100).toFixed(1)}% >= ${(MAX_PORTFOLIO_DEPLOYMENT * 100).toFixed(0)}%)`
+      );
+      return { status: 'deployment_cap', order: null };
+    }
+
     const quantity = this.calculateBuyQuantity(signal, portfolio, executionPrice, allocation);
 
     const dQuantity = new Decimal(quantity);
@@ -271,7 +283,7 @@ export class PaperTradingOrderExecutorService {
       return { status: 'no_position', order: null };
     }
 
-    const minHoldMs = resolveMinHoldMs(session.algorithmConfig);
+    const minHoldMs = resolveMinHoldMs(session.algorithmConfig, session.riskLevel);
     const isRiskControl =
       signal.originalType === AlgoSignalType.STOP_LOSS || signal.originalType === AlgoSignalType.TAKE_PROFIT;
 

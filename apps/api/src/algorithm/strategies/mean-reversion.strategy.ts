@@ -237,7 +237,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
     return {
       enableStopLoss: true,
       stopLossType: StopLossType.PERCENTAGE,
-      stopLossValue: 1.5, // Tight 1.5% stop — mean reversion expects bounded moves
+      stopLossValue: 3.5, // 3.5% stop — wide enough to survive normal crypto volatility
       enableTakeProfit: true,
       takeProfitType: TakeProfitType.PERCENTAGE,
       takeProfitValue: takeProfitPct,

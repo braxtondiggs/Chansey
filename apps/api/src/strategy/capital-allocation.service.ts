@@ -6,6 +6,7 @@ import { In, Repository } from 'typeorm';
 import {
   AuditEventType,
   CompositeRegimeType,
+  DEFAULT_RISK_LEVEL,
   getMinCapitalPerStrategy,
   getRegimeMultiplier
 } from '@chansey/api-interfaces';
@@ -322,7 +323,7 @@ export class CapitalAllocationService {
     }
 
     // Apply risk-aware minimum allocation filter
-    const minAllocationPerStrategy = getMinCapitalPerStrategy(regimeContext?.riskLevel ?? 3);
+    const minAllocationPerStrategy = getMinCapitalPerStrategy(regimeContext?.riskLevel ?? DEFAULT_RISK_LEVEL);
     for (const [strategyId, capitalAmount] of lockedAllocations.entries()) {
       if (capitalAmount < minAllocationPerStrategy) {
         this.logger.debug(

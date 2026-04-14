@@ -15,8 +15,28 @@ import { type Portfolio } from '../portfolio';
 import { type SlippageConfig, type SpreadEstimationContext } from '../slippage';
 import { type MarketData, type TradingSignal } from '../types';
 
-/** Default minimum hold period: 24 hours in milliseconds */
-export const DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * Risk-level-dependent minimum hold period.
+ * Lower risk = longer hold (more conservative); higher risk = shorter hold (more aggressive).
+ */
+const MIN_HOLD_BY_RISK: Record<number, number> = {
+  1: 4 * HOUR_MS,
+  2: 3 * HOUR_MS,
+  3: 2 * HOUR_MS,
+  4: 1.5 * HOUR_MS,
+  5: 1 * HOUR_MS
+};
+
+/**
+ * Get the minimum hold period in milliseconds for a given risk level (1-5).
+ * Falls back to risk level 3 (2 hours) for invalid or missing values.
+ */
+export function getMinHoldMs(riskLevel: number): number {
+  const clamped = Math.max(1, Math.min(5, Math.round(riskLevel)));
+  return MIN_HOLD_BY_RISK[clamped];
+}
 
 /**
  * Calculate buy quantity from signal properties.
@@ -247,4 +267,6 @@ export interface TradeContext {
   minHoldMs: number;
   defaultLeverage: number;
   spreadContext?: SpreadEstimationContext;
+  /** Maximum fraction of portfolio that can be deployed. Defaults to MAX_PORTFOLIO_DEPLOYMENT (0.70). */
+  maxDeployment?: number;
 }

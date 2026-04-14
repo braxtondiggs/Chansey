@@ -369,6 +369,8 @@ export class PaperTradingEngineService {
               signalEntity.rejectionCode = SignalReasonCode.SYMBOL_RESOLUTION_FAILED;
             } else if (result.status === 'hold_period') {
               signalEntity.rejectionCode = SignalReasonCode.TRADE_COOLDOWN;
+            } else if (result.status === 'deployment_cap') {
+              signalEntity.rejectionCode = SignalReasonCode.DEPLOYMENT_CAP;
             }
           }
         } else {

@@ -1,5 +1,8 @@
+import { DEFAULT_RISK_LEVEL } from '@chansey/api-interfaces';
+
 import { SignalType as AlgoSignalType, type TradingSignal as StrategySignal } from '../../../algorithm/interfaces';
 import { type CandleData } from '../../../ohlc/ohlc-candle.entity';
+import { getMinHoldMs } from '../../backtest/shared/execution/trade-executor.helpers';
 import { type TradingSignal as BacktestTradingSignal } from '../../backtest/shared/types/backtest-signal.interface';
 import {
   DEFAULT_OPPORTUNITY_SELLING_CONFIG,
@@ -27,7 +30,13 @@ export interface TickResult {
   prices: Record<string, number>;
 }
 
-export type ExecuteOrderStatus = 'success' | 'insufficient_funds' | 'no_price' | 'no_position' | 'hold_period';
+export type ExecuteOrderStatus =
+  | 'success'
+  | 'insufficient_funds'
+  | 'no_price'
+  | 'no_position'
+  | 'hold_period'
+  | 'deployment_cap';
 
 export interface ExecuteOrderResult {
   status: ExecuteOrderStatus;
@@ -114,11 +123,10 @@ export const classifySignalType = (signal: TradingSignal): PaperTradingSignalTyp
 
 // ─── Config Resolvers ───────────────────────────────────────────────────────
 
-export function resolveMinHoldMs(algorithmConfig?: Record<string, any>): number {
-  const DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
+export function resolveMinHoldMs(algorithmConfig?: Record<string, any>, riskLevel?: number): number {
   const val = algorithmConfig?.minHoldMs;
-  if (typeof val !== 'number' || !isFinite(val) || val < 0) return DEFAULT_MIN_HOLD_MS;
-  return val;
+  if (typeof val === 'number' && isFinite(val) && val >= 0) return val;
+  return getMinHoldMs(riskLevel ?? DEFAULT_RISK_LEVEL);
 }
 
 /**

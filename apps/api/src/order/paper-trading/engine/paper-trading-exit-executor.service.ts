@@ -223,6 +223,8 @@ export class PaperTradingExitExecutorService {
             signalEntity.rejectionCode = SignalReasonCode.INSUFFICIENT_FUNDS;
           } else if (result.status === 'hold_period') {
             signalEntity.rejectionCode = SignalReasonCode.TRADE_COOLDOWN;
+          } else if (result.status === 'deployment_cap') {
+            signalEntity.rejectionCode = SignalReasonCode.DEPLOYMENT_CAP;
           }
           await this.signalService.markProcessed(signalEntity);
           this.logger.warn(

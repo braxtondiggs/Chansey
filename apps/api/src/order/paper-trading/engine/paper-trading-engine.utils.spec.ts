@@ -97,19 +97,26 @@ describe('paper-trading-engine.utils', () => {
   });
 
   describe('resolveMinHoldMs', () => {
-    const DEFAULT = 24 * 60 * 60 * 1000;
-    it('returns default when config missing', () => {
-      expect(resolveMinHoldMs()).toBe(DEFAULT);
-      expect(resolveMinHoldMs({})).toBe(DEFAULT);
+    const RISK3_DEFAULT = 2 * 60 * 60 * 1000; // Risk level 3 = 2 hours
+    it('returns risk-level-based default when config missing', () => {
+      expect(resolveMinHoldMs()).toBe(RISK3_DEFAULT);
+      expect(resolveMinHoldMs({})).toBe(RISK3_DEFAULT);
     });
-    it('returns default for invalid values', () => {
-      expect(resolveMinHoldMs({ minHoldMs: -1 })).toBe(DEFAULT);
-      expect(resolveMinHoldMs({ minHoldMs: 'x' })).toBe(DEFAULT);
-      expect(resolveMinHoldMs({ minHoldMs: Infinity })).toBe(DEFAULT);
+    it('returns risk-level-based default for invalid values', () => {
+      expect(resolveMinHoldMs({ minHoldMs: -1 })).toBe(RISK3_DEFAULT);
+      expect(resolveMinHoldMs({ minHoldMs: 'x' })).toBe(RISK3_DEFAULT);
+      expect(resolveMinHoldMs({ minHoldMs: Infinity })).toBe(RISK3_DEFAULT);
     });
     it('returns the configured value', () => {
       expect(resolveMinHoldMs({ minHoldMs: 5000 })).toBe(5000);
       expect(resolveMinHoldMs({ minHoldMs: 0 })).toBe(0);
+    });
+    it('uses risk level when provided', () => {
+      expect(resolveMinHoldMs({}, 1)).toBe(4 * 60 * 60 * 1000); // 4 hours
+      expect(resolveMinHoldMs({}, 5)).toBe(1 * 60 * 60 * 1000); // 1 hour
+    });
+    it('explicit config overrides risk level', () => {
+      expect(resolveMinHoldMs({ minHoldMs: 5000 }, 1)).toBe(5000);
     });
   });
 

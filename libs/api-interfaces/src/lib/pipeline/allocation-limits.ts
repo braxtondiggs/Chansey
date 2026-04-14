@@ -7,6 +7,8 @@
  */
 import { PipelineStage } from './pipeline.interface';
 
+import { DEFAULT_RISK_LEVEL } from '../risk/risk.interface';
+
 export interface AllocationLimits {
   /** Maximum allocation per trade as fraction of portfolio (0‑1) */
   maxAllocation: number;
@@ -20,38 +22,44 @@ export interface AllocationLimits {
 export const ABSOLUTE_MAX_ALLOCATION_CAP = 0.25;
 
 /**
+ * Maximum fraction of portfolio that can be deployed in positions at any time.
+ * Reserves 30% cash to ensure buy signals aren't skipped due to locked capital.
+ */
+export const MAX_PORTFOLIO_DEPLOYMENT = 0.7;
+
+/**
  * Stage × Risk allocation matrix.
  * Outer key: PipelineStage (only tradeable stages).
  * Inner array index: riskLevel − 1 (risk levels 1‑5).
  */
 export const STAGE_RISK_ALLOCATION_MATRIX: Record<string, AllocationLimits[]> = {
   [PipelineStage.OPTIMIZE]: [
+    { maxAllocation: 0.04, minAllocation: 0.02 },
+    { maxAllocation: 0.05, minAllocation: 0.02 },
+    { maxAllocation: 0.05, minAllocation: 0.02 },
     { maxAllocation: 0.06, minAllocation: 0.02 },
-    { maxAllocation: 0.07, minAllocation: 0.02 },
-    { maxAllocation: 0.08, minAllocation: 0.02 },
-    { maxAllocation: 0.09, minAllocation: 0.02 },
-    { maxAllocation: 0.1, minAllocation: 0.02 }
+    { maxAllocation: 0.07, minAllocation: 0.02 }
   ],
   [PipelineStage.HISTORICAL]: [
-    { maxAllocation: 0.08, minAllocation: 0.02 },
-    { maxAllocation: 0.1, minAllocation: 0.02 },
-    { maxAllocation: 0.12, minAllocation: 0.03 },
-    { maxAllocation: 0.13, minAllocation: 0.03 },
-    { maxAllocation: 0.15, minAllocation: 0.03 }
+    { maxAllocation: 0.05, minAllocation: 0.02 },
+    { maxAllocation: 0.06, minAllocation: 0.02 },
+    { maxAllocation: 0.08, minAllocation: 0.03 },
+    { maxAllocation: 0.09, minAllocation: 0.03 },
+    { maxAllocation: 0.1, minAllocation: 0.03 }
   ],
   [PipelineStage.LIVE_REPLAY]: [
-    { maxAllocation: 0.07, minAllocation: 0.02 },
-    { maxAllocation: 0.09, minAllocation: 0.02 },
-    { maxAllocation: 0.1, minAllocation: 0.02 },
-    { maxAllocation: 0.11, minAllocation: 0.03 },
-    { maxAllocation: 0.12, minAllocation: 0.03 }
-  ],
-  [PipelineStage.PAPER_TRADE]: [
+    { maxAllocation: 0.05, minAllocation: 0.02 },
     { maxAllocation: 0.06, minAllocation: 0.02 },
     { maxAllocation: 0.07, minAllocation: 0.02 },
-    { maxAllocation: 0.08, minAllocation: 0.02 },
-    { maxAllocation: 0.09, minAllocation: 0.02 },
-    { maxAllocation: 0.1, minAllocation: 0.03 }
+    { maxAllocation: 0.08, minAllocation: 0.03 },
+    { maxAllocation: 0.08, minAllocation: 0.03 }
+  ],
+  [PipelineStage.PAPER_TRADE]: [
+    { maxAllocation: 0.04, minAllocation: 0.02 },
+    { maxAllocation: 0.05, minAllocation: 0.02 },
+    { maxAllocation: 0.05, minAllocation: 0.02 },
+    { maxAllocation: 0.06, minAllocation: 0.02 },
+    { maxAllocation: 0.07, minAllocation: 0.03 }
   ]
 };
 
@@ -90,7 +98,7 @@ export function getAllocationLimits(
   overrides?: Partial<AllocationLimits>
 ): AllocationLimits {
   const effectiveStage = stage ?? PipelineStage.HISTORICAL;
-  const effectiveRisk = Math.round(Math.max(1, Math.min(5, riskLevel ?? 3)));
+  const effectiveRisk = Math.round(Math.max(1, Math.min(5, riskLevel ?? DEFAULT_RISK_LEVEL)));
   const index = effectiveRisk - 1;
 
   const stageRow = STAGE_RISK_ALLOCATION_MATRIX[effectiveStage];

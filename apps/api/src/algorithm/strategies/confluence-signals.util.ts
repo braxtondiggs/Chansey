@@ -52,6 +52,11 @@ export function generateSignalFromConfluence(
 
   const reason = `Confluence ${signalType}: ${confluenceScore.confluenceCount}/${confluenceScore.totalEnabled} indicators agree (${agreeingIndicators.join(', ')})`;
 
+  // Extract ATR value from indicator signals if available
+  const atrSignal = confluenceScore.signals.find((s) => s.name === 'ATR');
+  const rawAtr = atrSignal?.values?.atr;
+  const currentAtr = typeof rawAtr === 'number' && Number.isFinite(rawAtr) && rawAtr > 0 ? rawAtr : undefined;
+
   // Build metadata from all indicator values
   const metadata: Record<string, unknown> = {
     symbol: coinSymbol,
@@ -60,6 +65,7 @@ export function generateSignalFromConfluence(
     agreeingIndicators,
     isVolatilityFiltered: confluenceScore.isVolatilityFiltered,
     isFuturesShort,
+    currentAtr,
     indicatorBreakdown: confluenceScore.signals.map((s) => ({
       name: s.name,
       signal: s.signal,
@@ -77,22 +83,43 @@ export function generateSignalFromConfluence(
     confidence,
     reason,
     metadata,
-    exitConfig: buildExitConfig(confluenceScore)
+    exitConfig: buildExitConfig(confluenceScore, currentAtr)
   };
 }
 
 /**
  * Build strategy-specific exit configuration scaled by confluence score.
  * Higher confluence → tighter stops and wider take-profit (more confident trade).
+ *
+ * When ATR is available, uses ATR-based stop loss (1.5x-2.5x ATR multiplier)
+ * to adapt to actual market volatility instead of fixed percentages.
+ * When ATR is unavailable, falls back to wider percentage stops (5-8%)
+ * to avoid triggering on normal crypto volatility.
  */
-export function buildExitConfig(confluenceScore: ConfluenceScore): Partial<ExitConfig> {
+export function buildExitConfig(confluenceScore: ConfluenceScore, currentAtr?: number): Partial<ExitConfig> {
   const ratio = confluenceScore.totalEnabled > 0 ? confluenceScore.confluenceCount / confluenceScore.totalEnabled : 0.5;
-
-  // Stop loss: 2-4% — tighter for higher confluence (more confident)
-  const stopLossValue = Math.max(1, 4 - ratio * 2); // ratio=1 → 2%, ratio=0.4 → 3.2%
 
   // Take profit: 1.5:1 to 3:1 risk-reward scaled by confluence
   const takeProfitRR = Math.max(1, 1.5 + ratio * 1.5); // ratio=1 → 3:1, ratio=0.4 → 2.1:1
+
+  if (currentAtr != null && currentAtr > 0) {
+    // ATR-based stop loss: 1.5x-2.5x ATR multiplier (tighter for higher confluence)
+    const stopLossValue = 2.5 - ratio * 1.0; // ratio=1 → 1.5x, ratio=0.4 → 2.1x
+
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.ATR,
+      stopLossValue,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.RISK_REWARD,
+      takeProfitValue: takeProfitRR,
+      enableTrailingStop: false,
+      useOco: true
+    };
+  }
+
+  // Fallback: wider percentage stops (5-8%) to survive crypto volatility
+  const stopLossValue = Math.max(5, 8 - ratio * 3); // ratio=1 → 5%, ratio=0.4 → 6.8%
 
   return {
     enableStopLoss: true,

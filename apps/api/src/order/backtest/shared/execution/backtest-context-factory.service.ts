@@ -1,9 +1,10 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
-import { getAllocationLimits, PipelineStage } from '@chansey/api-interfaces';
+import { DEFAULT_RISK_LEVEL, getAllocationLimits, PipelineStage } from '@chansey/api-interfaces';
 
 import { LoopContext } from './backtest-loop-context';
 import { ExecuteOptions, LoopRunnerOptions } from './backtest-loop-runner.types';
+import { getMinHoldMs } from './trade-executor.helpers';
 
 import { CoinListingEventService } from '../../../../coin/coin-listing-event.service';
 import { Coin } from '../../../../coin/coin.entity';
@@ -34,8 +35,6 @@ import { DEFAULT_SLIPPAGE_CONFIG, mapSlippageModelType, SlippageModelType, Slipp
 import { SlippageContextService } from '../slippage-context';
 import { SignalThrottleService } from '../throttle';
 
-/** Default minimum hold period before allowing SELL (24 hours in ms) */
-const DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
 /** Wall-clock algorithm stall timeout (ms) */
 const ALGORITHM_STALL_TIMEOUT_MS = 300_000;
 /** BTC SMA period for regime detection */
@@ -264,7 +263,7 @@ export class BacktestContextFactory {
     isResuming: boolean
   ) {
     const slippageConfig = this.buildSlippageConfig(backtest);
-    const minHoldMs = options.minHoldMs ?? DEFAULT_MIN_HOLD_MS;
+    const minHoldMs = options.minHoldMs ?? getMinHoldMs(options.riskLevel ?? DEFAULT_RISK_LEVEL);
 
     const defaultStage = isLiveReplay ? PipelineStage.LIVE_REPLAY : PipelineStage.HISTORICAL;
     const allocLimits = getAllocationLimits(options.pipelineStage ?? defaultStage, options.riskLevel, {
@@ -375,7 +374,7 @@ export class BacktestContextFactory {
       : SlippageModelType.FIXED;
     const riskDefaults =
       slippageModel === SlippageModelType.VOLUME_BASED
-        ? this.slippageCtxSvc.getParticipationDefaults(backtest.configSnapshot?.regime?.riskLevel ?? 3)
+        ? this.slippageCtxSvc.getParticipationDefaults(backtest.configSnapshot?.regime?.riskLevel ?? DEFAULT_RISK_LEVEL)
         : undefined;
     return slippageSnapshot
       ? this.slippageService.buildConfig({

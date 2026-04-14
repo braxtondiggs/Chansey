@@ -71,9 +71,9 @@ describe('TradeExecutorService', () => {
       });
 
       expect(result).toBeTruthy();
-      // Default HISTORICAL risk-3 limits: max 12% of $1000 = $120 / $100 = 1.2 BTC
-      expect(result?.trade.totalValue).toBeCloseTo(120);
-      expect(result?.trade.quantity).toBeCloseTo(1.2);
+      // Default HISTORICAL risk-3 limits: max 8% of $1000 = $80 / $100 = 0.8 BTC
+      expect(result?.trade.totalValue).toBeCloseTo(80);
+      expect(result?.trade.quantity).toBeCloseTo(0.8);
     });
 
     it('sizes position using signal.percentage', async () => {

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { getAllocationLimits } from '@chansey/api-interfaces';
+import { DEFAULT_RISK_LEVEL, getAllocationLimits, MAX_PORTFOLIO_DEPLOYMENT } from '@chansey/api-interfaces';
 
 import {
   buildCancelledResult,
@@ -11,8 +11,8 @@ import {
   calculateShortLiquidationPrice,
   calculateShortPnL,
   CloseShortResult,
-  DEFAULT_MIN_HOLD_MS,
   ExecuteTradeResult,
+  getMinHoldMs,
   inferTradeType,
   isCancelledResult,
   isRiskControlSignal,
@@ -69,7 +69,7 @@ export class TradeExecutorService {
       tradingFee,
       slippageConfig = DEFAULT_SLIPPAGE_CONFIG,
       dailyVolume,
-      minHoldMs = DEFAULT_MIN_HOLD_MS,
+      minHoldMs = getMinHoldMs(DEFAULT_RISK_LEVEL),
       maxAllocation = getAllocationLimits().maxAllocation,
       minAllocation = getAllocationLimits().minAllocation,
       defaultLeverage = 1,
@@ -258,8 +258,19 @@ export class TradeExecutorService {
       dailyVolume,
       maxAllocation,
       minAllocation,
-      spreadContext
+      spreadContext,
+      maxDeployment = MAX_PORTFOLIO_DEPLOYMENT
     } = ctx;
+
+    // Check portfolio deployment cap — reserve cash for future signals
+    const deployedValue = portfolio.totalValue - portfolio.cashBalance;
+    const deploymentRatio = portfolio.totalValue > 0 ? deployedValue / portfolio.totalValue : 0;
+    if (deploymentRatio >= maxDeployment) {
+      this.logger.debug(
+        `Portfolio deployment cap reached (${(deploymentRatio * 100).toFixed(1)}% >= ${(maxDeployment * 100).toFixed(0)}%)`
+      );
+      return null;
+    }
 
     const { quantity: rawQuantity, usedFallback } = calculateBuyQuantity(
       signal,
