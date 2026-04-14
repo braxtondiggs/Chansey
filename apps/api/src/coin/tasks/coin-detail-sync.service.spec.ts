@@ -358,10 +358,10 @@ describe('CoinDetailSyncService', () => {
       .map(([, ms]) => ms)
       .filter((ms): ms is number => typeof ms === 'number' && ms > 1000);
 
-    // First timeout is the circuit pause (45s), then elevated delays (5s) until normalization
+    // First timeout is the circuit pause (45s), then elevated delays (6s) until normalization
     expect(delays[0]).toBe(45_000); // circuit backoff
-    // After circuit pause, first inter-batch delays should be elevated (5000ms)
-    expect(delays.filter((t) => t === 5000).length).toBeGreaterThanOrEqual(1);
+    // After circuit pause, first inter-batch delays should be elevated (6000ms)
+    expect(delays.filter((t) => t === 6000).length).toBeGreaterThanOrEqual(1);
 
     setTimeoutSpy.mockRestore();
   });

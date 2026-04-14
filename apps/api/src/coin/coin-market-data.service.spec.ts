@@ -212,10 +212,48 @@ describe('CoinMarketDataService', () => {
       await expect(service.getCoinHistoricalData('coin-123')).rejects.toThrow(CoinNotFoundException);
     });
 
-    it('re-throws non-404 errors', async () => {
-      geckoMock.marketChartGet.mockRejectedValueOnce(new Error('Network error'));
+    it('returns empty array and skips API call when circuit breaker is open', async () => {
+      circuitBreaker.isOpen.mockReturnValue(true);
+
+      const result = await service.getCoinHistoricalData('coin-123');
+
+      expect(result).toEqual([]);
+      expect(geckoMock.marketChartGet).not.toHaveBeenCalled();
+    });
+
+    it('does not record circuit breaker failure on 404 (NotFoundError)', async () => {
+      geckoMock.marketChartGet.mockRejectedValueOnce(makeCoinGeckoError(404, 'Not Found'));
+
+      await expect(service.getCoinHistoricalData('coin-123')).rejects.toThrow(CoinNotFoundException);
+      expect(circuitBreaker.recordFailure).not.toHaveBeenCalled();
+    });
+
+    it('records circuit breaker failure on non-404 errors', async () => {
+      geckoMock.marketChartGet.mockRejectedValue(new Error('Network error'));
+
+      setTimeoutSpy.mockImplementation(((fn: (...args: any[]) => void) => {
+        fn();
+        return 0 as any;
+      }) as any);
 
       await expect(service.getCoinHistoricalData('coin-123')).rejects.toThrow('Network error');
+      expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('coingecko-chart');
+
+      geckoMock.marketChartGet.mockReset();
+    });
+
+    it('re-throws non-404 errors after retries are exhausted', async () => {
+      geckoMock.marketChartGet.mockRejectedValue(new Error('Network error'));
+
+      // Bypass retry delays so the test doesn't time out
+      setTimeoutSpy.mockImplementation(((fn: (...args: any[]) => void) => {
+        fn();
+        return 0 as any;
+      }) as any);
+
+      await expect(service.getCoinHistoricalData('coin-123')).rejects.toThrow('Network error');
+
+      geckoMock.marketChartGet.mockReset();
     });
   });
 

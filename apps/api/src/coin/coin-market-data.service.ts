@@ -16,6 +16,8 @@ import { CoinService } from './coin.service';
 import { CoinNotFoundException } from '../common/exceptions/resource';
 import { CircuitBreakerService, CircuitOpenError } from '../shared';
 import { CoinGeckoClientService } from '../shared/coingecko-client.service';
+import { toErrorInfo } from '../shared/error.util';
+import { withRateLimitRetry } from '../shared/retry.util';
 import { stripHtml } from '../utils/strip-html.util';
 
 interface HistoricalDataPoint {
@@ -47,32 +49,51 @@ export class CoinMarketDataService {
   async getCoinHistoricalData(coinId: string): Promise<HistoricalDataPoint[]> {
     const coin = await this.coinService.getCoinById(coinId);
 
-    try {
-      const geckoData = await this.gecko.client.coins.marketChart.get(coin.slug, {
-        vs_currency: 'usd',
-        days: '365', // !NOTE: Max value w/o paying money
-        interval: 'daily'
-      });
-
-      if (geckoData?.prices && geckoData.prices.length > 0) {
-        return geckoData.prices.map((point, index) => ({
-          timestamp: point[0],
-          price: point[1],
-          volume: geckoData.total_volumes?.[index]?.[1] ?? 0,
-          marketCap: geckoData.market_caps?.[index]?.[1] ?? 0
-        }));
-      }
-
+    if (this.circuitBreaker.isOpen(CoinMarketDataService.CIRCUIT_KEY)) {
+      this.logger.warn(
+        `Circuit breaker OPEN for ${CoinMarketDataService.CIRCUIT_KEY}, skipping historical fetch for ${coinId}`
+      );
       return [];
-    } catch (error: unknown) {
-      if (error instanceof NotFoundError) {
+    }
+
+    const retryResult = await withRateLimitRetry(
+      () =>
+        this.gecko.client.coins.marketChart.get(coin.slug, {
+          vs_currency: 'usd',
+          days: '365', // !NOTE: Max value w/o paying money
+          interval: 'daily'
+        }),
+      {
+        maxRetries: 2,
+        logger: this.logger,
+        operationName: `historicalData(${coin.slug})`
+      }
+    );
+
+    if (retryResult.success) {
+      this.circuitBreaker.recordSuccess(CoinMarketDataService.CIRCUIT_KEY);
+    } else {
+      // 404s are per-coin errors, not service degradation — don't trip the breaker
+      if (retryResult.error instanceof NotFoundError) {
         throw new CoinNotFoundException(coinId);
       }
-      this.logger.error(
-        `Failed to fetch historical data for ${coinId}: ${error instanceof Error ? error.message : error}`
-      );
-      throw error;
+      this.circuitBreaker.recordFailure(CoinMarketDataService.CIRCUIT_KEY);
+      const { message } = toErrorInfo(retryResult.error);
+      this.logger.error(`Failed to fetch historical data for ${coinId}: ${message}`);
+      throw retryResult.error ?? new Error(message);
     }
+
+    const geckoData = retryResult.result;
+    if (geckoData?.prices && geckoData.prices.length > 0) {
+      return geckoData.prices.map((point, index) => ({
+        timestamp: point[0],
+        price: point[1],
+        volume: geckoData.total_volumes?.[index]?.[1] ?? 0,
+        marketCap: geckoData.market_caps?.[index]?.[1] ?? 0
+      }));
+    }
+
+    return [];
   }
 
   /**
