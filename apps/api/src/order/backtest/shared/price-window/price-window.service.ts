@@ -242,16 +242,16 @@ export class PriceWindowService {
         id: string
       ): Promise<{ getMinDataPoints?: (params: Record<string, unknown>) => number } | null | undefined>;
     }
-  ): Promise<{ filtered: Coin[]; excludedCount: number }> {
+  ): Promise<{ filtered: Coin[]; excludedCount: number; excludedDetails: string[] }> {
     const strategy = await algorithmRegistry.getStrategyForAlgorithm(algorithmId);
 
     if (!strategy?.getMinDataPoints) {
-      return { filtered: coins, excludedCount: 0 };
+      return { filtered: coins, excludedCount: 0, excludedDetails: [] };
     }
 
     const minRequired = strategy.getMinDataPoints(parameters);
     if (minRequired <= 0) {
-      return { filtered: coins, excludedCount: 0 };
+      return { filtered: coins, excludedCount: 0, excludedDetails: [] };
     }
 
     const excluded: string[] = [];
@@ -264,6 +264,6 @@ export class PriceWindowService {
       return true;
     });
 
-    return { filtered, excludedCount: excluded.length };
+    return { filtered, excludedCount: excluded.length, excludedDetails: excluded };
   }
 }

@@ -59,7 +59,9 @@ describe('OptimizationCoreService', () => {
       advancePriceWindows: jest.fn().mockReturnValue(new Map()),
       getPriceValue: jest.fn().mockImplementation((c: OHLCCandle) => c.close),
       precomputeWindowData: jest.fn(),
-      filterCoinsWithSufficientData: jest.fn().mockResolvedValue({ filtered: [], excludedCount: 0 })
+      filterCoinsWithSufficientData: jest
+        .fn()
+        .mockResolvedValue({ filtered: [], excludedCount: 0, excludedDetails: [] })
     };
     portfolioState = {
       updateValues: jest.fn().mockImplementation((p) => p)
@@ -345,7 +347,8 @@ describe('OptimizationCoreService', () => {
 
       priceWindowService.filterCoinsWithSufficientData.mockResolvedValue({
         filtered: coins,
-        excludedCount: 0
+        excludedCount: 0,
+        excludedDetails: []
       });
 
       const result = await service.runOptimizationBacktestWithPrecomputed(baseConfig, coins, precomputed);
@@ -433,7 +436,8 @@ describe('OptimizationCoreService', () => {
 
       priceWindowService.filterCoinsWithSufficientData.mockResolvedValue({
         filtered: coins,
-        excludedCount: 0
+        excludedCount: 0,
+        excludedDetails: []
       });
 
       await service.runOptimizationBacktestWithPrecomputed(baseConfig, coins, precomputed);

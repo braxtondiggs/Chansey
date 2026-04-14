@@ -261,7 +261,8 @@ export class OptimizationEvaluationService {
     candlesByCoin: Map<string, OHLCCandle[]>,
     warmupDays: number,
     extendedMinDate: Date,
-    runId: string
+    runId: string,
+    minBars?: number
   ): Map<string, PrecomputedWindowData> {
     const precomputedWindows = new Map<string, PrecomputedWindowData>();
     const warmupMs = warmupDays * 24 * 60 * 60 * 1000;
@@ -288,6 +289,23 @@ export class OptimizationEvaluationService {
             }
           }
           precomputed.tradingStartIndex = tradingStartIdx;
+
+          // Log once per window which coins have insufficient data
+          if (minBars && minBars > 0) {
+            const lowDataCoins: string[] = [];
+            for (const coin of coins) {
+              const barCount = precomputed.immutablePriceData.summariesByCoin.get(coin.id)?.length ?? 0;
+              if (barCount < minBars) {
+                lowDataCoins.push(`${coin.symbol}(${barCount}/${minBars})`);
+              }
+            }
+            if (lowDataCoins.length > 0) {
+              this.logger.warn(
+                `Window ${start.toISOString().split('T')[0]}→${end.toISOString().split('T')[0]}: ` +
+                  `${lowDataCoins.length} coin(s) with insufficient data: ${lowDataCoins.join(', ')}`
+              );
+            }
+          }
 
           precomputedWindows.set(key, precomputed);
         }
@@ -428,7 +446,8 @@ export class OptimizationEvaluationService {
       candlesByCoin,
       warmupDays,
       extendedMinDate,
-      runId
+      runId,
+      warmupDays
     );
 
     return { windows, candlesByCoin, precomputedWindows, warmupDays };

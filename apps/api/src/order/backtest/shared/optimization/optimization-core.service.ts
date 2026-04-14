@@ -166,7 +166,11 @@ export class OptimizationCoreService {
     const priceCtx = this.priceWindowService.initPriceTrackingFromPrecomputed(immutablePriceData);
 
     // Pre-filter coins whose total bar count is below the strategy's minimum requirement
-    const { filtered: loopCoins, excludedCount } = await this.priceWindowService.filterCoinsWithSufficientData(
+    const {
+      filtered: loopCoins,
+      excludedCount,
+      excludedDetails
+    } = await this.priceWindowService.filterCoinsWithSufficientData(
       config.algorithmId,
       coins,
       config.parameters,
@@ -174,7 +178,7 @@ export class OptimizationCoreService {
       this.algorithmRegistry
     );
     if (excludedCount > 0) {
-      this.logger.warn(`Excluded ${excludedCount} coin(s) with insufficient data for optimization`);
+      this.logger.debug(`Excluded ${excludedCount} coin(s) with insufficient data: ${excludedDetails.join(', ')}`);
     }
 
     // Precompute indicators only for coins that passed the filter

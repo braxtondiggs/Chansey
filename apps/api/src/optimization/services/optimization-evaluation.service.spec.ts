@@ -64,7 +64,7 @@ describe('OptimizationEvaluationService', () => {
       filteredCandles: [],
       timestamps: [],
       pricesByTimestamp: {},
-      immutablePriceData: {},
+      immutablePriceData: { summariesByCoin: new Map() },
       volumeMap: new Map(),
       tradingStartIndex: 0
     }) as unknown as PrecomputedWindowData;
