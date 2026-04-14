@@ -9,10 +9,12 @@ import { CoinDetailSyncService } from './coin-detail-sync.service';
 import { ExchangeService } from '../../exchange/exchange.service';
 import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
 import { FailedJobService } from '../../failed-jobs/failed-job.service';
+import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../shared/distributed-lock.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { withRateLimitRetry } from '../../shared/retry.util';
 import { withTimeout } from '../../shared/with-timeout.util';
 import { CoinDailySnapshotService } from '../coin-daily-snapshot.service';
 import { CoinListingEventService } from '../coin-listing-event.service';
@@ -29,7 +31,9 @@ import { CoinService } from '../coin.service';
 export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
   private readonly logger = new Logger(CoinSyncTask.name);
   private jobScheduled = false;
-  private readonly API_RATE_LIMIT_DELAY = 2500;
+  private readonly API_RATE_LIMIT_DELAY = 3000;
+  private static readonly COINGECKO_CHART_CIRCUIT_KEY = 'coingecko-chart';
+  private static readonly POST_DETAIL_COOLDOWN_MS = 30_000;
 
   constructor(
     @InjectQueue('coin-queue') private readonly coinQueue: Queue,
@@ -41,6 +45,7 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
     private readonly coinMarketData: CoinMarketDataService,
     private readonly gecko: CoinGeckoClientService,
     private readonly lockService: DistributedLockService,
+    private readonly circuitBreaker: CircuitBreakerService,
     failedJobService: FailedJobService
   ) {
     super(failedJobService);
@@ -142,40 +147,43 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
 
         // eslint-disable-next-line no-constant-condition
         while (true) {
-          let tickers = [];
+          const id = exchange.slug === 'coinbase' ? 'gdax' : exchange.slug.toLowerCase();
+          const retryResult = await withRateLimitRetry(() => this.gecko.client.exchanges.tickers.get(id, { page }), {
+            maxRetries: 2,
+            logger: this.logger,
+            operationName: `tickers(${id}, page=${page})`
+          });
 
-          try {
-            const id = exchange.slug === 'coinbase' ? 'gdax' : exchange.slug.toLowerCase();
-            const response = await this.gecko.client.exchanges.tickers.get(id, { page });
-
-            tickers = response.tickers || [];
-
-            if (tickers.length === 0) {
-              this.logger.log(
-                `Completed loading ticker data for ${exchange.name}, total processed: ${totalProcessedTickers}`
-              );
-              break;
-            }
-
-            totalProcessedTickers += tickers.length;
-
-            for (const ticker of tickers) {
-              const baseId = ticker.coin_id?.toLowerCase();
-              const quoteId = ticker.target_coin_id?.toLowerCase();
-
-              if (baseId) usedCoinSlugs.add(baseId);
-              if (quoteId) usedCoinSlugs.add(quoteId);
-            }
-
-            await new Promise((r) => setTimeout(r, this.API_RATE_LIMIT_DELAY));
-            page++;
-          } catch (tickerError: unknown) {
-            const err = toErrorInfo(tickerError);
+          if (!retryResult.success) {
+            const err = toErrorInfo(retryResult.error);
             this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${err.message}`);
             if (page === 1) break;
+            await new Promise((r) => setTimeout(r, this.API_RATE_LIMIT_DELAY));
             page++;
             continue;
           }
+
+          const tickers = retryResult.result?.tickers || [];
+
+          if (tickers.length === 0) {
+            this.logger.log(
+              `Completed loading ticker data for ${exchange.name}, total processed: ${totalProcessedTickers}`
+            );
+            break;
+          }
+
+          totalProcessedTickers += tickers.length;
+
+          for (const ticker of tickers) {
+            const baseId = ticker.coin_id?.toLowerCase();
+            const quoteId = ticker.target_coin_id?.toLowerCase();
+
+            if (baseId) usedCoinSlugs.add(baseId);
+            if (quoteId) usedCoinSlugs.add(quoteId);
+          }
+
+          await new Promise((r) => setTimeout(r, this.API_RATE_LIMIT_DELAY));
+          page++;
         }
       } catch (error: unknown) {
         const err = toErrorInfo(error);
@@ -337,6 +345,10 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
     try {
       const detailResult = await this.coinDetailSync.syncCoinDetails((percent) => job.updateProgress(percent));
 
+      // Cooldown after detail sync to let CoinGecko rate limits recover before snapshot/backfill
+      this.logger.log(`Cooling down ${CoinSyncTask.POST_DETAIL_COOLDOWN_MS / 1000}s before snapshot/backfill`);
+      await new Promise((resolve) => setTimeout(resolve, CoinSyncTask.POST_DETAIL_COOLDOWN_MS));
+
       const freshCoins = await this.coin.getCoins();
 
       // Capture daily market data snapshots for all active coins
@@ -351,31 +363,40 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
 
       // Backfill historical snapshots for coins with insufficient data
       try {
-        const allCoinIds = freshCoins.map((c) => c.id);
-        const coinsNeedingBackfill = await this.snapshotService.getCoinsNeedingBackfill(allCoinIds, 30);
+        if (this.circuitBreaker.isOpen(CoinSyncTask.COINGECKO_CHART_CIRCUIT_KEY)) {
+          this.logger.warn('Circuit breaker OPEN for coingecko-chart, skipping backfill entirely');
+        } else {
+          const allCoinIds = freshCoins.map((c) => c.id);
+          const coinsNeedingBackfill = await this.snapshotService.getCoinsNeedingBackfill(allCoinIds, 30);
 
-        if (coinsNeedingBackfill.length > 0) {
-          this.logger.log(`Backfilling historical snapshots for ${coinsNeedingBackfill.length} coins`);
-          const batchSize = 3;
+          if (coinsNeedingBackfill.length > 0) {
+            this.logger.log(`Backfilling historical snapshots for ${coinsNeedingBackfill.length} coins`);
+            const batchSize = 1;
 
-          for (let i = 0; i < coinsNeedingBackfill.length; i += batchSize) {
-            const batch = coinsNeedingBackfill.slice(i, i + batchSize);
+            for (let i = 0; i < coinsNeedingBackfill.length; i += batchSize) {
+              if (this.circuitBreaker.isOpen(CoinSyncTask.COINGECKO_CHART_CIRCUIT_KEY)) {
+                this.logger.warn('Circuit breaker opened mid-backfill, stopping');
+                break;
+              }
 
-            await Promise.allSettled(
-              batch.map(async (coinId) => {
-                try {
-                  const historicalData = await this.coinMarketData.getCoinHistoricalData(coinId);
-                  const inserted = await this.snapshotService.backfillFromHistoricalData(coinId, historicalData);
-                  this.logger.debug(`Backfilled ${inserted} snapshots for coin ${coinId}`);
-                } catch (err: unknown) {
-                  const { message } = toErrorInfo(err);
-                  this.logger.warn(`Failed to backfill snapshots for coin ${coinId}: ${message}`);
-                }
-              })
-            );
+              const batch = coinsNeedingBackfill.slice(i, i + batchSize);
 
-            if (i + batchSize < coinsNeedingBackfill.length) {
-              await new Promise((resolve) => setTimeout(resolve, this.API_RATE_LIMIT_DELAY));
+              await Promise.allSettled(
+                batch.map(async (coinId) => {
+                  try {
+                    const historicalData = await this.coinMarketData.getCoinHistoricalData(coinId);
+                    const inserted = await this.snapshotService.backfillFromHistoricalData(coinId, historicalData);
+                    this.logger.debug(`Backfilled ${inserted} snapshots for coin ${coinId}`);
+                  } catch (err: unknown) {
+                    const { message } = toErrorInfo(err);
+                    this.logger.warn(`Failed to backfill snapshots for coin ${coinId}: ${message}`);
+                  }
+                })
+              );
+
+              if (i + batchSize < coinsNeedingBackfill.length) {
+                await new Promise((resolve) => setTimeout(resolve, this.API_RATE_LIMIT_DELAY));
+              }
             }
           }
         }

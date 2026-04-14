@@ -15,8 +15,8 @@ export class CoinDetailSyncService {
   private static readonly CIRCUIT_RESET_MS = 45_000;
   private static readonly MAX_BACKOFF_MS = 5 * 60_000;
   private static readonly BACKOFF_MULTIPLIER = 2;
-  private static readonly NORMAL_BATCH_DELAY_MS = 2500;
-  private static readonly ELEVATED_BATCH_DELAY_MS = 5000;
+  private static readonly NORMAL_BATCH_DELAY_MS = 3000;
+  private static readonly ELEVATED_BATCH_DELAY_MS = 6000;
   private static readonly SUCCESS_BATCHES_TO_NORMALIZE = 3;
   private readonly logger = new Logger(CoinDetailSyncService.name);
 
@@ -52,7 +52,7 @@ export class CoinDetailSyncService {
 
     let updatedCount = 0;
     let errorCount = 0;
-    const batchSize = 3;
+    const batchSize = 1;
     const startedAt = Date.now();
     let batchIndex = 0;
     let consecutivePauses = 0;
@@ -163,7 +163,7 @@ export class CoinDetailSyncService {
                 tickers: false
               }),
             {
-              maxRetries: 2,
+              maxRetries: 3,
               logger: this.logger,
               operationName: `coinId(${symbol})`
             }
