@@ -1,8 +1,9 @@
-import { forwardRef, Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, InternalServerErrorException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
 
+import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
@@ -27,9 +28,10 @@ export class KrakenFuturesService extends BaseExchangeService {
   constructor(
     configService?: ConfigService,
     @Inject(forwardRef(() => ExchangeService)) exchangeService?: ExchangeService,
-    @Inject(forwardRef(() => ExchangeKeyService)) exchangeKeyService?: ExchangeKeyService
+    @Inject(forwardRef(() => ExchangeKeyService)) exchangeKeyService?: ExchangeKeyService,
+    @Optional() circuitBreaker?: CircuitBreakerService
   ) {
-    super(configService, exchangeKeyService, exchangeService);
+    super(configService, exchangeKeyService, exchangeService, circuitBreaker);
   }
 
   /**

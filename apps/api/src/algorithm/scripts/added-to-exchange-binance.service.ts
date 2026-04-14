@@ -4,7 +4,7 @@ import * as ccxt from 'ccxt';
 
 import { BinanceUSService } from '../../exchange/binance/binance-us.service';
 import { toErrorInfo } from '../../shared/error.util';
-import { withRateLimitRetryThrow } from '../../shared/retry.util';
+import { withExchangeRetryThrow } from '../../shared/retry.util';
 
 @Injectable()
 export class AddedtoExchangeBinanceService {
@@ -34,7 +34,7 @@ export class AddedtoExchangeBinanceService {
 
   private async checkForNewListings() {
     // Get all current markets
-    const markets = await withRateLimitRetryThrow(() => this.client.fetchMarkets(), {
+    const markets = await withExchangeRetryThrow(() => this.client.fetchMarkets(), {
       logger: this.logger,
       operationName: 'fetchMarkets'
     });
@@ -74,7 +74,7 @@ export class AddedtoExchangeBinanceService {
       const formattedSymbol = symbol.includes('/') ? symbol : symbol.replace(/([A-Z0-9]{3,})([A-Z0-9]{3,})$/, '$1/$2');
 
       // Get current market price
-      const ticker = await withRateLimitRetryThrow(() => this.client.fetchTicker(formattedSymbol), {
+      const ticker = await withExchangeRetryThrow(() => this.client.fetchTicker(formattedSymbol), {
         logger: this.logger,
         operationName: `fetchTicker(${formattedSymbol})`
       });

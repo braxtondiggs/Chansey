@@ -1,11 +1,15 @@
 import { type Logger } from '@nestjs/common';
 
 import {
+  exchangeAwareDelay,
   extractRetryAfterMs,
   isAuthenticationError,
+  isClockSkewError,
   isRateLimitError,
   isTransientError,
   rateLimitAwareDelay,
+  withExchangeRetry,
+  withExchangeRetryThrow,
   withRateLimitRetry,
   withRateLimitRetryThrow,
   withRetry,
@@ -489,6 +493,128 @@ describe('retry.util', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe(error);
       expect(result.attempts).toBe(4); // initial + 3 retries
+    });
+  });
+
+  describe('isClockSkewError', () => {
+    it('should detect Binance -1021 error code', () => {
+      expect(
+        isClockSkewError(
+          new Error('binanceus {"code":-1021,"msg":"Timestamp for this request is outside of the recvWindow"}')
+        )
+      ).toBe(true);
+    });
+
+    it('should detect recvWindow in message', () => {
+      expect(isClockSkewError(new Error('recvWindow exceeded'))).toBe(true);
+    });
+
+    it('should detect -1021 in message', () => {
+      expect(isClockSkewError(new Error('Error -1021: Timestamp issue'))).toBe(true);
+    });
+
+    it('should return false for non-clock-skew errors', () => {
+      expect(isClockSkewError(new Error('ECONNRESET'))).toBe(false);
+      expect(isClockSkewError(new Error('rate limit exceeded'))).toBe(false);
+      expect(isClockSkewError(new Error('Invalid API key'))).toBe(false);
+    });
+  });
+
+  describe('isTransientError with clock skew', () => {
+    it('should classify clock skew errors as transient', () => {
+      expect(isTransientError(new Error('binanceus -1021 recvWindow exceeded'))).toBe(true);
+    });
+  });
+
+  describe('exchangeAwareDelay', () => {
+    it('should return 500ms for clock skew errors', () => {
+      const error = new Error('recvWindow exceeded -1021');
+      expect(exchangeAwareDelay(error, 1, 2000)).toBe(500);
+    });
+
+    it('should return Retry-After delay for rate limit errors', () => {
+      const error = new Error('rate limit exceeded, Retry-After: 10');
+      const delay = exchangeAwareDelay(error, 1, 5000);
+      expect(delay).toBe(10000);
+    });
+
+    it('should return preset delay for rate limit errors without Retry-After', () => {
+      const error = new Error('rate limit exceeded');
+      const delay = exchangeAwareDelay(error, 1, 2000);
+      expect(delay).toBe(5000);
+    });
+
+    it('should return undefined for timeout/network errors (use default backoff)', () => {
+      expect(exchangeAwareDelay(new Error('ECONNRESET'), 1, 1000)).toBeUndefined();
+      expect(exchangeAwareDelay(new Error('ETIMEDOUT'), 1, 1000)).toBeUndefined();
+    });
+  });
+
+  describe('withExchangeRetry', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should retry clock skew errors with minimal delay', async () => {
+      const error = new Error('recvWindow exceeded -1021');
+      const operation = jest.fn().mockRejectedValueOnce(error).mockResolvedValueOnce('recovered');
+
+      const promise = withExchangeRetry(operation);
+
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result.success).toBe(true);
+      expect(result.result).toBe('recovered');
+      expect(result.totalDelayMs).toBe(500);
+    });
+
+    it('should retry transient errors with backoff', async () => {
+      const operation = jest.fn().mockRejectedValueOnce(new Error('ECONNRESET')).mockResolvedValueOnce('recovered');
+
+      const promise = withExchangeRetry(operation);
+
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result.success).toBe(true);
+      expect(result.result).toBe('recovered');
+    });
+  });
+
+  describe('withExchangeRetryThrow', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should succeed on retry after transient error', async () => {
+      const operation = jest.fn().mockRejectedValueOnce(new Error('ECONNRESET')).mockResolvedValueOnce('recovered');
+
+      const promise = withExchangeRetryThrow(operation);
+
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toBe('recovered');
+    });
+
+    it('should throw on final failure', async () => {
+      const error = new Error('ECONNRESET');
+      const operation = jest.fn().mockRejectedValue(error);
+
+      const promise = withExchangeRetryThrow(operation);
+
+      const expectation = expect(promise).rejects.toThrow('ECONNRESET');
+      await jest.runAllTimersAsync();
+      await expectation;
     });
   });
 

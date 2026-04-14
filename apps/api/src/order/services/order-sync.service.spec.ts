@@ -18,7 +18,7 @@ import { Order } from '../order.entity';
 
 // Mock retry utilities to pass through directly
 jest.mock('../../shared/retry.util', () => ({
-  withRateLimitRetry: jest.fn(async (fn: () => Promise<any>) => {
+  withExchangeRetry: jest.fn(async (fn: () => Promise<any>) => {
     try {
       const result = await fn();
       return { success: true, result };
@@ -26,7 +26,7 @@ jest.mock('../../shared/retry.util', () => ({
       return { success: false, error };
     }
   }),
-  withRateLimitRetryThrow: jest.fn(async (fn: () => Promise<any>) => fn())
+  withExchangeRetryThrow: jest.fn(async (fn: () => Promise<any>) => fn())
 }));
 
 describe('OrderSyncService', () => {

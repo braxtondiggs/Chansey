@@ -102,6 +102,11 @@ export function isTransientError(error: Error): boolean {
     return true;
   }
 
+  // Clock skew errors (Binance -1021)
+  if (isClockSkewError(error)) {
+    return true;
+  }
+
   return false;
 }
 
@@ -142,6 +147,16 @@ export function isRateLimitError(error: Error): boolean {
 export function isAuthenticationError(error: Error): boolean {
   const name = (error.constructor?.name || '') + (error.name || '');
   return /AuthenticationError|PermissionDenied|AccountSuspended/i.test(name);
+}
+
+/**
+ * Check if an error is a clock skew / timestamp error (Binance -1021).
+ * These errors occur when the client clock drifts from the exchange server clock
+ * and the request falls outside the recvWindow.
+ */
+export function isClockSkewError(error: Error): boolean {
+  const message = error.message || '';
+  return message.includes('-1021') || /recvWindow/i.test(message);
 }
 
 /**
@@ -351,4 +366,57 @@ export async function withRateLimitRetry<T>(
  */
 export async function withRateLimitRetryThrow<T>(operation: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   return withRetryThrow(operation, { ...RATE_LIMIT_RETRY_OPTIONS, ...options });
+}
+
+/**
+ * onRetry callback that adapts delay by error type for exchange API calls.
+ * - Rate limit: respects Retry-After or uses 5s minimum
+ * - Clock skew: 500ms (just needs fresh timestamp)
+ * - Timeout/network: uses default exponential backoff
+ */
+export function exchangeAwareDelay(error: Error, _attempt: number, defaultDelayMs: number): number | void {
+  if (isRateLimitError(error)) {
+    const retryAfter = extractRetryAfterMs(error);
+    const rateLimitDelay = retryAfter ?? 5000;
+    return Math.max(rateLimitDelay, defaultDelayMs);
+  }
+
+  if (isClockSkewError(error)) {
+    return 500;
+  }
+}
+
+/**
+ * Retry options tuned for exchange API calls.
+ * Uses 1s initial delay with 2x backoff, capped at 8s for standard errors.
+ * Rate-limit errors may exceed this cap when respecting Retry-After headers.
+ * Adapts delay by error type via exchangeAwareDelay: rate limits get longer waits,
+ * clock skew gets minimal delay, timeouts use standard backoff.
+ */
+export const EXCHANGE_RETRY_OPTIONS: Partial<RetryOptions> = {
+  initialDelayMs: 1000,
+  backoffMultiplier: 2,
+  maxDelayMs: 8000,
+  maxRetries: 3,
+  isRetryable: isTransientError,
+  onRetry: exchangeAwareDelay
+};
+
+/**
+ * Execute an async operation with exchange-aware retry logic.
+ * Merges caller options with EXCHANGE_RETRY_OPTIONS presets.
+ */
+export async function withExchangeRetry<T>(
+  operation: () => Promise<T>,
+  options: RetryOptions = {}
+): Promise<RetryResult<T>> {
+  return withRetry(operation, { ...EXCHANGE_RETRY_OPTIONS, ...options });
+}
+
+/**
+ * Execute an async operation with exchange-aware retry, throwing on final failure.
+ * Convenience wrapper that throws instead of returning RetryResult.
+ */
+export async function withExchangeRetryThrow<T>(operation: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+  return withRetryThrow(operation, { ...EXCHANGE_RETRY_OPTIONS, ...options });
 }

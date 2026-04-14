@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY, USD_QUOTE_CURRENCIES } from '../../exchange/constants';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { formatSymbolForExchange } from '../../exchange/utils';
-import { withRateLimitRetryThrow } from '../../shared/retry.util';
+import { withExchangeRetryThrow } from '../../shared/retry.util';
 
 export interface OHLCRawData {
   timestamp: number; // Unix ms
@@ -75,7 +75,7 @@ export class ExchangeOHLCService {
 
   /**
    * Fetch OHLC data from a specific exchange with retry logic.
-   * Retry is handled inside fetchOHLC via withRateLimitRetryThrow.
+   * Retry is handled inside fetchOHLC via withExchangeRetryThrow.
    */
   async fetchOHLCWithRetry(exchangeSlug: string, symbol: string, since: number, limit = 500): Promise<OHLCFetchResult> {
     return this.fetchOHLC(exchangeSlug, symbol, since, limit);
@@ -101,7 +101,7 @@ export class ExchangeOHLCService {
 
       // Load markets if not already loaded
       if (!client.markets) {
-        await withRateLimitRetryThrow(() => client.loadMarkets(), {
+        await withExchangeRetryThrow(() => client.loadMarkets(), {
           logger: this.logger,
           operationName: `loadMarkets(${exchangeSlug})`
         });
@@ -119,7 +119,7 @@ export class ExchangeOHLCService {
 
       // Fetch OHLCV data (Open, High, Low, Close, Volume)
       // Format: [[timestamp, open, high, low, close, volume], ...]
-      const ohlcv = await withRateLimitRetryThrow(() => client.fetchOHLCV(formattedSymbol, '1h', since, limit), {
+      const ohlcv = await withExchangeRetryThrow(() => client.fetchOHLCV(formattedSymbol, '1h', since, limit), {
         logger: this.logger,
         operationName: `fetchOHLCV(${exchangeSlug}:${symbol})`
       });
@@ -181,7 +181,7 @@ export class ExchangeOHLCService {
       const client = await this.exchangeManager.getPublicClient(exchangeSlug);
 
       if (!client.markets) {
-        await withRateLimitRetryThrow(() => client.loadMarkets(), {
+        await withExchangeRetryThrow(() => client.loadMarkets(), {
           logger: this.logger,
           operationName: `loadMarkets(${exchangeSlug})`
         });

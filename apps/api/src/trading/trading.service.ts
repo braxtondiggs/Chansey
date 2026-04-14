@@ -13,7 +13,7 @@ import { ExchangeManagerService } from '../exchange/exchange-manager.service';
 import { ExchangeService } from '../exchange/exchange.service';
 import { toErrorInfo } from '../shared/error.util';
 import { extractMarketLimits } from '../shared/precision.util';
-import { withRateLimitRetryThrow } from '../shared/retry.util';
+import { withExchangeRetryThrow } from '../shared/retry.util';
 import { User } from '../users/users.entity';
 
 @Injectable()
@@ -55,7 +55,7 @@ export class TradingService {
       const { client, name: exchangeName } = await this.resolveExchangeClient(exchangeId);
 
       if (!client.markets) {
-        await withRateLimitRetryThrow(() => client.loadMarkets(), {
+        await withExchangeRetryThrow(() => client.loadMarkets(), {
           logger: this.logger,
           operationName: 'loadMarkets'
         });
@@ -74,7 +74,7 @@ export class TradingService {
         );
       }
 
-      const orderBook = await withRateLimitRetryThrow(() => client.fetchOrderBook(symbol, 10), {
+      const orderBook = await withExchangeRetryThrow(() => client.fetchOrderBook(symbol, 10), {
         logger: this.logger,
         operationName: `fetchOrderBook(${symbol})`
       });
@@ -102,7 +102,7 @@ export class TradingService {
 
     try {
       const { client } = await this.resolveExchangeClient(exchangeId);
-      const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(symbol), {
+      const ticker = await withExchangeRetryThrow(() => client.fetchTicker(symbol), {
         logger: this.logger,
         operationName: `fetchTicker(${symbol})`
       });
@@ -139,7 +139,7 @@ export class TradingService {
     const client = await service.getClient(user);
 
     if (!client.markets) {
-      await withRateLimitRetryThrow(() => client.loadMarkets(), {
+      await withExchangeRetryThrow(() => client.loadMarkets(), {
         logger: this.logger,
         operationName: 'loadMarkets'
       });
@@ -193,7 +193,7 @@ export class TradingService {
       const exchange = await this.exchangeService.findOne(exchangeId);
       const service = this.exchangeManagerService.getExchangeService(exchange.slug);
       const client = await service.getClient(user);
-      const ccxtBalances = await withRateLimitRetryThrow(() => client.fetchBalance(), {
+      const ccxtBalances = await withExchangeRetryThrow(() => client.fetchBalance(), {
         logger: this.logger,
         operationName: 'fetchBalance'
       });
