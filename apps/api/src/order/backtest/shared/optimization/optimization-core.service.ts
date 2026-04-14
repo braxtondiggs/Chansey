@@ -1,6 +1,6 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 
-import { getAllocationLimits, PipelineStage } from '@chansey/api-interfaces';
+import { DEFAULT_RISK_LEVEL, getAllocationLimits, PipelineStage } from '@chansey/api-interfaces';
 
 import {
   OptimizationBacktestConfig,
@@ -19,6 +19,7 @@ import { toErrorInfo } from '../../../../shared/error.util';
 import { BacktestTrade } from '../../backtest-trade.entity';
 import { SimulatedOrderStatus } from '../../simulated-order-fill.entity';
 import { mapStrategySignal } from '../execution/backtest-loop-runner.types';
+import { getMinHoldMs } from '../execution/trade-executor.helpers';
 import { TradeExecutorService } from '../execution/trade-executor.service';
 import { ExitSignalProcessorService, ProcessExitSignalsCallbacks } from '../exit-signals/exit-signal-processor.service';
 import { MetricsCalculatorService } from '../metrics';
@@ -29,9 +30,6 @@ import { DEFAULT_SLIPPAGE_CONFIG } from '../slippage';
 import { SlippageContextService } from '../slippage-context/slippage-context.service';
 import { SignalThrottleService } from '../throttle';
 import { ExecuteTradeFn, MarketData, TradingSignal } from '../types';
-
-/** Default minimum hold period (24 hours in milliseconds). */
-const DEFAULT_MIN_HOLD_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Options for running the core optimization backtest.
@@ -463,7 +461,7 @@ export class OptimizationCoreService {
           tradingFee,
           slippageConfig,
           dailyVolume,
-          minHoldMs: DEFAULT_MIN_HOLD_MS,
+          minHoldMs: getMinHoldMs(config.riskLevel ?? DEFAULT_RISK_LEVEL),
           maxAllocation: optMaxAllocation,
           minAllocation: optMinAllocation,
           defaultLeverage: 1,
@@ -473,7 +471,16 @@ export class OptimizationCoreService {
           trades.push({ ...tradeResult.trade, executedAt: timestamp });
           if (exitTracker && tradeResult.trade.price != null && tradeResult.trade.quantity != null) {
             if (strategySignal.action === 'BUY') {
-              exitTracker.onBuy(strategySignal.coinId, tradeResult.trade.price, tradeResult.trade.quantity);
+              const rawAtr = strategySignal.metadata?.currentAtr;
+              const currentAtr =
+                typeof rawAtr === 'number' && Number.isFinite(rawAtr) && rawAtr > 0 ? rawAtr : undefined;
+              exitTracker.onBuy(
+                strategySignal.coinId,
+                tradeResult.trade.price,
+                tradeResult.trade.quantity,
+                currentAtr,
+                strategySignal.exitConfig
+              );
             } else if (strategySignal.action === 'SELL') {
               exitTracker.onSell(strategySignal.coinId, tradeResult.trade.quantity);
             }

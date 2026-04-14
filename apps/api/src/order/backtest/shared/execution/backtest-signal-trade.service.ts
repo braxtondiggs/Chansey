@@ -169,7 +169,15 @@ export class BacktestSignalTradeService {
     // Update exit tracker: register new BUY positions, reduce on SELL
     if (ctx.exitTracker && trade.price != null && trade.quantity != null) {
       if (strategySignal.action === 'BUY') {
-        ctx.exitTracker.onBuy(strategySignal.coinId, trade.price, trade.quantity, undefined, strategySignal.exitConfig);
+        const rawAtr = strategySignal.metadata?.currentAtr;
+        const currentAtr = typeof rawAtr === 'number' && Number.isFinite(rawAtr) && rawAtr > 0 ? rawAtr : undefined;
+        ctx.exitTracker.onBuy(
+          strategySignal.coinId,
+          trade.price,
+          trade.quantity,
+          currentAtr,
+          strategySignal.exitConfig
+        );
       } else if (strategySignal.action === 'SELL') {
         ctx.exitTracker.onSell(strategySignal.coinId, trade.quantity);
       }

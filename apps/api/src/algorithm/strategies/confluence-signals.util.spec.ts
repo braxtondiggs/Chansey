@@ -135,6 +135,34 @@ describe('Confluence Signals Utilities', () => {
       expect(config.stopLossValue).toBeGreaterThanOrEqual(1);
       expect(config.takeProfitValue).toBeGreaterThanOrEqual(1);
     });
+
+    it('should return ATR stop loss type when currentAtr is provided', () => {
+      const config = buildExitConfig(makeScore({ confluenceCount: 3, totalEnabled: 4 }), 500);
+      expect(config.stopLossType).toBe(StopLossType.ATR);
+      expect(config.enableStopLoss).toBe(true);
+      expect(config.enableTakeProfit).toBe(true);
+      expect(config.useOco).toBe(true);
+      expect(config.enableTrailingStop).toBe(false);
+    });
+
+    it('should fall back to percentage stop loss when currentAtr is 0', () => {
+      const config = buildExitConfig(makeScore({ confluenceCount: 3, totalEnabled: 4 }), 0);
+      expect(config.stopLossType).toBe(StopLossType.PERCENTAGE);
+    });
+
+    it('should produce tighter ATR multiplier for higher confluence', () => {
+      const highConfluence = buildExitConfig(makeScore({ confluenceCount: 4, totalEnabled: 4 }), 500);
+      const lowConfluence = buildExitConfig(makeScore({ confluenceCount: 2, totalEnabled: 4 }), 500);
+      expect(highConfluence.stopLossValue as number).toBeLessThan(lowConfluence.stopLossValue as number);
+    });
+
+    it('should use 1.5x ATR multiplier at full confluence and 2.0x at half confluence', () => {
+      const full = buildExitConfig(makeScore({ confluenceCount: 4, totalEnabled: 4 }), 500);
+      const half = buildExitConfig(makeScore({ confluenceCount: 2, totalEnabled: 4 }), 500);
+      // ratio=1 → 2.5 - 1.0 = 1.5, ratio=0.5 → 2.5 - 0.5 = 2.0
+      expect(full.stopLossValue).toBeCloseTo(1.5, 5);
+      expect(half.stopLossValue).toBeCloseTo(2.0, 5);
+    });
   });
 
   describe('calculateSignalStrength', () => {

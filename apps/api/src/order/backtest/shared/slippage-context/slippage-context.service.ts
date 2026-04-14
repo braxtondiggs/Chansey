@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
+import { DEFAULT_RISK_LEVEL } from '@chansey/api-interfaces';
+
 import { OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
 import { SpreadEstimationContext } from '../slippage';
 
@@ -67,6 +69,6 @@ export class SlippageContextService {
       { participationRateLimit: 0.08, rejectParticipationRate: 0.6 }, // risk 4
       { participationRateLimit: 0.1, rejectParticipationRate: 0.75 } // risk 5
     ];
-    return defaults[Math.max(0, Math.min(4, (riskLevel ?? 3) - 1))];
+    return defaults[Math.max(0, Math.min(4, (riskLevel ?? DEFAULT_RISK_LEVEL) - 1))];
   }
 }
