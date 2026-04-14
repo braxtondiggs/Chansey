@@ -20,8 +20,8 @@ import { StrategyScore } from '../strategy/entities/strategy-score.entity';
   providers: [
     ScoringService,
     WalkForwardService,
-    WindowProcessor,
     DegradationCalculator,
+    WindowProcessor,
     CalmarRatioCalculator,
     WinRateCalculator,
     ProfitFactorCalculator,

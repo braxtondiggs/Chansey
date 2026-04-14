@@ -166,7 +166,8 @@ export class StrategyEvaluationService {
       results.finalMetrics
     );
 
-    // 10. Calculate score
+    // 10. Calculate score — wfaDegradation = 0 because single-backtest evaluation
+    // has no train/test split, so no walk-forward analysis data exists.
     const score = await this.scoringService.calculateScore(strategyConfigId, backtestRun, 0);
 
     const passed = Number(score.overallScore) >= PASS_THRESHOLD;

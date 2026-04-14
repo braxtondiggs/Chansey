@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { WindowMetrics } from '@chansey/api-interfaces';
 
+import { DegradationCalculator } from './degradation.calculator';
 import { WalkForwardWindowConfig } from './walk-forward.service';
 
 export interface WindowProcessingResult {
@@ -19,6 +20,8 @@ export interface WindowProcessingResult {
 @Injectable()
 export class WindowProcessor {
   private readonly logger = new Logger(WindowProcessor.name);
+
+  constructor(private readonly degradationCalculator: DegradationCalculator) {}
 
   /**
    * Process a single walk-forward window
@@ -50,40 +53,11 @@ export class WindowProcessor {
 
   /**
    * Calculate performance degradation from train to test
-   * Uses multiple metrics for comprehensive evaluation
+   * Delegates to DegradationCalculator for consistent multi-metric evaluation
    */
   calculateDegradation(trainMetrics: WindowMetrics, testMetrics: WindowMetrics): number {
-    // Primary metric: Sharpe ratio degradation
-    const sharpeDegradation = this.calculateMetricDegradation(trainMetrics.sharpeRatio, testMetrics.sharpeRatio);
-
-    // Secondary metrics
-    const returnDegradation = this.calculateMetricDegradation(trainMetrics.totalReturn, testMetrics.totalReturn);
-
-    const profitFactorDegradation = this.calculateMetricDegradation(
-      trainMetrics.profitFactor || 1,
-      testMetrics.profitFactor || 1
-    );
-
-    // Weighted average degradation
-    const weightedDegradation =
-      sharpeDegradation * 0.5 + // Sharpe is most important
-      returnDegradation * 0.3 + // Return is secondary
-      profitFactorDegradation * 0.2; // Profit factor is tertiary
-
-    return weightedDegradation;
-  }
-
-  /**
-   * Calculate degradation for a single metric
-   * Positive values indicate degradation, negative indicate improvement
-   */
-  private calculateMetricDegradation(trainValue: number, testValue: number): number {
-    if (trainValue === 0) return 0;
-
-    // Percentage change from train to test
-    const change = ((trainValue - testValue) / Math.abs(trainValue)) * 100;
-
-    return change;
+    const analysis = this.degradationCalculator.calculate(trainMetrics, testMetrics);
+    return analysis.overallDegradation;
   }
 
   /**
