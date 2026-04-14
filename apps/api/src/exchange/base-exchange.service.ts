@@ -9,8 +9,9 @@ import { ExchangeClientPool } from './exchange-client-pool';
 import { EXCHANGE_KEY_SERVICE, EXCHANGE_SERVICE, IExchangeKeyService, IExchangeService } from './interfaces';
 
 import { AssetBalanceDto } from '../balance/dto/balance-response.dto';
+import { CircuitBreakerService } from '../shared/circuit-breaker.service';
 import { toErrorInfo } from '../shared/error.util';
-import { withRateLimitRetryThrow } from '../shared/retry.util';
+import { isClockSkewError, isRateLimitError, isTransientError, withExchangeRetryThrow } from '../shared/retry.util';
 import { User } from '../users/users.entity';
 
 /**
@@ -28,12 +29,20 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   protected abstract readonly apiSecretConfigName: string;
   abstract readonly quoteAsset: string;
 
+  private _circuitKey?: string;
+
+  /** Lazy circuit key — can't compute in constructor because exchangeSlug is abstract. */
+  protected get circuitKey(): string {
+    return (this._circuitKey ??= `exchange:${this.exchangeSlug}`);
+  }
+
   constructor(
     protected readonly configService?: ConfigService,
     @Inject(EXCHANGE_KEY_SERVICE)
     protected readonly exchangeKeyService?: IExchangeKeyService,
     @Inject(EXCHANGE_SERVICE)
-    protected readonly exchangeService?: IExchangeService
+    protected readonly exchangeService?: IExchangeService,
+    protected readonly circuitBreaker?: CircuitBreakerService
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -220,6 +229,28 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   }
 
   /**
+   * Wrap an operation with circuit breaker protection.
+   * If no circuit breaker was injected, passes through directly.
+   */
+  protected async withCircuitBreaker<T>(operation: () => Promise<T>): Promise<T> {
+    if (!this.circuitBreaker) {
+      return operation();
+    }
+
+    this.circuitBreaker.checkCircuit(this.circuitKey);
+    try {
+      const result = await operation();
+      this.circuitBreaker.recordSuccess(this.circuitKey);
+      return result;
+    } catch (error) {
+      if (error instanceof Error && isTransientError(error) && !isClockSkewError(error) && !isRateLimitError(error)) {
+        this.circuitBreaker.recordFailure(this.circuitKey);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Get balances for all assets
    * @param user The user to fetch balances for
    * @returns Array of balances
@@ -227,10 +258,12 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async getBalance(user: User): Promise<AssetBalanceDto[]> {
     try {
       const client = await this.getClient(user);
-      const balanceData = await withRateLimitRetryThrow(() => client.fetchBalance(this.getFetchBalanceParams()), {
-        logger: this.logger,
-        operationName: 'getBalance'
-      });
+      const balanceData = await this.withCircuitBreaker(() =>
+        withExchangeRetryThrow(() => client.fetchBalance(this.getFetchBalanceParams()), {
+          logger: this.logger,
+          operationName: 'getBalance'
+        })
+      );
 
       const assetBalances: AssetBalanceDto[] = [];
 
@@ -272,10 +305,12 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async getFreeBalance(user: User) {
     try {
       const client = await this.getClient(user);
-      const balanceData = await withRateLimitRetryThrow(() => client.fetchBalance(this.getFetchBalanceParams()), {
-        logger: this.logger,
-        operationName: 'getFreeBalance'
-      });
+      const balanceData = await this.withCircuitBreaker(() =>
+        withExchangeRetryThrow(() => client.fetchBalance(this.getFetchBalanceParams()), {
+          logger: this.logger,
+          operationName: 'getFreeBalance'
+        })
+      );
 
       const balances: AssetBalanceDto[] = [];
       const allowedAssets = this.freeBalanceAssets;
@@ -312,10 +347,12 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     try {
       const formattedSymbol = this.formatSymbol(symbol);
       const client = await this.getClient(user);
-      const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(formattedSymbol), {
-        logger: this.logger,
-        operationName: `fetchTicker(${symbol})`
-      });
+      const ticker = await this.withCircuitBreaker(() =>
+        withExchangeRetryThrow(() => client.fetchTicker(formattedSymbol), {
+          logger: this.logger,
+          operationName: `fetchTicker(${symbol})`
+        })
+      );
 
       return ticker.last ?? 0;
     } catch (error: unknown) {
@@ -335,10 +372,12 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
     try {
       const formattedSymbol = this.formatSymbol(symbol);
       const client = await this.getClient(user);
-      const ticker = await withRateLimitRetryThrow(() => client.fetchTicker(formattedSymbol), {
-        logger: this.logger,
-        operationName: `getPrice(${symbol})`
-      });
+      const ticker = await this.withCircuitBreaker(() =>
+        withExchangeRetryThrow(() => client.fetchTicker(formattedSymbol), {
+          logger: this.logger,
+          operationName: `getPrice(${symbol})`
+        })
+      );
 
       return {
         symbol,
@@ -364,7 +403,7 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async validateKeys(apiKey: string, apiSecret: string): Promise<void> {
     const client = await this.getTemporaryClient(apiKey, apiSecret);
     try {
-      await withRateLimitRetryThrow(() => client.fetchBalance(), {
+      await withExchangeRetryThrow(() => client.fetchBalance(), {
         logger: this.logger,
         operationName: 'validateKeys'
       });

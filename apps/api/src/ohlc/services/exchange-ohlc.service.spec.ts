@@ -16,7 +16,7 @@ describe('ExchangeOHLCService', () => {
   let exchangeManager: jest.Mocked<ExchangeManagerService>;
   let configService: { get: jest.Mock };
 
-  let withRateLimitRetryThrowSpy: jest.SpyInstance;
+  let withExchangeRetryThrowSpy: jest.SpyInstance;
 
   beforeEach(() => {
     exchangeManager = {
@@ -26,14 +26,12 @@ describe('ExchangeOHLCService', () => {
 
     service = new ExchangeOHLCService(exchangeManager, configService as any);
 
-    // Mock withRateLimitRetryThrow to execute operation once without retry delays
-    withRateLimitRetryThrowSpy = jest
-      .spyOn(retryUtil, 'withRateLimitRetryThrow')
-      .mockImplementation(async (fn) => fn());
+    // Mock withExchangeRetryThrow to execute operation once without retry delays
+    withExchangeRetryThrowSpy = jest.spyOn(retryUtil, 'withExchangeRetryThrow').mockImplementation(async (fn) => fn());
   });
 
   afterEach(() => {
-    withRateLimitRetryThrowSpy.mockRestore();
+    withExchangeRetryThrowSpy.mockRestore();
     jest.clearAllMocks();
   });
 

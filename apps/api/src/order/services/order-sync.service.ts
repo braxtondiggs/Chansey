@@ -18,7 +18,7 @@ import { ExchangeManagerService } from '../../exchange/exchange-manager.service'
 import { ExchangeService } from '../../exchange/exchange.service';
 import { MetricsService } from '../../metrics/metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
-import { withRateLimitRetry, withRateLimitRetryThrow } from '../../shared/retry.util';
+import { withExchangeRetry, withExchangeRetryThrow } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { OrderTransitionReason } from '../entities/order-status-history.entity';
 import { Order, OrderSide, OrderStatus } from '../order.entity';
@@ -171,7 +171,7 @@ export class OrderSyncService {
 
     try {
       const since = lastSyncTime ? new Date(lastSyncTime).getTime() : undefined;
-      const markets = await withRateLimitRetryThrow(() => client.loadMarkets(), {
+      const markets = await withExchangeRetryThrow(() => client.loadMarkets(), {
         logger: this.logger,
         operationName: `loadMarkets (${operationName})`
       });
@@ -192,7 +192,7 @@ export class OrderSyncService {
       const allItems: T[] = [];
 
       for (const symbol of activeSymbols) {
-        const result = await withRateLimitRetry(() => fetchFn(symbol, since), {
+        const result = await withExchangeRetry(() => fetchFn(symbol, since), {
           logger: this.logger,
           operationName: `${operationName}(${symbol})`
         });

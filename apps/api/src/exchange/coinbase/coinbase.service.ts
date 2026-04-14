@@ -1,9 +1,10 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as ccxt from 'ccxt';
 
-import { withRateLimitRetryThrow } from '../../shared/retry.util';
+import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
+import { withExchangeRetryThrow } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
@@ -36,9 +37,10 @@ export class CoinbaseService extends BaseExchangeService {
     configService?: ConfigService,
 
     @Inject(forwardRef(() => ExchangeService)) exchangeService?: ExchangeService,
-    @Inject(forwardRef(() => ExchangeKeyService)) exchangeKeyService?: ExchangeKeyService
+    @Inject(forwardRef(() => ExchangeKeyService)) exchangeKeyService?: ExchangeKeyService,
+    @Optional() circuitBreaker?: CircuitBreakerService
   ) {
-    super(configService, exchangeKeyService, exchangeService);
+    super(configService, exchangeKeyService, exchangeService, circuitBreaker);
   }
 
   /**
@@ -107,9 +109,11 @@ export class CoinbaseService extends BaseExchangeService {
   async getFuturesPositions(user: User, symbol?: string): Promise<ccxt.Position[]> {
     const exchange = await this.getClient(user);
     const symbols = symbol ? [symbol] : undefined;
-    return withRateLimitRetryThrow(() => exchange.fetchPositions(symbols), {
-      logger: this.logger,
-      operationName: 'getFuturesPositions'
-    });
+    return this.withCircuitBreaker(() =>
+      withExchangeRetryThrow(() => exchange.fetchPositions(symbols), {
+        logger: this.logger,
+        operationName: 'getFuturesPositions'
+      })
+    );
   }
 }

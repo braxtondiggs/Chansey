@@ -24,7 +24,7 @@ import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.ser
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { NOTIFICATION_EVENTS } from '../../notification/interfaces/notification-events.interface';
 import { toErrorInfo } from '../../shared/error.util';
-import { withRateLimitRetryThrow } from '../../shared/retry.util';
+import { withExchangeRetryThrow } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { DEFAULT_SLIPPAGE_LIMITS, slippageLimitsConfig, SlippageLimitsConfig } from '../config/slippage-limits.config';
 import type { TradeSignal, TradeSignalWithExit } from '../interfaces/trade-signal.interface';
@@ -227,7 +227,7 @@ export class TradeExecutionService {
   private async initializeExchangeClient(slug: string, user: User, symbol: string) {
     const exchangeClient = await this.exchangeManagerService.getExchangeClient(slug, user);
 
-    await withRateLimitRetryThrow(() => exchangeClient.loadMarkets(), {
+    await withExchangeRetryThrow(() => exchangeClient.loadMarkets(), {
       logger: this.logger,
       operationName: 'loadMarkets'
     });
@@ -247,7 +247,7 @@ export class TradeExecutionService {
     symbol: string,
     action: 'BUY' | 'SELL'
   ): Promise<number> {
-    const ticker = await withRateLimitRetryThrow(() => exchangeClient.fetchTicker(symbol), {
+    const ticker = await withExchangeRetryThrow(() => exchangeClient.fetchTicker(symbol), {
       logger: this.logger,
       operationName: `fetchTicker(${symbol})`
     });
@@ -434,7 +434,7 @@ export class TradeExecutionService {
     expectedPrice: number
   ): Promise<number> {
     try {
-      const orderBook = await withRateLimitRetryThrow(() => exchangeClient.fetchOrderBook(symbol, 20), {
+      const orderBook = await withExchangeRetryThrow(() => exchangeClient.fetchOrderBook(symbol, 20), {
         logger: this.logger,
         operationName: `fetchOrderBook(${symbol})`
       });

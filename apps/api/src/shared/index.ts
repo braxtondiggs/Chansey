@@ -26,13 +26,18 @@ export {
 } from './circuit-breaker.service';
 export {
   DEFAULT_RETRY_OPTIONS,
+  EXCHANGE_RETRY_OPTIONS,
+  exchangeAwareDelay,
   extractRetryAfterMs,
   isAuthenticationError,
+  isClockSkewError,
   isRateLimitError,
   isTransientError,
   RATE_LIMIT_RETRY_OPTIONS,
   RetryOptions,
   RetryResult,
+  withExchangeRetry,
+  withExchangeRetryThrow,
   withRateLimitRetry,
   withRateLimitRetryThrow,
   withRetry,
