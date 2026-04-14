@@ -17,7 +17,7 @@ import {
   PaperTradingSession,
   PaperTradingSignal
 } from '../entities';
-import { PaperTradingMarketDataService } from '../paper-trading-market-data.service';
+import { PaperTradingSlippageService } from '../paper-trading-slippage.service';
 
 export interface ExecuteOrderContext {
   session: PaperTradingSession;
@@ -50,7 +50,7 @@ export class PaperTradingOrderExecutorService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly feeCalculator: FeeCalculatorService,
-    private readonly marketDataService: PaperTradingMarketDataService
+    private readonly slippageService: PaperTradingSlippageService
   ) {}
 
   async execute(ctx: ExecuteOrderContext): Promise<ExecuteOrderResult> {
@@ -63,7 +63,7 @@ export class PaperTradingOrderExecutorService {
 
     const isBuy = signal.action === 'BUY';
 
-    const slippageResult = await this.marketDataService.calculateRealisticSlippage(
+    const slippageResult = await this.slippageService.calculateRealisticSlippage(
       exchangeSlug,
       signal.symbol,
       signal.quantity ?? (portfolio.totalValue * 0.1) / basePrice,
