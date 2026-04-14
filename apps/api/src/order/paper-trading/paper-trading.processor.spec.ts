@@ -188,7 +188,7 @@ describe('PaperTradingProcessor', () => {
     expect(endTimer).toHaveBeenCalled();
   });
 
-  it('permanently pauses after exhausting retry attempts', async () => {
+  it('marks session failed after exhausting retry attempts', async () => {
     const session = {
       id: 'session-2b',
       status: PaperTradingStatus.ACTIVE,
@@ -221,12 +221,13 @@ describe('PaperTradingProcessor', () => {
 
     await processor.process(job);
 
-    expect(session.status).toBe(PaperTradingStatus.PAUSED);
-    expect(session.retryAttempts).toBe(0); // Reset after exhaustion
-    expect(paperTradingService.removeTickJobs).toHaveBeenCalledWith('session-2b');
+    expect(paperTradingService.markFailed).toHaveBeenCalledWith(
+      'session-2b',
+      expect.stringContaining('Retries exhausted (3 attempts)')
+    );
     expect(streamService.publishStatus).toHaveBeenCalledWith(
       'session-2b',
-      'paused',
+      'failed',
       'consecutive_errors',
       expect.objectContaining({ retriesExhausted: true })
     );

@@ -2,6 +2,7 @@ export * from './dto';
 export * from './entities';
 export * from './paper-trading-engine.service';
 export * from './paper-trading-market-data.service';
+export * from './paper-trading-slippage.service';
 export * from './paper-trading-recovery.service';
 export * from './paper-trading-stream.service';
 export * from './paper-trading.config';

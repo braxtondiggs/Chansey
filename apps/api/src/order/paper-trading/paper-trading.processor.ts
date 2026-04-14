@@ -181,8 +181,8 @@ export class PaperTradingProcessor extends FailSafeWorkerHost {
         await this.sessionRepository.save(session);
 
         if (session.consecutiveErrors >= this.maxConsecutiveErrors) {
-          this.logger.warn(`Session ${sessionId} reached max consecutive errors, pausing`);
-          await this.retryService.pauseSessionDueToErrors(session, result.errors.join('; '));
+          this.logger.warn(`Session ${sessionId} reached max consecutive errors, handling retry/failure flow`);
+          await this.retryService.handleConsecutiveErrors(session, result.errors.join('; '));
           return;
         }
 
@@ -255,7 +255,7 @@ export class PaperTradingProcessor extends FailSafeWorkerHost {
       await this.sessionRepository.save(session);
 
       if (session.consecutiveErrors >= this.maxConsecutiveErrors) {
-        await this.retryService.pauseSessionDueToErrors(session, classifiedError.message);
+        await this.retryService.handleConsecutiveErrors(session, classifiedError.message);
       } else {
         await this.streamService.publishLog(
           sessionId,

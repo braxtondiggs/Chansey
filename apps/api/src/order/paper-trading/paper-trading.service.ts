@@ -258,8 +258,12 @@ export class PaperTradingService {
   async stop(id: string, user: User, reason = 'user_cancelled'): Promise<PaperTradingSession> {
     const session = await this.findOne(id, user);
 
-    if (session.status === PaperTradingStatus.STOPPED || session.status === PaperTradingStatus.COMPLETED) {
-      throw new BadRequestException('Session is already stopped or completed');
+    if (
+      session.status === PaperTradingStatus.STOPPED ||
+      session.status === PaperTradingStatus.COMPLETED ||
+      session.status === PaperTradingStatus.FAILED
+    ) {
+      throw new BadRequestException('Session is already stopped, completed, or failed');
     }
 
     // Use transaction to ensure session state, job removal, and stop job are atomic

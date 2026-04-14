@@ -5,43 +5,23 @@ import { ConfigType } from '@nestjs/config';
 import { Cache } from 'cache-manager';
 
 import { PaperTradingSession } from './entities';
+import type { PriceData } from './paper-trading-market-data.types';
 import { paperTradingConfig } from './paper-trading.config';
 
 import { CoinService } from '../../coin/coin.service';
 import { CoinSelectionRelations } from '../../coin-selection/coin-selection.entity';
 import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
+import { EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { withExchangeRetry, withExchangeRetryThrow } from '../../shared/retry.util';
 import type { User } from '../../users/users.entity';
 
-export interface PriceData {
-  symbol: string;
-  price: number;
-  bid?: number;
-  ask?: number;
-  timestamp: Date;
-  source: string;
-}
+export type { PriceData, OrderBook, OrderBookLevel, RealisticSlippageResult } from './paper-trading-market-data.types';
 
-export interface OrderBookLevel {
-  price: number;
-  quantity: number;
-}
-
-export interface OrderBook {
-  symbol: string;
-  bids: OrderBookLevel[];
-  asks: OrderBookLevel[];
-  timestamp: Date;
-}
-
-export interface RealisticSlippageResult {
-  estimatedPrice: number;
-  slippageBps: number;
-  marketImpact: number;
-}
+const STALE_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const FALLBACK_EXCHANGE_SLUGS = ['gdax', 'kraken'] as const;
 
 @Injectable()
 export class PaperTradingMarketDataService {
@@ -175,7 +155,7 @@ export class PaperTradingMarketDataService {
 
       // Write stale fallback cache with longer TTL
       const staleKey = `${cacheKey}:stale`;
-      await this.cacheManager.set(staleKey, priceData, 5 * 60 * 1000);
+      await this.cacheManager.set(staleKey, priceData, STALE_CACHE_TTL_MS);
 
       return priceData;
     }
@@ -190,8 +170,22 @@ export class PaperTradingMarketDataService {
       return { ...stale, source: `${stale.source}:stale` };
     }
 
+    // Try fallback exchanges
+    const fallbackPrice = await this.tryFallbackExchanges(symbol, exchangeSlug);
+    if (fallbackPrice) {
+      const staleKey2 = `${cacheKey}:stale`;
+      await this.cacheManager.set(staleKey2, fallbackPrice, STALE_CACHE_TTL_MS);
+      return fallbackPrice;
+    }
+
+    // Try database price as last resort
+    const dbPrice = await this.tryDatabasePrice(symbol);
+    if (dbPrice) {
+      return dbPrice;
+    }
+
     this.logger.error(
-      `Failed to fetch price for ${symbol} from ${exchangeSlug} after retries, and no stale cache fallback`
+      `Failed to fetch price for ${symbol} from ${exchangeSlug} after retries, fallback exchanges, and DB lookup`
     );
     throw result.error;
   }
@@ -263,7 +257,7 @@ export class PaperTradingMarketDataService {
 
           // Write stale fallback cache with longer TTL
           const staleKey = `${cacheKey}:stale`;
-          await this.cacheManager.set(staleKey, priceData, 5 * 60 * 1000);
+          await this.cacheManager.set(staleKey, priceData, STALE_CACHE_TTL_MS);
         }
       }
 
@@ -276,144 +270,43 @@ export class PaperTradingMarketDataService {
         `Falling back to stale cached prices for ${uncachedSymbols.length} symbol(s).`
     );
 
-    let staleMisses = 0;
+    const stillMissing: string[] = [];
     for (const symbol of uncachedSymbols) {
       const staleKey = `paper-trading:price:${exchangeSlug}:${symbol}:stale`;
       const stale = await this.cacheManager.get<PriceData>(staleKey);
       if (stale) {
         results.set(symbol, { ...stale, source: `${stale.source}:stale` });
       } else {
-        staleMisses++;
+        stillMissing.push(symbol);
       }
     }
 
-    if (staleMisses > 0) {
+    // Try fallback exchanges and DB for symbols with no stale cache
+    for (const symbol of stillMissing) {
+      const fallbackPrice = await this.tryFallbackExchanges(symbol, exchangeSlug);
+      if (fallbackPrice) {
+        results.set(symbol, fallbackPrice);
+        const cacheKey = `paper-trading:price:${exchangeSlug}:${symbol}:stale`;
+        await this.cacheManager.set(cacheKey, fallbackPrice, STALE_CACHE_TTL_MS);
+        continue;
+      }
+
+      const dbPrice = await this.tryDatabasePrice(symbol);
+      if (dbPrice) {
+        results.set(symbol, dbPrice);
+        continue;
+      }
+    }
+
+    const finalMisses = stillMissing.filter((s) => !results.has(s));
+    if (finalMisses.length > 0) {
       throw new Error(
         `Failed to fetch prices from ${exchangeSlug} after retries, ` +
-          `and ${staleMisses} symbol(s) have no stale cache fallback`
+          `and ${finalMisses.length} symbol(s) have no stale cache, fallback exchange, or DB fallback`
       );
     }
 
     return results;
-  }
-
-  /**
-   * Get order book for realistic slippage calculation
-   */
-  async getOrderBook(exchangeSlug: string, symbol: string, depth = 20, user?: User): Promise<OrderBook> {
-    const cacheKey = `paper-trading:orderbook:${exchangeSlug}:${symbol}`;
-
-    // Try cache first (shorter TTL for order books)
-    const cached = await this.cacheManager.get<OrderBook>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    try {
-      const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
-
-      const client = user
-        ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
-        : await this.exchangeManager.getPublicClient(exchangeSlug);
-
-      const rawOrderBook = await withExchangeRetryThrow(() => client.fetchOrderBook(formattedSymbol, depth), {
-        logger: this.logger,
-        operationName: `fetchOrderBook(${exchangeSlug}:${symbol})`
-      });
-
-      const orderBook: OrderBook = {
-        symbol,
-        bids: rawOrderBook.bids.map(([price, quantity]) => ({
-          price: Number(price ?? 0),
-          quantity: Number(quantity ?? 0)
-        })),
-        asks: rawOrderBook.asks.map(([price, quantity]) => ({
-          price: Number(price ?? 0),
-          quantity: Number(quantity ?? 0)
-        })),
-        timestamp: new Date(rawOrderBook.timestamp ?? Date.now())
-      };
-
-      // Cache with short TTL (order books change quickly)
-      await this.cacheManager.set(cacheKey, orderBook, Math.min(this.cacheTtlMs, 2000));
-
-      return orderBook;
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Failed to fetch order book for ${symbol} from ${exchangeSlug}: ${err.message}`);
-      throw error;
-    }
-  }
-
-  /**
-   * Calculate realistic slippage based on order book depth
-   */
-  async calculateRealisticSlippage(
-    exchangeSlug: string,
-    symbol: string,
-    quantity: number,
-    side: 'BUY' | 'SELL',
-    user?: User
-  ): Promise<RealisticSlippageResult> {
-    try {
-      const orderBook = await this.getOrderBook(exchangeSlug, symbol, 50, user);
-      const levels = side === 'BUY' ? orderBook.asks : orderBook.bids;
-
-      if (levels.length === 0) {
-        // Fallback to fixed slippage if no order book
-        return {
-          estimatedPrice: 0,
-          slippageBps: 10, // Default 10 bps
-          marketImpact: 0
-        };
-      }
-
-      // Calculate volume-weighted average price for the quantity
-      let remainingQuantity = quantity;
-      let totalCost = 0;
-      let levelsFilled = 0;
-
-      for (const level of levels) {
-        if (remainingQuantity <= 0) break;
-
-        const fillQuantity = Math.min(remainingQuantity, level.quantity);
-        totalCost += fillQuantity * level.price;
-        remainingQuantity -= fillQuantity;
-        levelsFilled++;
-      }
-
-      const filledQuantity = quantity - remainingQuantity;
-      if (filledQuantity === 0) {
-        return {
-          estimatedPrice: levels[0].price,
-          slippageBps: 50, // High slippage for no fill
-          marketImpact: 0
-        };
-      }
-
-      const avgPrice = totalCost / filledQuantity;
-      const bestPrice = levels[0].price;
-      const slippageBps = Math.abs(((avgPrice - bestPrice) / bestPrice) * 10000);
-
-      // Market impact is based on how many levels were consumed
-      const marketImpact = Math.min(levelsFilled * 2, 50); // Cap at 50 bps
-
-      return {
-        estimatedPrice: avgPrice,
-        slippageBps: slippageBps + marketImpact,
-        marketImpact
-      };
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.warn(`Failed to calculate slippage for ${symbol}: ${err.message}. Using fixed slippage.`);
-
-      // Fallback to fixed slippage
-      return {
-        estimatedPrice: 0,
-        slippageBps: 10,
-        marketImpact: 0
-      };
-    }
   }
 
   /**
@@ -496,6 +389,69 @@ export class PaperTradingMarketDataService {
         error: err.message
       };
     }
+  }
+
+  /**
+   * Try alternative exchanges when the primary exchange fails.
+   * Handles quote currency mismatch (e.g. USDT on Binance → USD on Coinbase/Kraken).
+   */
+  private async tryFallbackExchanges(symbol: string, primarySlug: string): Promise<PriceData | null> {
+    const [base] = symbol.split('/');
+
+    for (const slug of FALLBACK_EXCHANGE_SLUGS) {
+      if (slug === primarySlug) continue;
+
+      try {
+        const quoteAsset = EXCHANGE_QUOTE_CURRENCY[slug] ?? 'USD';
+        const fallbackSymbol = `${base}/${quoteAsset}`;
+        const formattedSymbol = this.exchangeManager.formatSymbol(slug, fallbackSymbol);
+        const client = await this.exchangeManager.getPublicClient(slug);
+        const ticker = await client.fetchTicker(formattedSymbol);
+
+        if (ticker?.last != null || ticker?.close != null) {
+          this.logger.warn(`Fetched price for ${symbol} from fallback exchange ${slug}`);
+          return {
+            symbol,
+            price: ticker.last ?? ticker.close ?? 0,
+            bid: ticker.bid,
+            ask: ticker.ask,
+            timestamp: new Date(ticker.timestamp ?? Date.now()),
+            source: `${slug}:fallback`
+          };
+        }
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.debug(`Fallback exchange ${slug} failed for ${symbol}: ${err.message}`);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Last-resort fallback using the coin's stored price from the database.
+   * May be hours stale but prevents hard failure.
+   */
+  private async tryDatabasePrice(symbol: string): Promise<PriceData | null> {
+    const [base] = symbol.split('/');
+
+    try {
+      const coin = await this.coinService.getCoinBySymbol(base, undefined, false);
+      if (coin?.currentPrice != null) {
+        this.logger.warn(`Using DB coin.currentPrice for ${symbol} (coinId: ${coin.id})`);
+        return {
+          symbol,
+          price: coin.currentPrice,
+          timestamp: new Date(),
+          source: 'db:coin.currentPrice'
+        };
+      }
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.debug(`DB price fallback failed for ${symbol}: ${err.message}`);
+    }
+
+    return null;
   }
 
   /**

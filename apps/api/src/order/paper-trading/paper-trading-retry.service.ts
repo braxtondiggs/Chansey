@@ -95,8 +95,8 @@ export class PaperTradingRetryService {
           this.logger.log(`Session ${sessionId} recovered after retry ${retryAttempt}, normal ticks resumed`);
         }
       } else {
-        // Tick processed but failed — trigger next retry or permanent pause
-        await this.pauseSessionDueToErrors(session, result.errors.join('; '));
+        // Tick processed but failed — trigger next retry or mark as FAILED when retries are exhausted
+        await this.handleConsecutiveErrors(session, result.errors.join('; '));
       }
     } catch (error: unknown) {
       const err = toErrorInfo(error);
@@ -115,16 +115,16 @@ export class PaperTradingRetryService {
         return;
       }
 
-      await this.pauseSessionDueToErrors(session, classifiedError.message);
+      await this.handleConsecutiveErrors(session, classifiedError.message);
     } finally {
       endTimer();
     }
   }
 
   /**
-   * Pause session due to consecutive errors, with exponential backoff retry.
+   * Handle consecutive errors with exponential backoff retry, or fail if exhausted.
    */
-  async pauseSessionDueToErrors(session: PaperTradingSession, errorMessage: string): Promise<void> {
+  async handleConsecutiveErrors(session: PaperTradingSession, errorMessage: string): Promise<void> {
     if (session.retryAttempts < this.maxRetryAttempts) {
       // Schedule retry with exponential backoff
       const delay = Math.min(this.retryBackoffMs * Math.pow(2, session.retryAttempts), MAX_RETRY_DELAY_MS);
@@ -154,25 +154,20 @@ export class PaperTradingRetryService {
       return;
     }
 
-    // Exhausted retries — permanent pause
-    session.status = PaperTradingStatus.PAUSED;
-    session.pausedAt = new Date();
-    session.retryAttempts = 0;
-    session.errorMessage = `Auto-paused after ${this.maxRetryAttempts} retry attempts: ${errorMessage}`;
-    await this.sessionRepository.save(session);
+    // Exhausted retries — mark as failed (not paused) so it won't block future pipelines
+    const failMessage = `Retries exhausted (${this.maxRetryAttempts} attempts): ${errorMessage}`;
+    await this.jobService.markFailed(session.id, failMessage);
 
-    await this.jobService.removeTickJobs(session.id);
-
-    // Clear throttle and exit tracker state so resumed sessions start fresh
+    // Clear in-memory throttle and exit tracker state
     this.engineService.clearThrottleState(session.id);
     this.engineService.clearExitTracker(session.id);
 
-    await this.streamService.publishStatus(session.id, 'paused', 'consecutive_errors', {
+    await this.streamService.publishStatus(session.id, 'failed', 'consecutive_errors', {
       errorMessage,
       consecutiveErrors: session.consecutiveErrors,
       retriesExhausted: true
     });
 
-    this.logger.warn(`Session ${session.id} auto-paused after exhausting ${this.maxRetryAttempts} retry attempts`);
+    this.logger.warn(`Session ${session.id} failed after exhausting ${this.maxRetryAttempts} retry attempts`);
   }
 }

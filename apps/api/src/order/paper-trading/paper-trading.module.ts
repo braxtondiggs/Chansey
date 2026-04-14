@@ -24,6 +24,7 @@ import { PaperTradingMarketDataService } from './paper-trading-market-data.servi
 import { PaperTradingQueryService } from './paper-trading-query.service';
 import { PaperTradingRecoveryService } from './paper-trading-recovery.service';
 import { PaperTradingRetryService } from './paper-trading-retry.service';
+import { PaperTradingSlippageService } from './paper-trading-slippage.service';
 import { PaperTradingStreamService } from './paper-trading-stream.service';
 import { paperTradingConfig } from './paper-trading.config';
 import { PaperTradingController } from './paper-trading.controller';
@@ -89,6 +90,7 @@ const PAPER_TRADING_CONFIG = paperTradingConfig();
     PaperTradingExitExecutorService,
     PaperTradingOpportunitySellingService,
     PaperTradingMarketDataService,
+    PaperTradingSlippageService,
     PaperTradingStreamService,
     PaperTradingProcessor,
     PaperTradingGateway,

@@ -240,7 +240,8 @@ describe('PaperTradingService', () => {
 
     it.each([
       ['STOPPED', PaperTradingStatus.STOPPED],
-      ['COMPLETED', PaperTradingStatus.COMPLETED]
+      ['COMPLETED', PaperTradingStatus.COMPLETED],
+      ['FAILED', PaperTradingStatus.FAILED]
     ])('rejects stop when session is %s', async (_label, status) => {
       spyFindOne().mockResolvedValue({ id: 's', status } as any);
 
@@ -404,6 +405,27 @@ describe('PaperTradingService', () => {
         expect(createSpy).not.toHaveBeenCalled();
       }
     );
+
+    it('allows starting when only FAILED sessions exist for same (user, algorithm)', async () => {
+      // FAILED sessions from retry exhaustion should not block new pipelines
+      mockDuplicateGuardResult(null); // FAILED sessions are excluded from the IN(:...active) filter
+
+      const pipelineSession = {
+        id: 'pipe-session-new',
+        status: PaperTradingStatus.PAUSED,
+        pipelineId: undefined,
+        riskLevel: undefined,
+        exitConfig: undefined,
+        minTrades: undefined
+      } as any;
+
+      jest.spyOn(service, 'create').mockResolvedValue(pipelineSession);
+      sessionRepository.save.mockResolvedValue(pipelineSession);
+      jest.spyOn(service, 'start').mockResolvedValue({ ...pipelineSession, status: PaperTradingStatus.ACTIVE });
+
+      await expect(service.startFromPipeline(baseStartParams)).resolves.toBeDefined();
+      expect(service.create).toHaveBeenCalled();
+    });
 
     it('passes the active-status filter and pipelineId exclusion to the query builder', async () => {
       const qb = mockDuplicateGuardResult(null);
