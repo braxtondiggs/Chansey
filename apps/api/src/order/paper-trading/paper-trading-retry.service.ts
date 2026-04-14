@@ -95,7 +95,7 @@ export class PaperTradingRetryService {
           this.logger.log(`Session ${sessionId} recovered after retry ${retryAttempt}, normal ticks resumed`);
         }
       } else {
-        // Tick processed but failed — trigger next retry or permanent pause
+        // Tick processed but failed — trigger next retry or mark as FAILED when retries are exhausted
         await this.handleConsecutiveErrors(session, result.errors.join('; '));
       }
     } catch (error: unknown) {
@@ -122,7 +122,7 @@ export class PaperTradingRetryService {
   }
 
   /**
-   * Pause session due to consecutive errors, with exponential backoff retry.
+   * Handle consecutive errors with exponential backoff retry, or fail if exhausted.
    */
   async handleConsecutiveErrors(session: PaperTradingSession, errorMessage: string): Promise<void> {
     if (session.retryAttempts < this.maxRetryAttempts) {
