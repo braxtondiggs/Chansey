@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
+import { MIN_DAILY_VOLUME, MIN_MARKET_CAP } from './coin-quality.constants';
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
@@ -87,8 +88,8 @@ export class CoinService {
    */
   async getCoinsByIdsFiltered(
     coinIds: string[],
-    minMarketCap = 100_000_000,
-    minDailyVolume = 1_000_000,
+    minMarketCap = MIN_MARKET_CAP,
+    minDailyVolume = MIN_DAILY_VOLUME,
     options?: { includeDelisted?: boolean; skipCurrentPriceCheck?: boolean }
   ): Promise<Coin[]> {
     if (coinIds.length === 0) return [];
@@ -121,8 +122,8 @@ export class CoinService {
   async getCoinsByIdsFilteredAtDate(
     coinIds: string[],
     atDate: Date,
-    minMarketCap = 100_000_000,
-    minDailyVolume = 1_000_000
+    minMarketCap = MIN_MARKET_CAP,
+    minDailyVolume = MIN_DAILY_VOLUME
   ): Promise<{ coins: Coin[]; usedHistoricalData: boolean }> {
     if (coinIds.length === 0) return { coins: [], usedHistoricalData: false };
 
