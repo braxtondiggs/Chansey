@@ -92,6 +92,21 @@ export function isTransientError(error: Error): boolean {
     return true;
   }
 
+  // PostgreSQL connection errors
+  if (
+    message.includes('connection terminated unexpectedly') ||
+    message.includes('server closed the connection unexpectedly') ||
+    message.includes('connection is not open') ||
+    message.includes('too many connections') ||
+    message.includes('remaining connection slots are reserved') ||
+    message.includes('terminating connection due to administrator command') ||
+    message.includes('could not connect to server') ||
+    message.includes('the database system is starting up') ||
+    message.includes('the database system is shutting down')
+  ) {
+    return true;
+  }
+
   // CCXT-specific transient errors
   if (
     name.includes('networkerror') ||
