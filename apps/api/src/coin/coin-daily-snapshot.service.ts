@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
 
 import { CoinDailySnapshot } from './coin-daily-snapshot.entity';
+import { MIN_DAILY_VOLUME, MIN_MARKET_CAP } from './coin-quality.constants';
 import { Coin } from './coin.entity';
 
 @Injectable()
@@ -81,8 +82,8 @@ export class CoinDailySnapshotService {
   async getQualifiedCoinIdsAtDate(
     coinIds: string[],
     date: Date,
-    minMarketCap = 100_000_000,
-    minDailyVolume = 1_000_000
+    minMarketCap = MIN_MARKET_CAP,
+    minDailyVolume = MIN_DAILY_VOLUME
   ): Promise<{ qualifiedIds: string[]; hasSnapshots: boolean }> {
     if (coinIds.length === 0) return { qualifiedIds: [], hasSnapshots: false };
 

@@ -255,8 +255,8 @@ describe('OptimizationEvaluationService', () => {
 
       await service.loadCoinsForOptimization(20, 90);
 
-      // andWhere called for marketRank + minDataDays span (2 andWhere calls)
-      expect(qb.andWhere).toHaveBeenCalledTimes(2);
+      // andWhere called for marketRank + stablecoins + minMarketCap + minDailyVolume + minDataDays span (5 andWhere calls)
+      expect(qb.andWhere).toHaveBeenCalledTimes(5);
       expect(qb.andWhere).toHaveBeenCalledWith(expect.stringContaining('EXTRACT(EPOCH'), { minDataDays: 90 });
     });
   });

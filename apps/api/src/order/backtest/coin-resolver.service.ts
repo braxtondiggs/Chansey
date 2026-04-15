@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/commo
 
 import { MarketDataSet } from './market-data-set.entity';
 
+import { MIN_DAILY_VOLUME, MIN_MARKET_CAP } from '../../coin/coin-quality.constants';
 import { Coin } from '../../coin/coin.entity';
 import { CoinService } from '../../coin/coin.service';
 import { InstrumentUniverseUnresolvedException } from '../../common/exceptions';
@@ -180,8 +181,8 @@ export class CoinResolverService {
       const { coins: qualityFiltered } = await this.coinService.getCoinsByIdsFilteredAtDate(
         tradeableCoins.map((c) => c.id),
         options.startDate,
-        100_000_000,
-        1_000_000
+        MIN_MARKET_CAP,
+        MIN_DAILY_VOLUME
       );
       const qualifiedIdSet = new Set(qualityFiltered.map((c) => c.id));
       resolved = tradeableCoins.filter((c) => qualifiedIdSet.has(c.id));

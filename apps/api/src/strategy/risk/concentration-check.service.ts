@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { CONCENTRATION_LIMITS } from './concentration.constants';
 
-const STABLECOIN_SYMBOLS = new Set(['USDT', 'USDC', 'DAI', 'BUSD', 'USD', 'TUSD', 'USDP']);
+import { STABLECOIN_SYMBOLS } from '../../exchange/constants';
 
 export interface AssetAllocation {
   symbol: string;

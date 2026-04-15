@@ -275,7 +275,12 @@ describe('OptimizationOrchestratorService', () => {
           runId: 'run-1',
           combinations: expect.any(Array)
         }),
-        expect.objectContaining({ jobId: 'run-1', removeOnComplete: true, attempts: 1 })
+        expect.objectContaining({
+          jobId: 'run-1',
+          removeOnComplete: true,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 }
+        })
       );
     });
 

@@ -54,6 +54,18 @@ describe('retry.util', () => {
       expect(isTransientError(requestTimeout)).toBe(true);
     });
 
+    it('should identify PostgreSQL connection errors as transient', () => {
+      expect(isTransientError(new Error('Connection terminated unexpectedly'))).toBe(true);
+      expect(isTransientError(new Error('server closed the connection unexpectedly'))).toBe(true);
+      expect(isTransientError(new Error('connection is not open'))).toBe(true);
+      expect(isTransientError(new Error('too many connections for role'))).toBe(true);
+      expect(isTransientError(new Error('remaining connection slots are reserved'))).toBe(true);
+      expect(isTransientError(new Error('terminating connection due to administrator command'))).toBe(true);
+      expect(isTransientError(new Error('could not connect to server: Connection refused'))).toBe(true);
+      expect(isTransientError(new Error('the database system is starting up'))).toBe(true);
+      expect(isTransientError(new Error('the database system is shutting down'))).toBe(true);
+    });
+
     it('should not identify business errors as transient', () => {
       expect(isTransientError(new Error('Invalid order'))).toBe(false);
       expect(isTransientError(new Error('Insufficient balance'))).toBe(false);

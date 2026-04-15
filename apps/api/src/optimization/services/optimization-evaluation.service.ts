@@ -5,7 +5,9 @@ import { Repository } from 'typeorm';
 
 import { WindowMetrics } from '@chansey/api-interfaces';
 
+import { MIN_DAILY_VOLUME, MIN_MARKET_CAP } from '../../coin/coin-quality.constants';
 import { Coin } from '../../coin/coin.entity';
+import { STABLECOIN_SYMBOLS } from '../../exchange/constants';
 import { OHLCCandle } from '../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../ohlc/ohlc.service';
 import { BacktestEngine } from '../../order/backtest/backtest-engine.service';
@@ -179,11 +181,16 @@ export class OptimizationEvaluationService {
         `FROM ohlc_candles c WHERE c."coinId" = coin.id) >= :minDataDays`
       : null;
 
+    const stablecoins = [...STABLECOIN_SYMBOLS];
+
     // Load coins ranked by market cap, filtered to only those with sufficient OHLC data
     let qb = this.coinRepository
       .createQueryBuilder('coin')
       .where(ohlcExistsSubquery)
-      .andWhere('coin.marketRank IS NOT NULL');
+      .andWhere('coin.marketRank IS NOT NULL')
+      .andWhere('UPPER(coin.symbol) NOT IN (:...stablecoins)', { stablecoins })
+      .andWhere('coin.marketCap >= :minMarketCap', { minMarketCap: MIN_MARKET_CAP })
+      .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume: MIN_DAILY_VOLUME });
 
     if (ohlcSpanCondition) {
       qb = qb.andWhere(ohlcSpanCondition, { minDataDays });
@@ -193,7 +200,12 @@ export class OptimizationEvaluationService {
 
     if (coins.length === 0) {
       // Fallback: get any coins with sufficient OHLC data (no market rank filter)
-      let fallbackQb = this.coinRepository.createQueryBuilder('coin').where(ohlcExistsSubquery);
+      let fallbackQb = this.coinRepository
+        .createQueryBuilder('coin')
+        .where(ohlcExistsSubquery)
+        .andWhere('UPPER(coin.symbol) NOT IN (:...stablecoins)', { stablecoins })
+        .andWhere('coin.marketCap >= :minMarketCap', { minMarketCap: MIN_MARKET_CAP })
+        .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume: MIN_DAILY_VOLUME });
       if (ohlcSpanCondition) {
         fallbackQb = fallbackQb.andWhere(ohlcSpanCondition, { minDataDays });
       }
@@ -206,7 +218,7 @@ export class OptimizationEvaluationService {
     }
 
     this.logger.log(
-      `Filtered to ${coins.length} coins with OHLC data (max ${maxCoins}${minDataDays ? `, min ${minDataDays} days` : ''})`
+      `Filtered to ${coins.length} coins with OHLC data, excluding stablecoins (max ${maxCoins}${minDataDays ? `, min ${minDataDays} days` : ''}, minMarketCap 100M, minVolume 1M)`
     );
 
     return coins;

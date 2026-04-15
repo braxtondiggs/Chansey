@@ -170,7 +170,8 @@ export class OptimizationRecoveryService implements OnApplicationBootstrap {
       {
         jobId: run.id,
         removeOnComplete: true,
-        attempts: 1
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 }
       }
     );
 

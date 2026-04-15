@@ -11,6 +11,9 @@ export const EXCHANGE_QUOTE_CURRENCY: Record<string, string> = {
 
 export const DEFAULT_QUOTE_CURRENCY = 'USDT';
 
+/** Stablecoin symbols excluded from trading optimization and concentration checks */
+export const STABLECOIN_SYMBOLS = new Set(['USDT', 'USDC', 'DAI', 'BUSD', 'USD', 'TUSD', 'USDP', 'FDUSD', 'PYUSD']);
+
 /** Currencies treated as USD-equivalent for pricing and pair filtering */
 export const USD_QUOTE_CURRENCIES = new Set(['USD', 'USDT', 'USDC', 'BUSD', 'DAI', 'ZUSD']);
 
