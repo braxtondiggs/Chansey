@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { MarketRegimeType, StrategyGrade } from '@chansey/api-interfaces';
 
+import { CorrelationScoringService } from './correlation-scoring.service';
 import { CalmarRatioCalculator } from './metrics/calmar-ratio.calculator';
 import { ProfitFactorCalculator } from './metrics/profit-factor.calculator';
 import { StabilityCalculator } from './metrics/stability.calculator';
@@ -17,6 +18,7 @@ import { StrategyScore } from '../strategy/entities/strategy-score.entity';
 describe('ScoringService', () => {
   let service: ScoringService;
   let mockRepo: Record<string, jest.Mock>;
+  let mockCorrelationScoringService: { calculateMaxCorrelation: jest.Mock };
 
   /** Metrics that score "excellent" on every component → baseScore = 100 */
   const excellentMetrics = {
@@ -55,6 +57,10 @@ describe('ScoringService', () => {
       }))
     };
 
+    mockCorrelationScoringService = {
+      calculateMaxCorrelation: jest.fn().mockResolvedValue(0)
+    };
+
     const module = await Test.createTestingModule({
       providers: [
         ScoringService,
@@ -65,6 +71,7 @@ describe('ScoringService', () => {
         WinRateCalculator,
         ProfitFactorCalculator,
         StabilityCalculator,
+        { provide: CorrelationScoringService, useValue: mockCorrelationScoringService },
         { provide: getRepositoryToken(StrategyScore), useValue: mockRepo }
       ]
     }).compile();
@@ -294,7 +301,7 @@ describe('ScoringService', () => {
   describe('calculateScore (full pipeline)', () => {
     it('throws when backtest has no results', async () => {
       const backtestRun = { id: 'run-1', results: null } as any;
-      await expect(service.calculateScore('strat-1', backtestRun, 10)).rejects.toThrow(
+      await expect(service.calculateScore('strat-1', backtestRun, 10, 'user-1')).rejects.toThrow(
         'Backtest results not available'
       );
     });
@@ -305,7 +312,7 @@ describe('ScoringService', () => {
         results: excellentMetrics
       } as any;
 
-      const result = await service.calculateScore('strat-1', backtestRun, 5);
+      const result = await service.calculateScore('strat-1', backtestRun, 5, 'user-1');
 
       expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -325,7 +332,7 @@ describe('ScoringService', () => {
   describe('checkPromotionEligibility (via calculateScore)', () => {
     it('is eligible with excellent metrics, low degradation, sufficient trades', async () => {
       const backtestRun = { id: 'run-1', results: excellentMetrics } as any;
-      const result = await service.calculateScore('strat-1', backtestRun, 5);
+      const result = await service.calculateScore('strat-1', backtestRun, 5, 'user-1');
       expect(result.promotionEligible).toBe(true);
     });
 
@@ -334,7 +341,7 @@ describe('ScoringService', () => {
         id: 'run-1',
         results: { ...excellentMetrics, totalTrades: 20 }
       } as any;
-      const result = await service.calculateScore('strat-1', backtestRun, 5);
+      const result = await service.calculateScore('strat-1', backtestRun, 5, 'user-1');
       expect(result.promotionEligible).toBe(false);
     });
 
@@ -343,7 +350,7 @@ describe('ScoringService', () => {
         id: 'run-1',
         results: { ...excellentMetrics, maxDrawdown: 50 }
       } as any;
-      const result = await service.calculateScore('strat-1', backtestRun, 5);
+      const result = await service.calculateScore('strat-1', backtestRun, 5, 'user-1');
       expect(result.promotionEligible).toBe(false);
     });
 
@@ -352,7 +359,7 @@ describe('ScoringService', () => {
         id: 'run-1',
         results: { ...excellentMetrics, totalReturn: -0.1 }
       } as any;
-      const result = await service.calculateScore('strat-1', backtestRun, 5);
+      const result = await service.calculateScore('strat-1', backtestRun, 5, 'user-1');
       expect(result.promotionEligible).toBe(false);
     });
 
@@ -361,8 +368,84 @@ describe('ScoringService', () => {
         id: 'run-1',
         results: excellentMetrics
       } as any;
-      const result = await service.calculateScore('strat-1', backtestRun, 35);
+      const result = await service.calculateScore('strat-1', backtestRun, 35, 'user-1');
       expect(result.promotionEligible).toBe(false);
+    });
+  });
+
+  describe('correlation scoring tiers (via calculateScoreFromMetrics)', () => {
+    it('assigns score 100 for correlation 0 (uncorrelated)', () => {
+      const result = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: 0 });
+      expect(result.componentScores.correlation.score).toBe(100);
+      expect(result.componentScores.correlation.value).toBe(0);
+    });
+
+    it('assigns score 75 for moderate correlation (0.3)', () => {
+      const result = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: 0.3 });
+      expect(result.componentScores.correlation.score).toBe(75);
+      expect(result.componentScores.correlation.value).toBe(0.3);
+    });
+
+    it('assigns score 50 for correlation 0.5', () => {
+      const result = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: 0.5 });
+      expect(result.componentScores.correlation.score).toBe(50);
+      expect(result.componentScores.correlation.value).toBe(0.5);
+    });
+
+    it('assigns score 25 for high correlation (0.8)', () => {
+      const result = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: 0.8 });
+      expect(result.componentScores.correlation.score).toBe(25);
+      expect(result.componentScores.correlation.value).toBe(0.8);
+    });
+
+    it('assigns score 0 for very high correlation (0.95)', () => {
+      const result = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: 0.95 });
+      expect(result.componentScores.correlation.score).toBe(0);
+      expect(result.componentScores.correlation.value).toBe(0.95);
+    });
+
+    it('reduces overall score when correlation is high', () => {
+      const uncorrelated = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: 0 });
+      const correlated = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: 0.8 });
+      expect(uncorrelated.overallScore).toBeGreaterThan(correlated.overallScore);
+    });
+
+    it('handles negative correlation via abs value', () => {
+      const result = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: -0.8 });
+      expect(result.componentScores.correlation.score).toBe(25);
+    });
+  });
+
+  describe('correlation warnings', () => {
+    it('warns when correlation exceeds 0.7', () => {
+      const result = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: 0.75 });
+      expect(result.warnings).toContain('High correlation with existing deployment reduces diversification');
+    });
+
+    it('does not warn when correlation is below 0.7', () => {
+      const result = service.calculateScoreFromMetrics(excellentMetrics, 0, { correlationValue: 0.5 });
+      expect(result.warnings).not.toContain('High correlation with existing deployment reduces diversification');
+    });
+  });
+
+  describe('calculateScore with correlation', () => {
+    it('calls correlationScoringService and uses result', async () => {
+      mockCorrelationScoringService.calculateMaxCorrelation.mockResolvedValue(0.5);
+      const backtestRun = { id: 'run-1', results: excellentMetrics } as any;
+      const result = await service.calculateScore('strat-1', backtestRun, 0, 'user-1');
+
+      expect(mockCorrelationScoringService.calculateMaxCorrelation).toHaveBeenCalledWith('strat-1', 'user-1');
+      expect(result.componentScores.correlation.value).toBe(0.5);
+      expect(result.componentScores.correlation.score).toBe(50);
+    });
+
+    it('defaults correlation to 0 when correlationScoringService throws', async () => {
+      mockCorrelationScoringService.calculateMaxCorrelation.mockRejectedValue(new Error('DB connection failed'));
+      const backtestRun = { id: 'run-1', results: excellentMetrics } as any;
+      const result = await service.calculateScore('strat-1', backtestRun, 0, 'user-1');
+
+      expect(result.componentScores.correlation.value).toBe(0);
+      expect(result.componentScores.correlation.score).toBe(100);
     });
   });
 });

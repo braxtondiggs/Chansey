@@ -9,6 +9,7 @@ import { MarketRegimeType } from '@chansey/api-interfaces';
 import { PipelineStageExecutionService } from './pipeline-stage-execution.service';
 
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
+import { CorrelationScoringService } from '../../scoring/correlation-scoring.service';
 import { ScoringService } from '../../scoring/scoring.service';
 import { DegradationCalculator } from '../../scoring/walk-forward/degradation.calculator';
 import { Pipeline } from '../entities/pipeline.entity';
@@ -36,7 +37,9 @@ export class PipelineProgressionService {
     @Inject(forwardRef(() => MarketRegimeService))
     private readonly marketRegimeService: MarketRegimeService,
     @Inject(forwardRef(() => DegradationCalculator))
-    private readonly degradationCalculator: DegradationCalculator
+    private readonly degradationCalculator: DegradationCalculator,
+    @Inject(forwardRef(() => CorrelationScoringService))
+    private readonly correlationScoringService: CorrelationScoringService
   ) {}
 
   evaluateOptimizationProgression(pipeline: Pipeline, improvement: number): { passed: boolean; failures: string[] } {
@@ -132,9 +135,21 @@ export class PipelineProgressionService {
       volatility: metrics.volatility
     };
 
-    const result = this.scoringService.calculateScoreFromMetrics(scoringMetrics, Math.max(0, degradation), {
-      marketRegime: regimeType
-    });
+    let correlationValue = 0;
+    try {
+      correlationValue = await this.correlationScoringService.calculateMaxCorrelation(
+        pipeline.strategyConfigId,
+        pipeline.user.id
+      );
+    } catch (error) {
+      this.logger.warn(`Failed to calculate correlation for strategy ${pipeline.strategyConfigId}: ${error}`);
+    }
+
+    const result = this.scoringService.calculateScoreFromMetrics(
+      scoringMetrics,
+      this.toEffectiveDegradation(degradation),
+      { marketRegime: regimeType, correlationValue }
+    );
 
     return {
       overallScore: result.overallScore,
@@ -176,8 +191,7 @@ export class PipelineProgressionService {
 
     const avgDegradation =
       hist && paper
-        ? Math.max(
-            0,
+        ? this.toEffectiveDegradation(
             this.degradationCalculator.calculateFromValues({
               sharpeRatio: { train: hist.sharpeRatio, test: paper.sharpeRatio ?? 0 },
               totalReturn: { train: hist.totalReturn, test: paper.totalReturn ?? 0 },
@@ -270,6 +284,15 @@ export class PipelineProgressionService {
       recommendation: pipeline.recommendation,
       timestamp: new Date().toISOString()
     });
+  }
+
+  /**
+   * Converts raw degradation to an effective value for scoring.
+   * Positive (overfitting): full penalty.
+   * Negative (inconsistency): half penalty — large swings are unreliable regardless of direction.
+   */
+  private toEffectiveDegradation(raw: number): number {
+    return raw >= 0 ? raw : Math.abs(raw) * 0.5;
   }
 
   async failPipeline(pipeline: Pipeline, reason: string): Promise<void> {
