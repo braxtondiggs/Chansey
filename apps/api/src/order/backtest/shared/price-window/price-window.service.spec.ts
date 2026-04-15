@@ -178,7 +178,7 @@ describe('PriceWindowService', () => {
       mockRegistry.getStrategyForAlgorithm.mockResolvedValue({});
       const coins = makeCoins('btc');
       const result = await service.filterCoinsWithSufficientData('alg1', coins, {}, new Map(), mockRegistry);
-      expect(result).toEqual({ filtered: coins, excludedCount: 0 });
+      expect(result).toEqual({ filtered: coins, excludedCount: 0, excludedDetails: [] });
     });
 
     it('returns all coins when minRequired is 0', async () => {
@@ -187,7 +187,7 @@ describe('PriceWindowService', () => {
       });
       const coins = makeCoins('btc');
       const result = await service.filterCoinsWithSufficientData('alg1', coins, {}, new Map(), mockRegistry);
-      expect(result).toEqual({ filtered: coins, excludedCount: 0 });
+      expect(result).toEqual({ filtered: coins, excludedCount: 0, excludedDetails: [] });
     });
 
     it('filters coins with insufficient data points', async () => {
@@ -203,6 +203,7 @@ describe('PriceWindowService', () => {
       expect(result.filtered).toHaveLength(1);
       expect(result.filtered[0].id).toBe('btc');
       expect(result.excludedCount).toBe(1);
+      expect(result.excludedDetails).toEqual(['ETH(50/100)']);
     });
   });
 });
