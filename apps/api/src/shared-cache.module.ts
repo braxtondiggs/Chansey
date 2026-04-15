@@ -6,6 +6,7 @@ import { createKeyv, Keyv } from '@keyv/redis';
 import { CacheableMemory } from 'cacheable';
 
 import { RedisConfig } from './config/redis.config';
+import { CustomCacheInterceptor } from './utils/interceptors/custom-cache.interceptor';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { RedisConfig } from './config/redis.config';
       }
     })
   ],
-  exports: [CacheModule]
+  providers: [CustomCacheInterceptor],
+  exports: [CacheModule, CustomCacheInterceptor]
 })
 export class SharedCacheModule {}

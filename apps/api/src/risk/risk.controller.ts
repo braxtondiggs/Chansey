@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards, HttpStatus } from '@nestjs/common';
+import { CacheTTL } from '@nestjs/cache-manager';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+  UseInterceptors,
+  HttpStatus
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Risk, Role } from '@chansey/api-interfaces';
@@ -10,6 +22,8 @@ import { RiskService } from './risk.service';
 import { Roles } from '../authentication/decorator/roles.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { RolesGuard } from '../authentication/guard/roles.guard';
+import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
+import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 @ApiTags('Risk')
 @ApiBearerAuth('token')
@@ -31,6 +45,9 @@ export class RiskController {
   }
 
   @Get()
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey(() => 'risk:list:all')
+  @CacheTTL(600_000)
   @ApiOperation({ summary: 'Get all risk profiles' })
   @ApiResponse({ status: 200, description: 'Return all risks.', type: [RiskEntity] })
   findAll(): Promise<Risk[]> {

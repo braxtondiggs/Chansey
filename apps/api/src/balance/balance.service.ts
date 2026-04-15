@@ -97,7 +97,7 @@ export class BalanceService {
    */
   async getCurrentBalances(user: User): Promise<ExchangeBalanceDto[]> {
     const cacheKey = `balance:user:${user.id}:current`;
-    const CACHE_TTL = 60; // seconds
+    const CACHE_TTL = 60_000; // 60 seconds in ms
 
     const cached = await this.cacheManager.get<ExchangeBalanceDto[]>(cacheKey);
     if (cached) {

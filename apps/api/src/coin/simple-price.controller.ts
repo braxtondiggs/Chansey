@@ -42,7 +42,7 @@ export class SimplePriceController {
     const include_last_updated_at = query.include_last_updated_at === true;
     return `simple-price:${ids}:${vs_currencies}:${include_24hr_vol}:${include_market_cap}:${include_24hr_change}:${include_last_updated_at}`;
   })
-  @CacheTTL(60) // Cache for 1 minute (60 seconds)
+  @CacheTTL(60_000) // Cache for 1 minute (in milliseconds)
   @ApiOperation({
     summary: 'Get fresh cryptocurrency prices from CoinGecko',
     description: `

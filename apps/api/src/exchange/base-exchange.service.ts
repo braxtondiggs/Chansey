@@ -1,6 +1,8 @@
-import { Inject, InternalServerErrorException, Logger, OnModuleDestroy } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Inject, InternalServerErrorException, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { Cache } from 'cache-manager';
 import * as ccxt from 'ccxt';
 
 import { CCXT_BALANCE_META_KEYS } from './ccxt-balance.util';
@@ -28,6 +30,11 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   protected abstract readonly apiKeyConfigName: string;
   protected abstract readonly apiSecretConfigName: string;
   abstract readonly quoteAsset: string;
+
+  /** Injected via property injection to avoid changing subclass constructors. */
+  @Optional() @Inject(CACHE_MANAGER) protected cacheManager?: Cache;
+
+  private static readonly PRICE_CACHE_TTL = 30_000; // 30 seconds
 
   private _circuitKey?: string;
 
@@ -346,6 +353,18 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async getPriceBySymbol(symbol: string, user?: User) {
     try {
       const formattedSymbol = this.formatSymbol(symbol);
+      const cacheKey = `price:${this.exchangeSlug}:${formattedSymbol}`;
+
+      if (this.cacheManager) {
+        try {
+          const cached = await this.cacheManager.get<number>(cacheKey);
+          if (cached != null) return cached;
+        } catch (cacheError: unknown) {
+          const cErr = toErrorInfo(cacheError);
+          this.logger.warn(`Cache read failed for ${cacheKey}: ${cErr.message}`);
+        }
+      }
+
       const client = await this.getClient(user);
       const ticker = await this.withCircuitBreaker(() =>
         withExchangeRetryThrow(() => client.fetchTicker(formattedSymbol), {
@@ -353,8 +372,18 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
           operationName: `fetchTicker(${symbol})`
         })
       );
+      const price = ticker.last ?? 0;
 
-      return ticker.last ?? 0;
+      if (this.cacheManager) {
+        try {
+          await this.cacheManager.set(cacheKey, price, BaseExchangeService.PRICE_CACHE_TTL);
+        } catch (cacheError: unknown) {
+          const cErr = toErrorInfo(cacheError);
+          this.logger.warn(`Cache write failed for ${cacheKey}: ${cErr.message}`);
+        }
+      }
+
+      return price;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Error fetching ${this.constructor.name} price for ${symbol}`, err.stack || err.message);
@@ -371,6 +400,18 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
   async getPrice(symbol: string, user?: User) {
     try {
       const formattedSymbol = this.formatSymbol(symbol);
+      const cacheKey = `price:${this.exchangeSlug}:${formattedSymbol}:full`;
+
+      if (this.cacheManager) {
+        try {
+          const cached = await this.cacheManager.get<{ symbol: string; price: string; timestamp: number }>(cacheKey);
+          if (cached) return cached;
+        } catch (cacheError: unknown) {
+          const cErr = toErrorInfo(cacheError);
+          this.logger.warn(`Cache read failed for ${cacheKey}: ${cErr.message}`);
+        }
+      }
+
       const client = await this.getClient(user);
       const ticker = await this.withCircuitBreaker(() =>
         withExchangeRetryThrow(() => client.fetchTicker(formattedSymbol), {
@@ -378,12 +419,22 @@ export abstract class BaseExchangeService implements OnModuleDestroy {
           operationName: `getPrice(${symbol})`
         })
       );
-
-      return {
+      const result = {
         symbol,
         price: (ticker.last ?? 0).toString(),
         timestamp: ticker.timestamp ?? Date.now()
       };
+
+      if (this.cacheManager) {
+        try {
+          await this.cacheManager.set(cacheKey, result, BaseExchangeService.PRICE_CACHE_TTL);
+        } catch (cacheError: unknown) {
+          const cErr = toErrorInfo(cacheError);
+          this.logger.warn(`Cache write failed for ${cacheKey}: ${cErr.message}`);
+        }
+      }
+
+      return result;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(

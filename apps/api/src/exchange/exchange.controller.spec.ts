@@ -1,7 +1,10 @@
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Test, type TestingModule } from '@nestjs/testing';
 
 import { ExchangeController } from './exchange.controller';
 import { ExchangeService } from './exchange.service';
+
+import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
 
 describe('ExchangeController', () => {
   let controller: ExchangeController;
@@ -26,7 +29,11 @@ describe('ExchangeController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ExchangeController],
-      providers: [{ provide: ExchangeService, useValue: exchangeService }]
+      providers: [
+        { provide: ExchangeService, useValue: exchangeService },
+        { provide: CACHE_MANAGER, useValue: { get: jest.fn(), set: jest.fn() } },
+        CustomCacheInterceptor
+      ]
     }).compile();
 
     controller = module.get<ExchangeController>(ExchangeController);

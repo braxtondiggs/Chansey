@@ -1,4 +1,5 @@
-import { Controller, Get, HttpStatus, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import { CacheTTL } from '@nestjs/cache-manager';
+import { Controller, Get, HttpStatus, ParseUUIDPipe, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { MarketLimitsDto, OrderBookDto, TickerDto, TradingBalanceDto } from './dto';
@@ -7,6 +8,10 @@ import { TradingService } from './trading.service';
 import GetUser from '../authentication/decorator/get-user.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
 import { User } from '../users/users.entity';
+import { UseCacheKey } from '../utils/decorators/use-cache-key.decorator';
+import { CustomCacheInterceptor } from '../utils/interceptors/custom-cache.interceptor';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @ApiTags('Trading')
 @ApiBearerAuth('token')
@@ -40,6 +45,13 @@ export class TradingController {
   }
 
   @Get('orderbook')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => {
+    const req = ctx.switchToHttp().getRequest();
+    const exchangeId = UUID_RE.test(req.query.exchangeId) ? req.query.exchangeId : 'default';
+    return `trading:orderbook:${req.query.symbol}:${exchangeId}`;
+  })
+  @CacheTTL(5_000)
   @ApiOperation({
     summary: 'Get order book for a trading pair',
     description: 'Returns current order book (bids and asks) for the specified trading pair'
@@ -66,6 +78,13 @@ export class TradingController {
   }
 
   @Get('ticker')
+  @UseInterceptors(CustomCacheInterceptor)
+  @UseCacheKey((ctx) => {
+    const req = ctx.switchToHttp().getRequest();
+    const exchangeId = UUID_RE.test(req.query.exchangeId) ? req.query.exchangeId : 'default';
+    return `trading:ticker:${req.query.symbol}:${exchangeId}`;
+  })
+  @CacheTTL(15_000)
   @ApiOperation({
     summary: 'Get ticker data for a trading pair',
     description: 'Returns current ticker information including price, volume, and 24h statistics'

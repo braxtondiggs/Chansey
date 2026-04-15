@@ -49,11 +49,22 @@ export class CoinMarketDataService {
   async getCoinHistoricalData(coinId: string): Promise<HistoricalDataPoint[]> {
     const coin = await this.coinService.getCoinById(coinId);
 
+    const cacheKey = `coingecko:historical:${coin.slug}`;
+    const staleCacheKey = `coingecko:historical:stale:${coin.slug}`;
+    const HISTORICAL_CACHE_TTL = 60 * 60_000; // 60 minutes
+    const STALE_CACHE_TTL = 24 * 60 * 60_000; // 24 hours
+
+    let cached: HistoricalDataPoint[] | undefined;
+    try {
+      cached = await this.cacheManager.get<HistoricalDataPoint[]>(cacheKey);
+    } catch {
+      this.logger.warn(`Cache read failed for ${cacheKey}, treating as miss`);
+    }
+    if (cached) return cached;
+
     if (this.circuitBreaker.isOpen(CoinMarketDataService.CIRCUIT_KEY)) {
-      this.logger.warn(
-        `Circuit breaker OPEN for ${CoinMarketDataService.CIRCUIT_KEY}, skipping historical fetch for ${coinId}`
-      );
-      return [];
+      this.logger.warn(`Circuit breaker OPEN for CoinGecko, skipping historical API call for ${coinId}`);
+      return this.getStaleHistoricalData(staleCacheKey, coinId);
     }
 
     const retryResult = await withRateLimitRetry(
@@ -80,20 +91,37 @@ export class CoinMarketDataService {
       this.circuitBreaker.recordFailure(CoinMarketDataService.CIRCUIT_KEY);
       const { message } = toErrorInfo(retryResult.error);
       this.logger.error(`Failed to fetch historical data for ${coinId}: ${message}`);
-      throw retryResult.error ?? new Error(message);
+      return this.getStaleHistoricalData(staleCacheKey, coinId);
     }
 
     const geckoData = retryResult.result;
     if (geckoData?.prices && geckoData.prices.length > 0) {
-      return geckoData.prices.map((point, index) => ({
+      const result = geckoData.prices.map((point, index) => ({
         timestamp: point[0],
         price: point[1],
         volume: geckoData.total_volumes?.[index]?.[1] ?? 0,
         marketCap: geckoData.market_caps?.[index]?.[1] ?? 0
       }));
+      await this.cacheManager.set(cacheKey, result, HISTORICAL_CACHE_TTL);
+      await this.cacheManager.set(staleCacheKey, result, STALE_CACHE_TTL);
+      return result;
     }
 
     return [];
+  }
+
+  private async getStaleHistoricalData(staleCacheKey: string, coinId: string): Promise<HistoricalDataPoint[]> {
+    try {
+      const stale = await this.cacheManager.get<HistoricalDataPoint[]>(staleCacheKey);
+      if (stale) {
+        this.logger.warn(`Returning 24h stale historical data for ${coinId}`);
+        return stale;
+      }
+      return [];
+    } catch {
+      this.logger.warn(`Cache read failed in stale fallback for ${coinId}, returning empty`);
+      return [];
+    }
   }
 
   /**
@@ -242,7 +270,7 @@ export class CoinMarketDataService {
    */
   private async fetchCoinDetail(coinGeckoId: string): Promise<CoinGetIDResponse> {
     const cacheKey = `coingecko:detail:${coinGeckoId}`;
-    const CACHE_TTL = 300; // 5 minutes in seconds
+    const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in ms
 
     try {
       // Try to get from cache first
@@ -265,7 +293,7 @@ export class CoinMarketDataService {
 
       // Cache the result
       await this.cacheManager.set(cacheKey, coinDetail, CACHE_TTL);
-      this.logger.debug(`Cached CoinGecko detail for ${coinGeckoId} (TTL: ${CACHE_TTL}s)`);
+      this.logger.debug(`Cached CoinGecko detail for ${coinGeckoId} (TTL: ${CACHE_TTL}ms)`);
 
       return coinDetail;
     } catch (error: unknown) {
@@ -294,9 +322,9 @@ export class CoinMarketDataService {
   private async fetchMarketChart(coinGeckoId: string, days: number): Promise<MarketChartGetResponse> {
     const cacheKey = `coingecko:chart:${coinGeckoId}:${days}d`;
     const staleCacheKey = `coingecko:chart:stale:${coinGeckoId}:${days}d`;
-    const CACHE_TTL_MAP: Record<number, number> = { 1: 300, 7: 900, 30: 1800, 365: 3600 };
-    const CACHE_TTL = CACHE_TTL_MAP[days] || 300;
-    const STALE_CACHE_TTL = 86400; // 24 hours
+    const CACHE_TTL_MAP: Record<number, number> = { 1: 5 * 60_000, 7: 15 * 60_000, 30: 30 * 60_000, 365: 60 * 60_000 };
+    const CACHE_TTL = CACHE_TTL_MAP[days] || 5 * 60_000;
+    const STALE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
 
     try {
       // Try to get from cache first
@@ -336,7 +364,7 @@ export class CoinMarketDataService {
       await this.cacheManager.set(cacheKey, chartData, CACHE_TTL);
       // Also store a long-lived stale fallback
       await this.cacheManager.set(staleCacheKey, chartData, STALE_CACHE_TTL);
-      this.logger.debug(`Cached CoinGecko chart for ${coinGeckoId} (${days}d, TTL: ${CACHE_TTL}s)`);
+      this.logger.debug(`Cached CoinGecko chart for ${coinGeckoId} (${days}d, TTL: ${CACHE_TTL}ms)`);
 
       return chartData;
     } catch (error: unknown) {

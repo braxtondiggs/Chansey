@@ -126,7 +126,7 @@ describe('BalanceService', () => {
       expect(result).toHaveLength(1);
       expect(result[0].slug).toBe('binance_us');
       expect(result[0].balances).toHaveLength(1);
-      expect(cacheManager.set).toHaveBeenCalledWith(`balance:user:${mockUser.id}:current`, expect.any(Array), 60);
+      expect(cacheManager.set).toHaveBeenCalledWith(`balance:user:${mockUser.id}:current`, expect.any(Array), 60_000);
     });
 
     it('should skip inactive exchange keys', async () => {
