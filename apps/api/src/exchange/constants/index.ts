@@ -3,5 +3,6 @@ export {
   EXCHANGE_QUOTE_CURRENCY,
   getQuoteCurrency,
   QUOTE_CURRENCY_PRIORITY,
+  STABLECOIN_SYMBOLS,
   USD_QUOTE_CURRENCIES
 } from './quote-currency.constants';
