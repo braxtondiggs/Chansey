@@ -22,6 +22,7 @@ interface ATRTrailingStopConfig {
   tradeDirection: 'long' | 'short' | 'both';
   useHighLow: boolean;
   minConfidence: number;
+  stopCooldownBars: number;
 }
 
 interface TrailingStopState {
@@ -97,6 +98,13 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         for (const direction of directions) {
           const entry = this.generateEntrySignal(coin.id, coin.symbol, priceHistory, atr, config, direction);
           if (entry && entry.confidence >= config.minConfidence) {
+            // Suppress entry if a stop was triggered within the cooldown window
+            if (
+              config.stopCooldownBars > 0 &&
+              this.wasStopTriggeredRecently(priceHistory, atr, config, direction, config.stopCooldownBars)
+            ) {
+              continue;
+            }
             entry.exitConfig = exitConfig;
             signals.push(entry);
           }
@@ -147,11 +155,12 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
 
   private getConfigWithDefaults(config: Record<string, unknown>): ATRTrailingStopConfig {
     return {
-      atrPeriod: Math.max(2, Math.min(50, (config.atrPeriod as number) ?? 14)),
-      atrMultiplier: Math.max(0.5, Math.min(10, (config.atrMultiplier as number) ?? 2.5)),
+      atrPeriod: Math.max(14, Math.min(25, (config.atrPeriod as number) ?? 20)),
+      atrMultiplier: Math.max(3.5, Math.min(6, (config.atrMultiplier as number) ?? 4.5)),
       tradeDirection: (config.tradeDirection as 'long' | 'short' | 'both') ?? 'long',
       useHighLow: (config.useHighLow as boolean) ?? true,
-      minConfidence: (config.minConfidence as number) ?? 0.6
+      minConfidence: (config.minConfidence as number) ?? 0.4,
+      stopCooldownBars: Math.max(0, Math.min(10, (config.stopCooldownBars as number) ?? 3))
     };
   }
 
@@ -226,6 +235,28 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
       isTriggered,
       triggerType: isTriggered ? 'stop_loss' : null
     };
+  }
+
+  /**
+   * Check if a stop was triggered on any of the previous N bars for this direction.
+   * Prevents rapid re-entry after a stop loss fires.
+   */
+  private wasStopTriggeredRecently(
+    prices: CandleData[],
+    atr: number[],
+    config: ATRTrailingStopConfig,
+    direction: Direction,
+    cooldownBars: number
+  ): boolean {
+    const currentIndex = prices.length - 1;
+    for (let i = 1; i <= cooldownBars && currentIndex - i >= config.atrPeriod; i++) {
+      const barIndex = currentIndex - i;
+      if (!Number.isFinite(atr[barIndex])) continue;
+      const lookbackStart = Math.max(0, barIndex - config.atrPeriod);
+      const state = this.calculateTrailingStop(prices, atr, config, lookbackStart, barIndex, direction);
+      if (state.isTriggered) return true;
+    }
+    return false;
   }
 
   /**
@@ -435,19 +466,25 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   }
 
   getMinDataPoints(config: Record<string, unknown>): number {
-    const atrPeriod = (config.atrPeriod as number) ?? 14;
+    const atrPeriod = (config.atrPeriod as number) ?? 20;
     return atrPeriod + 5;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
-    return [{ type: 'ATR', paramKeys: ['atrPeriod'], defaultParams: { atrPeriod: 14 } }];
+    return [{ type: 'ATR', paramKeys: ['atrPeriod'], defaultParams: { atrPeriod: 20 } }];
   }
 
   getConfigSchema(): Record<string, unknown> {
     return {
       ...super.getConfigSchema(),
-      atrPeriod: { type: 'number', default: 14, min: 5, max: 30, description: 'ATR calculation period' },
-      atrMultiplier: { type: 'number', default: 2.5, min: 1, max: 5, description: 'ATR multiplier for stop distance' },
+      atrPeriod: { type: 'number', default: 20, min: 14, max: 25, description: 'ATR calculation period' },
+      atrMultiplier: {
+        type: 'number',
+        default: 4.5,
+        min: 3.5,
+        max: 6,
+        description: 'ATR multiplier for stop distance'
+      },
       tradeDirection: {
         type: 'string',
         enum: ['long', 'short', 'both'],
@@ -455,7 +492,14 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         description: 'Which direction to generate stops for'
       },
       useHighLow: { type: 'boolean', default: true, description: 'Use high/low vs close for calculations' },
-      minConfidence: { type: 'number', default: 0.6, min: 0, max: 1, description: 'Minimum confidence required' }
+      minConfidence: { type: 'number', default: 0.4, min: 0, max: 1, description: 'Minimum confidence required' },
+      stopCooldownBars: {
+        type: 'number',
+        default: 3,
+        min: 0,
+        max: 10,
+        description: 'Bars to suppress entry signals after a stop loss fires (prevents rapid re-entry churn)'
+      }
     };
   }
 

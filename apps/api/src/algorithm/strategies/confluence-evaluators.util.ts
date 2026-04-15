@@ -39,7 +39,7 @@ export function evaluateEMASignal(ema12: number[], ema26: number[], currentIndex
   const previousEma12 = ema12[currentIndex - 1];
   const previousEma26 = ema26[currentIndex - 1];
 
-  if (!Number.isFinite(currentEma12) || !Number.isFinite(currentEma26)) {
+  if (!Number.isFinite(currentEma12) || !Number.isFinite(currentEma26) || currentEma26 === 0) {
     return {
       name: 'EMA',
       signal: 'neutral',
@@ -60,6 +60,17 @@ export function evaluateEMASignal(ema12: number[], ema26: number[], currentIndex
   const spreadStrength = Math.min(1, Math.abs(spread) * 20); // 5% spread = max
   const crossoverBonus = isCrossover ? 0.2 : 0;
   const strength = Math.min(1, spreadStrength + crossoverBonus);
+
+  // Dead zone: if spread is negligible, return neutral instead of forcing a direction
+  if (Math.abs(spread) < 0.002) {
+    return {
+      name: 'EMA',
+      signal: 'neutral',
+      strength: 0.2,
+      reason: `Neutral trend: EMA spread (${(spread * 100).toFixed(3)}%) within dead zone`,
+      values: { ema12: currentEma12, ema26: currentEma26, spread: spread * 100 }
+    };
+  }
 
   if (currentEma12 > currentEma26) {
     return {
@@ -177,6 +188,18 @@ export function evaluateMACDSignal(
   const momentumBonus =
     (currentHistogram > 0 && histogramMomentum >= 0) || (currentHistogram < 0 && histogramMomentum <= 0) ? 0.15 : 0;
 
+  // Dead zone: if histogram is within 10% of average, return neutral
+  const histogramThreshold = effectiveAvg * 0.1;
+  if (Math.abs(currentHistogram) < histogramThreshold) {
+    return {
+      name: 'MACD',
+      signal: 'neutral',
+      strength: 0.2,
+      reason: `Neutral oscillator: MACD histogram (${currentHistogram.toFixed(4)}) within dead zone`,
+      values: { macd: currentMACD, signal: currentSignal, histogram: currentHistogram }
+    };
+  }
+
   if (currentHistogram > 0) {
     return {
       name: 'MACD',
@@ -197,7 +220,7 @@ export function evaluateMACDSignal(
     return {
       name: 'MACD',
       signal: 'neutral',
-      strength: 0.3,
+      strength: 0.2,
       reason: `Neutral oscillator: MACD histogram at zero`,
       values: { macd: currentMACD, signal: currentSignal, histogram: currentHistogram }
     };

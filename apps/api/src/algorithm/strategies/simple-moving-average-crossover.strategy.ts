@@ -47,9 +47,10 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
 
     try {
       // Get configuration
-      const fastPeriod = (context.config.fastPeriod as number) ?? 10;
-      const slowPeriod = (context.config.slowPeriod as number) ?? 20;
-      const minConfidence = (context.config.minConfidence as number) ?? 0.7;
+      const fastPeriod = (context.config.fastPeriod as number) ?? 20;
+      const slowPeriod = (context.config.slowPeriod as number) ?? 50;
+      const minConfidence = (context.config.minConfidence as number) ?? 0.4;
+      const minSeparation = (context.config.minSeparation as number) ?? 0.005;
       const isBacktest = !!(
         context.metadata?.backtestId ||
         context.metadata?.isOptimization ||
@@ -83,7 +84,14 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
           ).values;
 
         // Generate signal
-        const signal = this.generateCrossoverSignal(coin.id, coin.symbol, priceHistory, fastSMA, slowSMA);
+        const signal = this.generateCrossoverSignal(
+          coin.id,
+          coin.symbol,
+          priceHistory,
+          fastSMA,
+          slowSMA,
+          minSeparation
+        );
 
         if (signal && signal.confidence >= minConfidence) {
           signals.push(signal);
@@ -115,7 +123,8 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
     coinSymbol: string,
     prices: CandleData[],
     fastSMA: number[],
-    slowSMA: number[]
+    slowSMA: number[],
+    minSeparation: number
   ): TradingSignal | null {
     const currentIndex = prices.length - 1;
     const previousIndex = currentIndex - 1;
@@ -136,38 +145,53 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
     const previousFast = fastSMA[previousIndex];
     const previousSlow = slowSMA[previousIndex];
 
+    // Minimum separation filter: reject noise crosses
+    const separation = Math.abs(currentFast - currentSlow) / currentSlow;
+    if (separation < minSeparation) return null;
+
+    // Dynamic strength and confidence based on separation and slope
+    const strength = Math.min(1, Math.max(0.4, separation * 20));
+
     // Golden Cross - Fast SMA crosses above Slow SMA
     if (previousFast <= previousSlow && currentFast > currentSlow) {
+      const slopeBonus = currentFast > previousFast ? 0.1 : 0;
+      const confidence = Math.min(1, Math.max(0.4, 0.4 + separation * 10 + slopeBonus));
+
       return {
         type: SignalType.BUY,
         coinId,
-        strength: 0.8,
+        strength,
         price: currentPrice,
-        confidence: 0.75,
+        confidence,
         reason: `Golden Cross: Fast SMA (${currentFast.toFixed(4)}) crossed above Slow SMA (${currentSlow.toFixed(4)})`,
         metadata: {
           symbol: coinSymbol,
           fastSMA: currentFast,
           slowSMA: currentSlow,
-          crossoverType: 'golden'
+          crossoverType: 'golden',
+          separation
         }
       };
     }
 
     // Death Cross - Fast SMA crosses below Slow SMA
     if (previousFast >= previousSlow && currentFast < currentSlow) {
+      const slopeBonus = currentFast < previousFast ? 0.1 : 0;
+      const confidence = Math.min(1, Math.max(0.4, 0.4 + separation * 10 + slopeBonus));
+
       return {
         type: SignalType.SELL,
         coinId,
-        strength: 0.8,
+        strength,
         price: currentPrice,
-        confidence: 0.75,
+        confidence,
         reason: `Death Cross: Fast SMA (${currentFast.toFixed(4)}) crossed below Slow SMA (${currentSlow.toFixed(4)})`,
         metadata: {
           symbol: coinSymbol,
           fastSMA: currentFast,
           slowSMA: currentSlow,
-          crossoverType: 'death'
+          crossoverType: 'death',
+          separation
         }
       };
     }
@@ -192,14 +216,14 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
   }
 
   getMinDataPoints(config: Record<string, unknown>): number {
-    const slowPeriod = (config.slowPeriod as number) ?? 20;
+    const slowPeriod = (config.slowPeriod as number) ?? 50;
     return slowPeriod + 1;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
     return [
-      { type: 'SMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 10 } },
-      { type: 'SMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 20 } }
+      { type: 'SMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 20 } },
+      { type: 'SMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 50 } }
     ];
   }
 
@@ -222,24 +246,31 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
       ...super.getConfigSchema(),
       fastPeriod: {
         type: 'number',
-        default: 10,
+        default: 20,
         min: 5,
         max: 50,
         description: 'Period for fast moving average'
       },
       slowPeriod: {
         type: 'number',
-        default: 20,
+        default: 50,
         min: 10,
         max: 100,
         description: 'Period for slow moving average'
       },
       minConfidence: {
         type: 'number',
-        default: 0.7,
+        default: 0.4,
         min: 0,
         max: 1,
         description: 'Minimum confidence level for signals'
+      },
+      minSeparation: {
+        type: 'number',
+        default: 0.005,
+        min: 0,
+        max: 0.05,
+        description: 'Min |fast-slow|/slow to recognize a cross. Filters noise.'
       }
     };
   }
@@ -252,7 +283,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
       return false;
     }
 
-    const slowPeriod = (context.config.slowPeriod as number) || 20;
+    const slowPeriod = (context.config.slowPeriod as number) || 50;
 
     // At least one coin must have sufficient price data
     return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], slowPeriod));

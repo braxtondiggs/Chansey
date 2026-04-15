@@ -163,7 +163,7 @@ describe('SimpleMovingAverageCrossoverStrategy', () => {
       const fast = Array(30).fill(NaN);
       const slow = Array(30).fill(NaN);
 
-      // Golden cross pattern
+      // Golden cross with significant separation
       fast[28] = 10;
       slow[28] = 11;
       fast[29] = 12;
@@ -171,9 +171,10 @@ describe('SimpleMovingAverageCrossoverStrategy', () => {
 
       mockSmaValues(fast, slow);
 
-      // Signal confidence is 0.75, set threshold above it
+      // Dynamic confidence for separation=1/11≈0.09 → confidence≈0.4+0.9+0.1=1.0 (capped)
+      // Set threshold impossibly high
       const result = await strategy.execute(
-        buildContext(prices, { fastPeriod: 10, slowPeriod: 20, minConfidence: 0.9 })
+        buildContext(prices, { fastPeriod: 10, slowPeriod: 20, minConfidence: 1.1 })
       );
 
       expect(result.success).toBe(true);
@@ -185,7 +186,7 @@ describe('SimpleMovingAverageCrossoverStrategy', () => {
       const fast = Array(30).fill(NaN);
       const slow = Array(30).fill(NaN);
 
-      // Golden cross pattern
+      // Golden cross pattern with good separation
       fast[28] = 10;
       slow[28] = 11;
       fast[29] = 12;
@@ -193,14 +194,64 @@ describe('SimpleMovingAverageCrossoverStrategy', () => {
 
       mockSmaValues(fast, slow);
 
-      // Signal confidence is 0.75, set threshold at exactly 0.75
       const result = await strategy.execute(
-        buildContext(prices, { fastPeriod: 10, slowPeriod: 20, minConfidence: 0.75 })
+        buildContext(prices, { fastPeriod: 10, slowPeriod: 20, minConfidence: 0.4 })
       );
 
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(1);
       expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+
+    it('should block noise crosses below minSeparation', async () => {
+      const prices = createMockPrices(30);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+
+      // Tiny crossover: separation = |100.01-100|/100 = 0.0001 < 0.005
+      fast[28] = 99.99;
+      slow[28] = 100;
+      fast[29] = 100.01;
+      slow[29] = 100;
+
+      mockSmaValues(fast, slow);
+
+      const result = await strategy.execute(buildContext(prices, { fastPeriod: 10, slowPeriod: 20, minConfidence: 0 }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should produce dynamic strength that scales with separation', async () => {
+      const prices = createMockPrices(30);
+
+      // Small separation cross
+      const fastSmall = Array(30).fill(NaN);
+      const slowSmall = Array(30).fill(NaN);
+      fastSmall[28] = 99;
+      slowSmall[28] = 100;
+      fastSmall[29] = 101;
+      slowSmall[29] = 100;
+      mockSmaValues(fastSmall, slowSmall);
+      const smallResult = await strategy.execute(
+        buildContext(prices, { fastPeriod: 10, slowPeriod: 20, minConfidence: 0 })
+      );
+
+      // Large separation cross
+      const fastLarge = Array(30).fill(NaN);
+      const slowLarge = Array(30).fill(NaN);
+      fastLarge[28] = 95;
+      slowLarge[28] = 100;
+      fastLarge[29] = 105;
+      slowLarge[29] = 100;
+      mockSmaValues(fastLarge, slowLarge);
+      const largeResult = await strategy.execute(
+        buildContext(prices, { fastPeriod: 10, slowPeriod: 20, minConfidence: 0 })
+      );
+
+      expect(smallResult.signals).toHaveLength(1);
+      expect(largeResult.signals).toHaveLength(1);
+      expect(largeResult.signals[0].strength).toBeGreaterThan(smallResult.signals[0].strength);
     });
   });
 

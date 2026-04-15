@@ -6,11 +6,11 @@ import { type ConfluenceConfig } from '../interfaces';
  * Build a fully-defaulted ConfluenceConfig from a raw config record.
  */
 export function getConfluenceConfigWithDefaults(config: Record<string, unknown>): ConfluenceConfig {
-  const minConfluence = (config.minConfluence as number) ?? 2;
+  const minConfluence = (config.minConfluence as number) ?? 3;
   return {
     minConfluence,
     minSellConfluence: (config.minSellConfluence as number) ?? minConfluence,
-    minConfidence: (config.minConfidence as number) ?? 0.5,
+    minConfidence: (config.minConfidence as number) ?? 0.4,
     enableShortSignals: (config.enableShortSignals as boolean) ?? false,
 
     ema: {
@@ -60,10 +60,10 @@ export function getConfluenceConfigSchema(baseSchema: Record<string, unknown>): 
     // Core confluence settings
     minConfluence: {
       type: 'number',
-      default: 2,
+      default: 3,
       min: 2,
-      max: 4,
-      description: 'Minimum number of directional indicators that must agree for BUY (2-4). ATR is a filter only.'
+      max: 3,
+      description: 'Minimum number of directional indicators that must agree for BUY (2-3). ATR is a filter only.'
     },
     enableShortSignals: {
       type: 'boolean',
@@ -73,15 +73,15 @@ export function getConfluenceConfigSchema(baseSchema: Record<string, unknown>): 
     },
     minSellConfluence: {
       type: 'number',
-      default: 2,
+      default: 3,
       min: 2,
-      max: 4,
+      max: 3,
       description:
-        'Minimum number of directional indicators that must agree for SELL (2-4). Defaults to same as minConfluence for symmetric thresholds.'
+        'Minimum number of directional indicators that must agree for SELL (2-3). Defaults to same as minConfluence for symmetric thresholds.'
     },
     minConfidence: {
       type: 'number',
-      default: 0.5,
+      default: 0.4,
       min: 0,
       max: 1,
       description: 'Minimum confidence required to generate signal'

@@ -163,13 +163,13 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
   private getConfigWithDefaults(config: Record<string, unknown>): RSIMACDComboConfig {
     return {
       rsiPeriod: (config.rsiPeriod as number) ?? 14,
-      rsiOversold: (config.rsiOversold as number) ?? 35,
-      rsiOverbought: (config.rsiOverbought as number) ?? 65,
+      rsiOversold: (config.rsiOversold as number) ?? 30,
+      rsiOverbought: (config.rsiOverbought as number) ?? 70,
       macdFast: (config.macdFast as number) ?? 12,
       macdSlow: (config.macdSlow as number) ?? 26,
       macdSignal: (config.macdSignal as number) ?? 9,
-      confirmationWindow: (config.confirmationWindow as number) ?? 3,
-      minConfidence: (config.minConfidence as number) ?? 0.7
+      confirmationWindow: (config.confirmationWindow as number) ?? 5,
+      minConfidence: (config.minConfidence as number) ?? 0.5
     };
   }
 
@@ -207,8 +207,8 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
     };
 
     for (let i = windowStart; i <= currentIndex; i++) {
-      // Check RSI signals
-      if (Number.isFinite(rsi[i])) {
+      // Check RSI signals — first-found semantics: once set, don't overwrite
+      if (signalState.rsiSignal === null && Number.isFinite(rsi[i])) {
         if (rsi[i] < config.rsiOversold) {
           signalState.rsiSignal = 'buy';
           signalState.rsiBar = i;
@@ -218,8 +218,9 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         }
       }
 
-      // Check MACD crossover signals
+      // Check MACD crossover signals — first-found semantics
       if (
+        signalState.macdSignal === null &&
         i > 0 &&
         Number.isFinite(macd[i]) &&
         Number.isFinite(macdSignalLine[i]) &&
@@ -356,7 +357,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
     macdStrength = Math.min(1, Math.abs(signalHistogram) / (avgHistogram * 2));
 
     // Combined strength (average of both)
-    return Math.min(1, (rsiStrength + macdStrength) / 2 + 0.3);
+    return Math.min(1, (rsiStrength + macdStrength) / 2 + 0.15);
   }
 
   /**
@@ -375,7 +376,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
     const alignmentScore = 1 - signalGap / config.confirmationWindow;
 
     // Combo strategies inherently have higher confidence due to dual confirmation
-    const baseConfidence = 0.6;
+    const baseConfidence = 0.4;
 
     return Math.min(1, baseConfidence + freshnessScore * 0.2 + alignmentScore * 0.2);
   }
@@ -408,7 +409,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
     const rsiPeriod = (config.rsiPeriod as number) ?? 14;
     const macdSlow = (config.macdSlow as number) ?? 26;
     const macdSignal = (config.macdSignal as number) ?? 9;
-    const confirmationWindow = (config.confirmationWindow as number) ?? 3;
+    const confirmationWindow = (config.confirmationWindow as number) ?? 5;
     return Math.max(rsiPeriod, macdSlow + macdSignal - 1) + confirmationWindow;
   }
 
@@ -432,14 +433,14 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
       rsiPeriod: { type: 'number', default: 14, min: 5, max: 30, description: 'RSI calculation period' },
       rsiOversold: {
         type: 'number',
-        default: 35,
+        default: 30,
         min: 20,
-        max: 45,
+        max: 38,
         description: 'RSI oversold threshold (relaxed for combo)'
       },
       rsiOverbought: {
         type: 'number',
-        default: 65,
+        default: 70,
         min: 55,
         max: 80,
         description: 'RSI overbought threshold (relaxed for combo)'
@@ -449,12 +450,12 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
       macdSignal: { type: 'number', default: 9, min: 5, max: 15, description: 'MACD signal line period' },
       confirmationWindow: {
         type: 'number',
-        default: 3,
+        default: 5,
         min: 1,
         max: 10,
         description: 'Bars within which both signals must occur'
       },
-      minConfidence: { type: 'number', default: 0.7, min: 0, max: 1, description: 'Minimum confidence required' }
+      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' }
     };
   }
 

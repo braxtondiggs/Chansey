@@ -13,6 +13,7 @@ interface BollingerBreakoutConfig {
   requireConfirmation: boolean;
   confirmationBars: number;
   minConfidence: number;
+  squeezeFactor: number;
 }
 
 /**
@@ -148,9 +149,10 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
     return {
       period: (config.period as number) ?? 20,
       stdDev: (config.stdDev as number) ?? 2,
-      requireConfirmation: (config.requireConfirmation as boolean) ?? false,
-      confirmationBars: (config.confirmationBars as number) ?? 2,
-      minConfidence: (config.minConfidence as number) ?? 0.6
+      requireConfirmation: (config.requireConfirmation as boolean) ?? true,
+      confirmationBars: (config.confirmationBars as number) ?? 3,
+      minConfidence: (config.minConfidence as number) ?? 0.5,
+      squeezeFactor: (config.squeezeFactor as number) ?? 1.5
     };
   }
 
@@ -200,56 +202,122 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
         return null;
       }
       // Only generate signal in the confirmed direction
-      if (confirmed.direction === 'bullish' && currentPB < 0) return null;
-      if (confirmed.direction === 'bearish' && currentPB > 1) return null;
+      if (confirmed.direction === 'bullish' && !(currentPB > 1)) return null;
+      if (confirmed.direction === 'bearish' && !(currentPB < 0)) return null;
     }
 
-    // Bullish breakout: Price above upper band (%B > 1)
-    if (currentPB > 1) {
-      const strength = this.calculateSignalStrength(currentPB, 'bullish');
-      const confidence = this.calculateConfidence(prices, pb, bandwidth, 'bullish', currentIndex);
-
-      return {
-        type: SignalType.BUY,
-        coinId,
-        strength,
-        price: currentPrice,
-        confidence,
-        reason: `Bullish breakout: Price (${currentPrice.toFixed(2)}) broke above upper band (${currentUpper.toFixed(2)}), %B: ${currentPB.toFixed(2)}`,
-        metadata: {
-          symbol: coinSymbol,
-          upperBand: currentUpper,
-          middleBand: currentMiddle,
-          lowerBand: currentLower,
-          percentB: currentPB,
-          bandwidth: currentBandwidth,
-          breakoutType: 'bullish'
-        }
-      };
+    // Squeeze filter: reject signals when bandwidth is too wide (not a squeeze breakout)
+    const bwLookback = 20;
+    const bwStart = Math.max(0, currentIndex - bwLookback);
+    let bwSum = 0;
+    let bwCount = 0;
+    for (let i = bwStart; i < currentIndex; i++) {
+      if (Number.isFinite(bandwidth[i])) {
+        bwSum += bandwidth[i];
+        bwCount++;
+      }
     }
+    const avgBandwidth = bwCount > 0 ? bwSum / bwCount : currentBandwidth;
+    if (currentBandwidth > avgBandwidth * config.squeezeFactor) return null;
 
-    // Bearish breakout: Price below lower band (%B < 0)
-    if (currentPB < 0) {
-      const strength = this.calculateSignalStrength(currentPB, 'bearish');
-      const confidence = this.calculateConfidence(prices, pb, bandwidth, 'bearish', currentIndex);
+    if (config.requireConfirmation) {
+      // Confirmation already validated sustained breakout — just check direction
+      if (currentPB > 1) {
+        const strength = this.calculateSignalStrength(currentPB, 'bullish');
+        const confidence = this.calculateConfidence(prices, pb, bandwidth, 'bullish', currentIndex);
 
-      return {
-        type: SignalType.SELL,
-        coinId,
-        strength,
-        price: currentPrice,
-        confidence,
-        reason: `Bearish breakout: Price (${currentPrice.toFixed(2)}) broke below lower band (${currentLower.toFixed(2)}), %B: ${currentPB.toFixed(2)}`,
-        metadata: {
-          symbol: coinSymbol,
-          upperBand: currentUpper,
-          middleBand: currentMiddle,
-          lowerBand: currentLower,
-          percentB: currentPB,
-          bandwidth: currentBandwidth,
-          breakoutType: 'bearish'
-        }
-      };
+        return {
+          type: SignalType.BUY,
+          coinId,
+          strength,
+          price: currentPrice,
+          confidence,
+          reason: `Bullish breakout: Price (${currentPrice.toFixed(2)}) broke above upper band (${currentUpper.toFixed(2)}), %B: ${currentPB.toFixed(2)}`,
+          metadata: {
+            symbol: coinSymbol,
+            upperBand: currentUpper,
+            middleBand: currentMiddle,
+            lowerBand: currentLower,
+            percentB: currentPB,
+            bandwidth: currentBandwidth,
+            breakoutType: 'bullish'
+          }
+        };
+      }
+
+      if (currentPB < 0) {
+        const strength = this.calculateSignalStrength(currentPB, 'bearish');
+        const confidence = this.calculateConfidence(prices, pb, bandwidth, 'bearish', currentIndex);
+
+        return {
+          type: SignalType.SELL,
+          coinId,
+          strength,
+          price: currentPrice,
+          confidence,
+          reason: `Bearish breakout: Price (${currentPrice.toFixed(2)}) broke below lower band (${currentLower.toFixed(2)}), %B: ${currentPB.toFixed(2)}`,
+          metadata: {
+            symbol: coinSymbol,
+            upperBand: currentUpper,
+            middleBand: currentMiddle,
+            lowerBand: currentLower,
+            percentB: currentPB,
+            bandwidth: currentBandwidth,
+            breakoutType: 'bearish'
+          }
+        };
+      }
+    } else {
+      // No confirmation — require fresh transition from inside bands
+      const prevPB = currentIndex > 0 && Number.isFinite(pb[currentIndex - 1]) ? pb[currentIndex - 1] : undefined;
+
+      // Bullish breakout: Price TRANSITIONS from inside to above upper band
+      if (currentPB > 1 && prevPB !== undefined && prevPB <= 1) {
+        const strength = this.calculateSignalStrength(currentPB, 'bullish');
+        const confidence = this.calculateConfidence(prices, pb, bandwidth, 'bullish', currentIndex);
+
+        return {
+          type: SignalType.BUY,
+          coinId,
+          strength,
+          price: currentPrice,
+          confidence,
+          reason: `Bullish breakout: Price (${currentPrice.toFixed(2)}) broke above upper band (${currentUpper.toFixed(2)}), %B: ${currentPB.toFixed(2)}`,
+          metadata: {
+            symbol: coinSymbol,
+            upperBand: currentUpper,
+            middleBand: currentMiddle,
+            lowerBand: currentLower,
+            percentB: currentPB,
+            bandwidth: currentBandwidth,
+            breakoutType: 'bullish'
+          }
+        };
+      }
+
+      // Bearish breakout: Price TRANSITIONS from inside to below lower band
+      if (currentPB < 0 && prevPB !== undefined && prevPB >= 0) {
+        const strength = this.calculateSignalStrength(currentPB, 'bearish');
+        const confidence = this.calculateConfidence(prices, pb, bandwidth, 'bearish', currentIndex);
+
+        return {
+          type: SignalType.SELL,
+          coinId,
+          strength,
+          price: currentPrice,
+          confidence,
+          reason: `Bearish breakout: Price (${currentPrice.toFixed(2)}) broke below lower band (${currentLower.toFixed(2)}), %B: ${currentPB.toFixed(2)}`,
+          metadata: {
+            symbol: coinSymbol,
+            upperBand: currentUpper,
+            middleBand: currentMiddle,
+            lowerBand: currentLower,
+            percentB: currentPB,
+            bandwidth: currentBandwidth,
+            breakoutType: 'bearish'
+          }
+        };
+      }
     }
 
     return null;
@@ -368,8 +436,8 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
    */
   getMinDataPoints(config: Record<string, unknown>): number {
     const period = (config.period as number) ?? 20;
-    const requireConfirmation = (config.requireConfirmation as boolean) ?? false;
-    const confirmationBars = (config.confirmationBars as number) ?? 2;
+    const requireConfirmation = (config.requireConfirmation as boolean) ?? true;
+    const confirmationBars = (config.confirmationBars as number) ?? 3;
     return period + (requireConfirmation ? confirmationBars : 1);
   }
 
@@ -383,11 +451,18 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
   getConfigSchema(): Record<string, unknown> {
     return {
       ...super.getConfigSchema(),
-      period: { type: 'number', default: 20, min: 10, max: 50, description: 'Bollinger Bands period' },
-      stdDev: { type: 'number', default: 2, min: 1, max: 3, description: 'Standard deviation multiplier' },
-      requireConfirmation: { type: 'boolean', default: false, description: 'Require multiple bars confirmation' },
-      confirmationBars: { type: 'number', default: 2, min: 1, max: 5, description: 'Number of bars for confirmation' },
-      minConfidence: { type: 'number', default: 0.6, min: 0, max: 1, description: 'Minimum confidence required' }
+      period: { type: 'number', default: 20, min: 15, max: 50, description: 'Bollinger Bands period' },
+      stdDev: { type: 'number', default: 2, min: 1.5, max: 3, description: 'Standard deviation multiplier' },
+      requireConfirmation: { type: 'boolean', default: true, description: 'Require multiple bars confirmation' },
+      confirmationBars: { type: 'number', default: 3, min: 1, max: 5, description: 'Number of bars for confirmation' },
+      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' },
+      squeezeFactor: {
+        type: 'number',
+        default: 1.5,
+        min: 1.0,
+        max: 3.0,
+        description: 'Max bandwidth/avg to allow signals (lower = stricter squeeze)'
+      }
     };
   }
 

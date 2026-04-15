@@ -158,6 +158,34 @@ describe('RSIMACDComboStrategy', () => {
     });
   });
 
+  describe('first-found semantics', () => {
+    it('should keep first RSI signal and not overwrite with later opposite signal', async () => {
+      // RSI oversold on bar 46, then overbought on bar 48 — should keep buy
+      const rsiValues = Array(50).fill(NaN);
+      rsiValues[46] = 25; // Oversold → buy
+      rsiValues[47] = 50; // Neutral
+      rsiValues[48] = 75; // Overbought → would be sell if not guarded
+      rsiValues[49] = 50;
+      indicatorService.calculateRSI.mockResolvedValue({
+        values: rsiValues,
+        validCount: 15,
+        period: 14,
+        fromCache: false
+      });
+
+      // MACD bullish crossover on bar 48
+      mockMACD(-0.001, 0.002, 0.001, 0.001, 0.001);
+
+      const result = await strategy.execute(
+        buildContext({ rsiOversold: 30, rsiOverbought: 70, confirmationWindow: 5, minConfidence: 0 })
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+  });
+
   describe('signal strength', () => {
     it('should produce higher strength for deeper oversold RSI on signal bar', async () => {
       // Deep oversold: RSI = 10 on signal bar, current bar = 45

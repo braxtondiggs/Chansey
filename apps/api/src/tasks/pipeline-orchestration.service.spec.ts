@@ -474,9 +474,9 @@ describe('Pipeline Orchestration DTOs', () => {
 
   describe('getOptimizationConfig', () => {
     it.each([
-      [1, 180, 50],
-      [3, 90, 30],
-      [5, 30, 20]
+      [1, 180, 75],
+      [3, 120, 50],
+      [5, 60, 30]
     ])('risk level %i should use trainDays=%i, maxCombinations=%i', (level, trainDays, maxCombinations) => {
       const config = getOptimizationConfig(level);
       expect(config.trainDays).toBe(trainDays);
@@ -485,8 +485,8 @@ describe('Pipeline Orchestration DTOs', () => {
 
     it('should fall back to level 3 defaults for invalid risk level', () => {
       const config = getOptimizationConfig(100);
-      expect(config.trainDays).toBe(90);
-      expect(config.maxCombinations).toBe(30);
+      expect(config.trainDays).toBe(120);
+      expect(config.maxCombinations).toBe(50);
     });
   });
 
@@ -496,10 +496,10 @@ describe('Pipeline Orchestration DTOs', () => {
 
       // Optimization
       if (!config.optimization) throw new Error('expected optimization config');
-      expect(config.optimization.trainDays).toBe(90);
-      expect(config.optimization.testDays).toBe(30);
-      expect(config.optimization.objectiveMetric).toBe('sharpe_ratio');
-      expect(config.optimization.maxCombinations).toBe(30);
+      expect(config.optimization.trainDays).toBe(120);
+      expect(config.optimization.testDays).toBe(45);
+      expect(config.optimization.objectiveMetric).toBe('sortino_ratio');
+      expect(config.optimization.maxCombinations).toBe(50);
       expect(config.optimization.earlyStop).toBe(true);
 
       // Historical
