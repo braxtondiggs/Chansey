@@ -149,10 +149,10 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
     return {
       period: (config.period as number) ?? 20,
       stdDev: (config.stdDev as number) ?? 2,
-      squeezeThreshold: (config.squeezeThreshold as number) ?? 0.04, // 4% bandwidth
-      minSqueezeBars: (config.minSqueezeBars as number) ?? 6,
+      squeezeThreshold: (config.squeezeThreshold as number) ?? 0.05, // 5% bandwidth
+      minSqueezeBars: (config.minSqueezeBars as number) ?? 4,
       breakoutConfirmation: (config.breakoutConfirmation as boolean) ?? true,
-      minConfidence: (config.minConfidence as number) ?? 0.6
+      minConfidence: (config.minConfidence as number) ?? 0.5
     };
   }
 
@@ -418,7 +418,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
    */
   getMinDataPoints(config: Record<string, unknown>): number {
     const period = (config.period as number) ?? 20;
-    const minSqueezeBars = (config.minSqueezeBars as number) ?? 6;
+    const minSqueezeBars = (config.minSqueezeBars as number) ?? 4;
     return period + minSqueezeBars + 5;
   }
 
@@ -436,20 +436,20 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
       stdDev: { type: 'number', default: 2, min: 1, max: 3, description: 'Standard deviation multiplier' },
       squeezeThreshold: {
         type: 'number',
-        default: 0.04,
-        min: 0.01,
+        default: 0.05,
+        min: 0.03,
         max: 0.1,
-        description: 'Bandwidth threshold for squeeze (4% = 0.04)'
+        description: 'Bandwidth threshold for squeeze (5% = 0.05)'
       },
       minSqueezeBars: {
         type: 'number',
-        default: 6,
+        default: 4,
         min: 3,
         max: 20,
         description: 'Minimum bars in squeeze before breakout signal'
       },
       breakoutConfirmation: { type: 'boolean', default: true, description: 'Require price momentum confirmation' },
-      minConfidence: { type: 'number', default: 0.6, min: 0, max: 1, description: 'Minimum confidence required' }
+      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' }
     };
   }
 

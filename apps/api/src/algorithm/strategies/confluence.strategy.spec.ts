@@ -455,6 +455,59 @@ describe('ConfluenceStrategy', () => {
     });
   });
 
+  describe('dead zones', () => {
+    it('should return neutral EMA when spread < 0.2%', async () => {
+      mockEMA(100.1, 100, 99.9, 100); // Spread ~0.1% — within dead zone
+      mockRSI(65);
+      mockMACD(0.002, 0.001);
+      mockATR(1.0, 1.0);
+      mockBollingerBands(0.85);
+
+      const result = await strategy.execute(buildContext({ minConfluence: 4 }));
+
+      // EMA should be neutral, so only 3 bullish (RSI, MACD, BB) — not enough for minConfluence=4
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should return neutral MACD when |histogram| < 10% of average', async () => {
+      mockEMA(105, 100, 99, 100);
+      mockRSI(65);
+      // Set histogram very small relative to average
+      const macdValues = Array(50).fill(NaN);
+      const signalValues = Array(50).fill(NaN);
+      const histogramValues = Array(50).fill(NaN);
+      // Fill with moderate values to make average significant
+      for (let i = 30; i < 50; i++) {
+        histogramValues[i] = 0.01;
+      }
+      // Current histogram is tiny relative to avg
+      histogramValues[49] = 0.0005;
+      macdValues[49] = 0.002;
+      signalValues[49] = 0.001;
+      histogramValues[48] = 0.01;
+
+      indicatorService.calculateMACD.mockResolvedValue({
+        macd: macdValues,
+        signal: signalValues,
+        histogram: histogramValues,
+        validCount: 15,
+        fastPeriod: 12,
+        slowPeriod: 26,
+        signalPeriod: 9,
+        fromCache: false
+      });
+      mockATR(1.0, 1.0);
+      mockBollingerBands(0.85);
+
+      const result = await strategy.execute(buildContext({ minConfluence: 4 }));
+
+      // MACD should be neutral, so only 3 bullish (EMA, RSI, BB) — not enough for minConfluence=4
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+  });
+
   describe('symmetric sell thresholds', () => {
     it('should generate SELL when 3/4 indicators are bearish with BB neutral', async () => {
       mockEMA(95, 100, 101, 100); // Bearish
@@ -494,7 +547,7 @@ describe('ConfluenceStrategy', () => {
       mockATR(1.0, 1.0); // Normal volatility
       mockBollingerBands(0.5); // Neutral
 
-      const result = await strategy.execute(buildContext({}));
+      const result = await strategy.execute(buildContext({ minConfluence: 2, minSellConfluence: 2 }));
 
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(1);

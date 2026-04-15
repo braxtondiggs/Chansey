@@ -2,6 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import {
+  ExitConfig,
+  StopLossType,
+  TakeProfitType,
+  TrailingActivationType,
+  TrailingType
+} from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -9,9 +16,12 @@ import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingS
 
 interface RSIDivergenceConfig {
   rsiPeriod: number;
+  emaPeriod: number;
   lookbackPeriod: number;
-  pivotStrength: number;
+  pivotTolerance: number;
   minDivergencePercent: number;
+  rsiOversold: number;
+  rsiOverbought: number;
   minConfidence: number;
 }
 
@@ -28,7 +38,11 @@ interface DivergenceResult {
   pivot2: PivotPoint;
   priceDivergence: number;
   rsiDivergence: number;
+  score: number;
 }
+
+const PIVOT_STRENGTH = 3;
+const MIN_RSI_DIVERGENCE = 2;
 
 /**
  * RSI Divergence Strategy
@@ -37,9 +51,8 @@ interface DivergenceResult {
  * Bullish divergence: Price makes lower lows while RSI makes higher lows (potential reversal up)
  * Bearish divergence: Price makes higher highs while RSI makes lower highs (potential reversal down)
  *
- * Divergence signals are considered strong reversal indicators.
- *
- * Uses centralized IndicatorService for RSI calculations with caching.
+ * Uses ATR-tolerant pivot detection, EMA trend filter, RSI zone gating,
+ * and ATR-scaled exit configuration for robust reversal trading.
  */
 @Injectable()
 export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
@@ -52,18 +65,12 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     super(schedulerRegistry);
   }
 
-  /**
-   * Optional: Provide custom calculator override for specific indicators
-   */
   getCustomCalculator<T extends keyof IndicatorCalculatorMap>(
     _indicatorType: T
   ): IndicatorCalculatorMap[T] | undefined {
     return undefined;
   }
 
-  /**
-   * Execute the RSI Divergence strategy
-   */
   async execute(context: AlgorithmContext): Promise<AlgorithmResult> {
     const signals: TradingSignal[] = [];
     const chartData: { [key: string]: ChartDataPoint[] } = {};
@@ -84,7 +91,6 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
           continue;
         }
 
-        // Calculate RSI using precomputed data or IndicatorService (with caching)
         const rsi =
           this.getPrecomputedSlice(context, coin.id, `rsi_${config.rsiPeriod}`, priceHistory.length) ??
           (
@@ -94,18 +100,31 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
             )
           ).values;
 
-        // Detect divergences
-        const divergence = this.detectDivergence(priceHistory, rsi, config);
+        const ema =
+          this.getPrecomputedSlice(context, coin.id, `ema_${config.emaPeriod}`, priceHistory.length) ??
+          (
+            await this.indicatorService.calculateEMA(
+              { coinId: coin.id, prices: priceHistory, period: config.emaPeriod },
+              this
+            )
+          ).values;
+
+        const atr =
+          this.getPrecomputedSlice(context, coin.id, 'atr_14', priceHistory.length) ??
+          (await this.indicatorService.calculateATR({ coinId: coin.id, prices: priceHistory, period: 14 }, this))
+            .values;
+
+        const divergence = this.detectDivergence(priceHistory, rsi, atr, config);
 
         if (divergence) {
-          const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, rsi, divergence, config);
+          const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, rsi, ema, atr, divergence, config);
           if (signal && signal.confidence >= config.minConfidence) {
             signals.push(signal);
           }
         }
 
         if (!isBacktest) {
-          chartData[coin.id] = this.prepareChartData(priceHistory, rsi, config);
+          chartData[coin.id] = this.prepareChartData(priceHistory, rsi, ema);
         }
       }
 
@@ -121,60 +140,54 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     }
   }
 
-  /**
-   * Get configuration with defaults
-   */
   private getConfigWithDefaults(config: Record<string, unknown>): RSIDivergenceConfig {
     return {
       rsiPeriod: (config.rsiPeriod as number) ?? 14,
-      lookbackPeriod: (config.lookbackPeriod as number) ?? 14,
-      pivotStrength: (config.pivotStrength as number) ?? 2,
-      minDivergencePercent: (config.minDivergencePercent as number) ?? 5,
-      minConfidence: (config.minConfidence as number) ?? 0.6
+      emaPeriod: (config.emaPeriod as number) ?? 50,
+      lookbackPeriod: (config.lookbackPeriod as number) ?? 30,
+      pivotTolerance: (config.pivotTolerance as number) ?? 0.3,
+      minDivergencePercent: (config.minDivergencePercent as number) ?? 2,
+      rsiOversold: (config.rsiOversold as number) ?? 40,
+      rsiOverbought: (config.rsiOverbought as number) ?? 60,
+      minConfidence: (config.minConfidence as number) ?? 0.5
     };
   }
 
-  /**
-   * Check if we have enough data for RSI divergence detection
-   */
   private hasEnoughData(priceHistory: CandleData[] | undefined, config: RSIDivergenceConfig): boolean {
-    const minRequired = config.rsiPeriod + config.lookbackPeriod + config.pivotStrength * 2;
+    const minRequired = Math.max(config.rsiPeriod, config.emaPeriod) + config.lookbackPeriod + PIVOT_STRENGTH * 2;
     return !!priceHistory && priceHistory.length >= minRequired;
   }
 
   /**
-   * Find pivot highs (local maxima)
+   * Find pivot highs using ATR-tolerant comparison.
+   * Neighbors only need to be below (pivotHigh - ATR * tolerance), not strictly lower.
    */
   private findPivotHighs(
     prices: CandleData[],
     rsi: number[],
-    strength: number,
+    atr: number[],
+    tolerance: number,
     startIndex: number,
     endIndex: number
   ): PivotPoint[] {
     const pivots: PivotPoint[] = [];
 
-    for (let i = startIndex + strength; i <= endIndex - strength; i++) {
-      if (!Number.isFinite(rsi[i])) continue;
+    for (let i = startIndex + PIVOT_STRENGTH; i <= endIndex - PIVOT_STRENGTH; i++) {
+      if (!Number.isFinite(rsi[i]) || !Number.isFinite(atr[i]) || atr[i] <= 0) continue;
 
-      let isPivotHigh = true;
-      const currentPrice = prices[i].high;
+      const currentHigh = prices[i].high;
+      const threshold = currentHigh - atr[i] * tolerance;
+      let isPivot = true;
 
-      // Check if current point is higher than 'strength' bars on each side
-      for (let j = 1; j <= strength; j++) {
-        if (prices[i - j].high >= currentPrice || prices[i + j].high >= currentPrice) {
-          isPivotHigh = false;
+      for (let j = 1; j <= PIVOT_STRENGTH; j++) {
+        if (prices[i - j].high > threshold || prices[i + j].high > threshold) {
+          isPivot = false;
           break;
         }
       }
 
-      if (isPivotHigh) {
-        pivots.push({
-          index: i,
-          price: currentPrice,
-          rsi: rsi[i],
-          type: 'high'
-        });
+      if (isPivot) {
+        pivots.push({ index: i, price: currentHigh, rsi: rsi[i], type: 'high' });
       }
     }
 
@@ -182,38 +195,35 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   }
 
   /**
-   * Find pivot lows (local minima)
+   * Find pivot lows using ATR-tolerant comparison.
+   * Neighbors only need to be above (pivotLow + ATR * tolerance), not strictly higher.
    */
   private findPivotLows(
     prices: CandleData[],
     rsi: number[],
-    strength: number,
+    atr: number[],
+    tolerance: number,
     startIndex: number,
     endIndex: number
   ): PivotPoint[] {
     const pivots: PivotPoint[] = [];
 
-    for (let i = startIndex + strength; i <= endIndex - strength; i++) {
-      if (!Number.isFinite(rsi[i])) continue;
+    for (let i = startIndex + PIVOT_STRENGTH; i <= endIndex - PIVOT_STRENGTH; i++) {
+      if (!Number.isFinite(rsi[i]) || !Number.isFinite(atr[i]) || atr[i] <= 0) continue;
 
-      let isPivotLow = true;
-      const currentPrice = prices[i].low;
+      const currentLow = prices[i].low;
+      const threshold = currentLow + atr[i] * tolerance;
+      let isPivot = true;
 
-      // Check if current point is lower than 'strength' bars on each side
-      for (let j = 1; j <= strength; j++) {
-        if (prices[i - j].low <= currentPrice || prices[i + j].low <= currentPrice) {
-          isPivotLow = false;
+      for (let j = 1; j <= PIVOT_STRENGTH; j++) {
+        if (prices[i - j].low < threshold || prices[i + j].low < threshold) {
+          isPivot = false;
           break;
         }
       }
 
-      if (isPivotLow) {
-        pivots.push({
-          index: i,
-          price: currentPrice,
-          rsi: rsi[i],
-          type: 'low'
-        });
+      if (isPivot) {
+        pivots.push({ index: i, price: currentLow, rsi: rsi[i], type: 'low' });
       }
     }
 
@@ -221,75 +231,112 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   }
 
   /**
-   * Detect bullish or bearish divergence
+   * Scan ALL pivot pairs and return the strongest divergence by combined magnitude.
    */
-  private detectDivergence(prices: CandleData[], rsi: number[], config: RSIDivergenceConfig): DivergenceResult | null {
+  private detectDivergence(
+    prices: CandleData[],
+    rsi: number[],
+    atr: number[],
+    config: RSIDivergenceConfig
+  ): DivergenceResult | null {
     const currentIndex = prices.length - 1;
-    const lookbackStart = Math.max(0, currentIndex - config.lookbackPeriod - config.pivotStrength);
-    const lookbackEnd = currentIndex; // findPivotHighs/Lows already applies -strength internally
+    const lookbackStart = Math.max(0, currentIndex - config.lookbackPeriod - PIVOT_STRENGTH);
+    const lookbackEnd = currentIndex;
 
-    // Find pivot highs for bearish divergence detection
-    const pivotHighs = this.findPivotHighs(prices, rsi, config.pivotStrength, lookbackStart, lookbackEnd);
+    const pivotHighs = this.findPivotHighs(prices, rsi, atr, config.pivotTolerance, lookbackStart, lookbackEnd);
+    const pivotLows = this.findPivotLows(prices, rsi, atr, config.pivotTolerance, lookbackStart, lookbackEnd);
 
-    // Find pivot lows for bullish divergence detection
-    const pivotLows = this.findPivotLows(prices, rsi, config.pivotStrength, lookbackStart, lookbackEnd);
+    let best: DivergenceResult | null = null;
 
-    let bearish: DivergenceResult | null = null;
-    let bullish: DivergenceResult | null = null;
+    // Scan all pivot high pairs for bearish divergence
+    for (let i = 0; i < pivotHighs.length; i++) {
+      for (let j = i + 1; j < pivotHighs.length; j++) {
+        const p1 = pivotHighs[i];
+        const p2 = pivotHighs[j];
+        const priceDivergence = ((p2.price - p1.price) / p1.price) * 100;
+        const rsiDivergence = p2.rsi - p1.rsi;
 
-    // Check for bearish divergence (price higher highs, RSI lower highs)
-    if (pivotHighs.length >= 2) {
-      const recentHighs = pivotHighs.slice(-2);
-      const [pivot1, pivot2] = recentHighs;
-
-      const priceDivergence = ((pivot2.price - pivot1.price) / pivot1.price) * 100;
-      const rsiDivergence = pivot2.rsi - pivot1.rsi;
-
-      if (priceDivergence >= config.minDivergencePercent && rsiDivergence < 0) {
-        bearish = { type: 'bearish', pivot1, pivot2, priceDivergence, rsiDivergence };
+        if (priceDivergence >= config.minDivergencePercent && rsiDivergence <= -MIN_RSI_DIVERGENCE) {
+          const score = Math.abs(priceDivergence) + Math.abs(rsiDivergence);
+          if (!best || score > best.score) {
+            best = { type: 'bearish', pivot1: p1, pivot2: p2, priceDivergence, rsiDivergence, score };
+          }
+        }
       }
     }
 
-    // Check for bullish divergence (price lower lows, RSI higher lows)
-    if (pivotLows.length >= 2) {
-      const recentLows = pivotLows.slice(-2);
-      const [pivot1, pivot2] = recentLows;
+    // Scan all pivot low pairs for bullish divergence
+    for (let i = 0; i < pivotLows.length; i++) {
+      for (let j = i + 1; j < pivotLows.length; j++) {
+        const p1 = pivotLows[i];
+        const p2 = pivotLows[j];
+        const priceDivergence = ((p2.price - p1.price) / p1.price) * 100;
+        const rsiDivergence = p2.rsi - p1.rsi;
 
-      const priceDivergence = ((pivot2.price - pivot1.price) / pivot1.price) * 100;
-      const rsiDivergence = pivot2.rsi - pivot1.rsi;
-
-      if (priceDivergence <= -config.minDivergencePercent && rsiDivergence > 0) {
-        bullish = { type: 'bullish', pivot1, pivot2, priceDivergence, rsiDivergence };
+        if (priceDivergence <= -config.minDivergencePercent && rsiDivergence >= MIN_RSI_DIVERGENCE) {
+          const score = Math.abs(priceDivergence) + Math.abs(rsiDivergence);
+          if (!best || score > best.score) {
+            best = { type: 'bullish', pivot1: p1, pivot2: p2, priceDivergence, rsiDivergence, score };
+          }
+        }
       }
     }
 
-    // Return the strongest divergence by combined magnitude
-    if (bearish && bullish) {
-      const bearishMag = Math.abs(bearish.priceDivergence) + Math.abs(bearish.rsiDivergence);
-      const bullishMag = Math.abs(bullish.priceDivergence) + Math.abs(bullish.rsiDivergence);
-      return bearishMag >= bullishMag ? bearish : bullish;
-    }
-
-    return bearish || bullish || null;
+    return best;
   }
 
   /**
-   * Generate trading signal based on detected divergence
+   * Generate trading signal with EMA trend filter and RSI zone gating.
    */
   private generateSignal(
     coinId: string,
     coinSymbol: string,
     prices: CandleData[],
     rsi: number[],
+    ema: number[],
+    atr: number[],
     divergence: DivergenceResult,
     config: RSIDivergenceConfig
   ): TradingSignal | null {
     const currentIndex = prices.length - 1;
     const currentPrice = prices[currentIndex].avg;
     const currentRSI = rsi[currentIndex];
+    const currentEMA = ema[currentIndex];
+    const currentATR = atr[currentIndex];
+
+    if (!Number.isFinite(currentRSI) || !Number.isFinite(currentEMA) || !Number.isFinite(currentATR)) {
+      return null;
+    }
+
+    // RSI zone gate + EMA trend filter
+    if (divergence.type === 'bullish') {
+      if (currentRSI >= config.rsiOversold) return null;
+      if (currentPrice > currentEMA * 1.02) return null; // price far above EMA
+    } else {
+      if (currentRSI <= config.rsiOverbought) return null;
+      if (currentPrice < currentEMA * 0.98) return null; // price far below EMA
+    }
 
     const strength = this.calculateSignalStrength(divergence, config);
-    const confidence = this.calculateConfidence(prices, rsi, divergence, config);
+    const confidence = this.calculateConfidence(prices, rsi, divergence, currentATR, config);
+    const exitConfig = this.buildExitConfig(currentATR, currentPrice, divergence);
+
+    const metadata = {
+      symbol: coinSymbol,
+      divergenceType: divergence.type,
+      currentRSI,
+      currentEMA,
+      currentATR,
+      pivot1Index: divergence.pivot1.index,
+      pivot1Price: divergence.pivot1.price,
+      pivot1RSI: divergence.pivot1.rsi,
+      pivot2Index: divergence.pivot2.index,
+      pivot2Price: divergence.pivot2.price,
+      pivot2RSI: divergence.pivot2.rsi,
+      priceDivergence: divergence.priceDivergence,
+      rsiDivergence: divergence.rsiDivergence,
+      divergenceScore: divergence.score
+    };
 
     if (divergence.type === 'bullish') {
       return {
@@ -298,114 +345,106 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
         strength,
         price: currentPrice,
         confidence,
-        reason: `Bullish RSI divergence: Price made lower low (${divergence.priceDivergence.toFixed(2)}%) while RSI made higher low (+${divergence.rsiDivergence.toFixed(2)} points)`,
-        metadata: {
-          symbol: coinSymbol,
-          divergenceType: 'bullish',
-          currentRSI,
-          pivot1Index: divergence.pivot1.index,
-          pivot1Price: divergence.pivot1.price,
-          pivot1RSI: divergence.pivot1.rsi,
-          pivot2Index: divergence.pivot2.index,
-          pivot2Price: divergence.pivot2.price,
-          pivot2RSI: divergence.pivot2.rsi,
-          priceDivergence: divergence.priceDivergence,
-          rsiDivergence: divergence.rsiDivergence
-        }
-      };
-    } else {
-      return {
-        type: SignalType.SELL,
-        coinId,
-        strength,
-        price: currentPrice,
-        confidence,
-        reason: `Bearish RSI divergence: Price made higher high (+${divergence.priceDivergence.toFixed(2)}%) while RSI made lower high (${divergence.rsiDivergence.toFixed(2)} points)`,
-        metadata: {
-          symbol: coinSymbol,
-          divergenceType: 'bearish',
-          currentRSI,
-          pivot1Index: divergence.pivot1.index,
-          pivot1Price: divergence.pivot1.price,
-          pivot1RSI: divergence.pivot1.rsi,
-          pivot2Index: divergence.pivot2.index,
-          pivot2Price: divergence.pivot2.price,
-          pivot2RSI: divergence.pivot2.rsi,
-          priceDivergence: divergence.priceDivergence,
-          rsiDivergence: divergence.rsiDivergence
-        }
+        reason: `Bullish RSI divergence: Price made lower low (${divergence.priceDivergence.toFixed(2)}%) while RSI made higher low (+${divergence.rsiDivergence.toFixed(2)} points). RSI=${currentRSI.toFixed(1)}, EMA=${currentEMA.toFixed(2)}`,
+        metadata,
+        exitConfig
       };
     }
+
+    return {
+      type: SignalType.SELL,
+      coinId,
+      strength,
+      price: currentPrice,
+      confidence,
+      reason: `Bearish RSI divergence: Price made higher high (+${divergence.priceDivergence.toFixed(2)}%) while RSI made lower high (${divergence.rsiDivergence.toFixed(2)} points). RSI=${currentRSI.toFixed(1)}, EMA=${currentEMA.toFixed(2)}`,
+      metadata,
+      exitConfig
+    };
   }
 
-  /**
-   * Calculate signal strength based on divergence magnitude
-   */
   private calculateSignalStrength(divergence: DivergenceResult, config: RSIDivergenceConfig): number {
-    // Strength based on how significant the divergence is
     const priceStrength = Math.abs(divergence.priceDivergence) / (config.minDivergencePercent * 3);
-    const rsiStrength = Math.abs(divergence.rsiDivergence) / 20; // 20 RSI points = strong divergence
-
-    // Combined strength
+    const rsiStrength = Math.abs(divergence.rsiDivergence) / 20;
     return Math.min(1, Math.max(0.4, (priceStrength + rsiStrength) / 2));
   }
 
   /**
-   * Calculate confidence based on divergence clarity and recency
+   * Confidence: base 0.35 + recency (0.25) + clarity (0.25) + RSI zone depth (0.25) + volatility (0.15)
    */
   private calculateConfidence(
     prices: CandleData[],
     rsi: number[],
     divergence: DivergenceResult,
+    currentATR: number,
     config: RSIDivergenceConfig
   ): number {
     const currentIndex = prices.length - 1;
+    const currentRSI = rsi[currentIndex];
+    const currentPrice = prices[currentIndex].avg;
 
-    // Recency: More recent pivots = higher confidence
+    // Recency: more recent pivot2 → higher confidence
     const pivot2Age = currentIndex - divergence.pivot2.index;
     const recencyScore = 1 - Math.min(1, pivot2Age / config.lookbackPeriod);
 
-    // Clarity: Larger divergence magnitude = higher confidence
+    // Clarity: larger divergence magnitude
     const clarityScore = Math.min(1, Math.abs(divergence.priceDivergence) / (config.minDivergencePercent * 2));
 
-    // RSI position: For bullish divergence, RSI near oversold is better; for bearish, near overbought
-    let rsiPositionScore = 0;
-    const currentRSI = rsi[currentIndex];
+    // RSI zone depth: deeper into oversold/overbought → stronger signal
+    let zoneDepthScore = 0;
     if (Number.isFinite(currentRSI)) {
-      if (divergence.type === 'bullish' && currentRSI < 40) {
-        rsiPositionScore = (40 - currentRSI) / 40;
-      } else if (divergence.type === 'bearish' && currentRSI > 60) {
-        rsiPositionScore = (currentRSI - 60) / 40;
+      if (divergence.type === 'bullish' && currentRSI < config.rsiOversold) {
+        zoneDepthScore = Math.min(1, (config.rsiOversold - currentRSI) / 20);
+      } else if (divergence.type === 'bearish' && currentRSI > config.rsiOverbought) {
+        zoneDepthScore = Math.min(1, (currentRSI - config.rsiOverbought) / 20);
       }
     }
 
-    // Base confidence for divergence signals
-    const baseConfidence = 0.5;
+    // Volatility context: moderate ATR relative to price is ideal
+    const atrPct = currentPrice > 0 ? (currentATR / currentPrice) * 100 : 0;
+    const volScore = atrPct >= 1 && atrPct <= 5 ? 1 : atrPct > 0 ? 0.5 : 0;
 
-    return Math.min(1, baseConfidence + recencyScore * 0.2 + clarityScore * 0.15 + rsiPositionScore * 0.15);
+    const base = 0.35;
+    return Math.min(1, base + recencyScore * 0.25 + clarityScore * 0.25 + zoneDepthScore * 0.25 + volScore * 0.15);
   }
 
   /**
-   * Prepare chart data with pivot points marked
+   * ATR-scaled exit configuration.
+   * Stop-loss: max(2%, min(6%, ATR/price * 1.5))
+   * Take-profit: max(3%, min(10%, ATR/price * 2.5 + magBonus)) — ~1.7:1 R:R
+   * Trailing stop: 1x ATR percentage, activates at 1.5% profit
    */
-  private prepareChartData(prices: CandleData[], rsi: number[], config: RSIDivergenceConfig): ChartDataPoint[] {
-    const currentIndex = prices.length - 1;
-    const lookbackStart = Math.max(0, currentIndex - config.lookbackPeriod - config.pivotStrength);
-    const lookbackEnd = currentIndex;
+  private buildExitConfig(currentATR: number, currentPrice: number, divergence: DivergenceResult): Partial<ExitConfig> {
+    const atrPct = currentPrice > 0 ? (currentATR / currentPrice) * 100 : 3;
+    const magBonus = Math.min(2, divergence.score / 30);
 
-    const pivotHighs = this.findPivotHighs(prices, rsi, config.pivotStrength, lookbackStart, lookbackEnd);
-    const pivotLows = this.findPivotLows(prices, rsi, config.pivotStrength, lookbackStart, lookbackEnd);
+    const stopLossPct = Math.max(2, Math.min(6, atrPct * 1.5));
+    const takeProfitPct = Math.max(3, Math.min(10, atrPct * 2.5 + magBonus));
+    const trailingPct = Math.max(1, Math.min(4, atrPct));
 
-    const pivotHighIndices = new Set(pivotHighs.map((p) => p.index));
-    const pivotLowIndices = new Set(pivotLows.map((p) => p.index));
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: stopLossPct,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: takeProfitPct,
+      enableTrailingStop: true,
+      trailingType: TrailingType.PERCENTAGE,
+      trailingValue: trailingPct,
+      trailingActivation: TrailingActivationType.PERCENTAGE,
+      trailingActivationValue: 1.5,
+      useOco: true
+    };
+  }
 
+  private prepareChartData(prices: CandleData[], rsi: number[], ema: number[]): ChartDataPoint[] {
     return prices.map((price, index) => ({
       timestamp: price.date,
       value: price.avg,
       metadata: {
         rsi: rsi[index],
-        isPivotHigh: pivotHighIndices.has(index),
-        isPivotLow: pivotLowIndices.has(index),
+        ema: ema[index],
         high: price.high,
         low: price.low
       }
@@ -414,44 +453,63 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
 
   getMinDataPoints(config: Record<string, unknown>): number {
     const rsiPeriod = (config.rsiPeriod as number) ?? 14;
-    const lookbackPeriod = (config.lookbackPeriod as number) ?? 14;
-    const pivotStrength = (config.pivotStrength as number) ?? 2;
-    return rsiPeriod + lookbackPeriod + pivotStrength * 2;
+    const emaPeriod = (config.emaPeriod as number) ?? 50;
+    const lookbackPeriod = (config.lookbackPeriod as number) ?? 30;
+    return Math.max(rsiPeriod, emaPeriod) + lookbackPeriod + PIVOT_STRENGTH * 2;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
-    return [{ type: 'RSI', paramKeys: ['rsiPeriod'], defaultParams: { rsiPeriod: 14 } }];
+    return [
+      { type: 'RSI', paramKeys: ['rsiPeriod'], defaultParams: { rsiPeriod: 14 } },
+      { type: 'EMA', paramKeys: ['emaPeriod'], defaultParams: { emaPeriod: 50 } },
+      { type: 'ATR', paramKeys: ['atrPeriod'], defaultParams: { atrPeriod: 14 } }
+    ];
   }
 
-  /**
-   * Get algorithm-specific configuration schema
-   */
   getConfigSchema(): Record<string, unknown> {
     return {
       ...super.getConfigSchema(),
-      rsiPeriod: { type: 'number', default: 14, min: 5, max: 30, description: 'RSI calculation period' },
+      rsiPeriod: { type: 'number', default: 14, min: 7, max: 28, description: 'RSI calculation period' },
+      emaPeriod: { type: 'number', default: 50, min: 20, max: 100, description: 'EMA trend filter period' },
       lookbackPeriod: {
         type: 'number',
-        default: 14,
-        min: 5,
-        max: 30,
+        default: 30,
+        min: 15,
+        max: 60,
         description: 'Lookback period for finding pivots'
       },
-      pivotStrength: { type: 'number', default: 2, min: 1, max: 5, description: 'Bars on each side to confirm pivot' },
+      pivotTolerance: {
+        type: 'number',
+        default: 0.3,
+        min: 0.1,
+        max: 0.8,
+        description: 'ATR fraction for pivot detection tolerance'
+      },
       minDivergencePercent: {
         type: 'number',
-        default: 5,
+        default: 2,
         min: 1,
-        max: 20,
+        max: 10,
         description: 'Minimum price divergence percentage'
       },
-      minConfidence: { type: 'number', default: 0.6, min: 0, max: 1, description: 'Minimum confidence required' }
+      rsiOversold: {
+        type: 'number',
+        default: 40,
+        min: 25,
+        max: 45,
+        description: 'RSI oversold zone gate for bullish signals'
+      },
+      rsiOverbought: {
+        type: 'number',
+        default: 60,
+        min: 55,
+        max: 75,
+        description: 'RSI overbought zone gate for bearish signals'
+      },
+      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' }
     };
   }
 
-  /**
-   * Enhanced validation for RSI Divergence strategy
-   */
   canExecute(context: AlgorithmContext): boolean {
     if (!super.canExecute(context)) {
       return false;

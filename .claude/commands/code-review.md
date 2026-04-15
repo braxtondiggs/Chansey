@@ -1,6 +1,6 @@
 ---
 allowed-tools: Read, Bash, Grep, Glob
-argument-hint: [file-path] | [commit-hash] | --full
+argument-hint: [file-path] | [commit-hash] | --staged | --full
 description: Comprehensive code quality review with security, performance, and architecture analysis
 ---
 
@@ -29,74 +29,195 @@ Apply these thinking principles throughout:
 - Git status: !`git status --porcelain`
 - Recent changes: !`git diff --stat HEAD~5`
 - Repository info: !`git log --oneline -5`
-- Build status: !`npm run build --dry-run 2>/dev/null || echo "No build script"`
 
 ## Task
 
 Follow these steps to conduct a thorough code review. For each step, think deeply before writing — analyze the code
 carefully, consider multiple perspectives, and challenge your own assumptions.
 
-1. **Repository Analysis**
-   - Examine the repository structure and identify the primary language/framework
-   - Check for configuration files (package.json, requirements.txt, Cargo.toml, etc.)
-   - Review README and documentation for context
+### Step 1: Determine Scope
 
-2. **Code Quality Assessment**
-   - Scan for code smells, anti-patterns, and potential bugs
-   - Check for consistent coding style and naming conventions
-   - Identify unused imports, variables, or dead code
-   - Review error handling and logging practices
-   - Think through: Are there subtle logic errors that tests might miss? Are there implicit assumptions that could break
-     under different conditions?
+Identify the files to review from `$ARGUMENTS`:
 
-3. **Security Review**
-   - Look for common security vulnerabilities (SQL injection, XSS, etc.)
-   - Check for hardcoded secrets, API keys, or passwords
-   - Review authentication and authorization logic
-   - Examine input validation and sanitization
-   - Think through: What attack vectors exist? Could an authenticated user escalate privileges? Are there TOCTOU races
-     or other timing-based vulnerabilities?
+- If a **file path** is given, review that file + its test file + key imports it depends on
+- If a **commit hash** is given, review files changed in that commit (`git show --stat <hash>`)
+- If `--staged` is given, review files in `git diff --cached --name-only`
+- If `--full` is given, scan broadly but focus depth on the highest-risk files
+- If **no argument and there are working changes**, review those changed files
+- If **no argument and no changes**, review the last commit
 
-4. **Performance Analysis**
-   - Identify potential performance bottlenecks
-   - Check for inefficient algorithms or database queries
-   - Review memory usage patterns and potential leaks
-   - Analyze bundle size and optimization opportunities
-   - Think through: What happens at 10x or 100x scale? Are there N+1 query patterns? Could caching introduce stale data
-     issues?
+List the files in scope before proceeding. If the scope exceeds 15 files, focus review depth on the most complex or
+highest-risk files (services > strategies > processors > entities > DTOs > constants).
 
-5. **Architecture & Design**
-   - Evaluate code organization and separation of concerns
-   - Check for proper abstraction and modularity
-   - Review dependency management and coupling
-   - Assess scalability and maintainability
-   - Think through: Does the architecture support the system's actual usage patterns? Are there hidden coupling points
-     that would make changes expensive?
+**The review ONLY covers files in scope.** Do not review unrelated code.
 
-6. **Testing Coverage**
-   - Check existing test coverage and quality
-   - Identify areas lacking proper testing
-   - Review test structure and organization
-   - Suggest additional test scenarios
-   - Think through: Do tests verify behavior or implementation? Are there critical paths without test coverage? Could
-     tests pass while hiding real bugs?
+### Step 2: Context Gathering
 
-7. **Documentation Review**
-   - Evaluate code comments and inline documentation
-   - Check API documentation completeness
-   - Review README and setup instructions
-   - Identify areas needing better documentation
+**Do this BEFORE analyzing any code. Do not skip this step.**
 
-8. **Deep Synthesis & Recommendations** Before writing recommendations, step back and consider the full picture:
-   - What are the interconnections between the issues found?
-   - Are there root causes that explain multiple symptoms?
-   - What is the highest-leverage change that would address the most issues?
+1. **Read project conventions**: `CLAUDE.md` contains architecture, coding standards, file size limits, and testing
+   patterns. Internalize these — violations of CLAUDE.md are real findings; things compliant with it are not.
 
-   Then provide:
-   - Prioritize issues by severity (critical, high, medium, low)
-   - Provide specific, actionable recommendations with file paths and line numbers
-   - Suggest tools and practices for improvement
-   - Create a summary report with next steps
-   - Include confidence levels for each finding (how certain are you this is actually a problem?)
+2. **Read relevant rules files**: Check `.claude/rules/` for any file matching the modules under review. These encode
+   intentional design decisions. For example, if reviewing an exchange service, read `.claude/rules/exchange-module.md`.
+   These rules describe gotchas, patterns, and architectural decisions that were made deliberately.
 
-Remember to be constructive and provide specific examples with file paths and line numbers where applicable.
+3. **Read git history for files in scope**:
+
+   ```bash
+   git log --oneline -10 -- <each file in scope>
+   ```
+
+   What was recently added or refactored is almost certainly intentional. Do not flag recent deliberate changes as
+   issues unless they introduce a genuine bug.
+
+4. **Read neighboring files**: For each file in scope, look at sibling files in the same directory to understand
+   established patterns. If every service in a directory uses a particular error handling pattern, that's a convention —
+   not an issue.
+
+**Key principle**: Assume patterns that are consistent across the codebase are intentional. Only flag something as an
+issue if it deviates from the project's own conventions OR poses a genuine correctness/security/performance risk.
+
+### Step 3: Read Every File in Scope
+
+**CRITICAL: You must read the full contents of every file you are about to review.** Do not assess code from git diffs,
+file names, or partial reads alone. For each file in scope:
+
+1. Read the complete file
+2. Read its test file if one exists (same name with `.spec.ts` suffix, in the same directory)
+3. If the file imports a service and calls it in a non-obvious way, read that service too
+
+You cannot judge code you haven't read. Partial reads lead to false positives.
+
+### Step 4: Analyze
+
+Run through these analysis tracks **only for the files in scope**. Skip tracks that don't apply (e.g., skip Security if
+reviewing a pure utility with no I/O).
+
+#### 4a. Correctness & Logic (highest priority)
+
+Look for things that are actually **wrong**:
+
+- Logic errors: off-by-one, wrong operator, inverted condition, missing null check on a path that can be null
+- Async bugs: unhandled promise rejection, race condition, missing `await`
+- Type safety: `as any` casts hiding real type mismatches, incorrect generic constraints
+- Financial precision: using native JS `Number` for money/prices instead of `Decimal.js` (this project requires
+  `decimal.js` for all financial math — violations are real bugs)
+- State bugs: mutable shared state, stale closures, signal timing issues
+
+#### 4b. Security
+
+Only flag issues with a plausible attack vector in this codebase's context:
+
+- SQL injection: raw queries with string interpolation (TypeORM parameterized queries are fine)
+- Secrets: hardcoded API keys, passwords, or tokens (this project uses `CryptoService` AES-256-CBC for exchange keys)
+- Auth bypass: missing guards on routes that should be protected, incorrect role checks
+- Input validation: missing DTOs or class-validator decorators on controller inputs
+
+Do NOT flag: theoretical XSS in a backend API returning JSON, CSRF on cookie-less endpoints, or generic OWASP items that
+don't apply to the tech stack.
+
+#### 4c. Reliability & Error Handling
+
+Especially important for a trading platform:
+
+- Exchange API calls without retry/circuit-breaker (this project has `withRetry`, `withRateLimitRetry`,
+  `CircuitBreakerService` — check if they're being used)
+- BullMQ processors without proper error handling (failed jobs should be caught and logged, not crash the worker)
+- Missing `forwardRef()` on circular NestJS dependencies (will cause runtime injection errors)
+- Database operations without transactions where atomicity matters
+
+#### 4d. Performance
+
+Focus on issues that would actually manifest at this project's scale:
+
+- N+1 queries: loops making DB/API calls per item instead of batching
+- Missing indexes: queries filtering on unindexed columns (check entity decorators for `@Index`)
+- Unbounded operations: loading all rows without pagination, processing arrays of unknown size
+- Cache misuse: key collisions, missing TTL, caching mutable data
+- BullMQ: jobs without timeout or retry limits, missing concurrency controls
+
+Do NOT flag: micro-optimizations, theoretical O(n^2) on arrays always < 10 items, or "use a Map instead of Object" style
+nits.
+
+#### 4e. Project Convention Violations
+
+Check against `CLAUDE.md` and the relevant rules files:
+
+- File size limits (backend: 500 soft / 750 hard; frontend: 250 soft / 400 hard)
+- Import ordering (Angular -> NestJS -> third-party -> internal -> relative)
+- Test file placement (co-located `.spec.ts`, not in a separate `tests/` folder)
+- Entity table naming (check `.claude/rules/migrations.md` for singular vs plural reference)
+- Missing `OnPush` change detection on Angular components
+- Services not using `providedIn: 'root'` pattern
+
+### Step 5: Validate & Triage Every Finding
+
+**CRITICAL: Do not report any finding without validating it first.** For each potential issue identified in Step 4, run
+it through this evaluation before including it in the report:
+
+| Criteria            | Question to answer                                                                             |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
+| **Intentional?**    | Is this pattern used consistently in the codebase? Was it recently added/changed deliberately? |
+| **Correctness**     | Is this actually wrong, or just different from what I'd write?                                 |
+| **Project Context** | Does CLAUDE.md, a rules file, or the project's conventions explain this choice?                |
+| **Impact**          | Would changing this meaningfully improve correctness, security, or performance?                |
+| **Risk**            | Could the suggested fix introduce bugs or break existing behavior?                             |
+
+Assign each finding a verdict:
+
+- **FIX** — Genuine bug, security vulnerability, or correctness issue. The code is wrong, not just different.
+- **CONSIDER** — Has merit but is a trade-off, style preference, or optimization. Needs discussion.
+- **NOTED** — Observation that provides context but doesn't warrant a code change (e.g., tech debt that's intentionally
+  deferred, a pattern that's consistent across the codebase).
+
+**Discard** findings that are: already covered by project conventions, consistent with established patterns, style
+preferences that don't affect correctness, or things you'd do differently but aren't actually wrong.
+
+### Step 6: Present Results
+
+Group validated findings by verdict, not by analysis category. Format:
+
+```markdown
+## Code Review: <scope description>
+
+### FIX (<count>) — Issues that should be addressed
+
+#### 1. <file>:<line> — <short description>
+
+**Issue**: <what's wrong> **Why it matters**: <impact — bug, security, data loss, etc.> **Suggested fix**:
+<concrete code change> **Confidence**: <high/medium> (low-confidence findings should be CONSIDER, not FIX)
+
+---
+
+### CONSIDER (<count>) — Trade-offs worth discussing
+
+#### 1. <file>:<line> — <short description>
+
+**Observation**: <what you noticed> **Pros/Cons**: <why this might or might not be worth changing>
+
+---
+
+### NOTED (<count>) — Context and observations
+
+- <file>:<line> — <brief observation>
+
+---
+
+### Summary
+
+| Verdict  | Count |
+| -------- | ----- |
+| FIX      | <n>   |
+| CONSIDER | <n>   |
+| NOTED    | <n>   |
+
+**Overall assessment**: <1-2 sentence take on code health>
+```
+
+**Rules for the report:**
+
+- Every FIX must have high or medium confidence — if you're unsure, it's a CONSIDER
+- Never suggest changes that contradict CLAUDE.md or established project patterns
+- Prefer fewer, validated findings over a long list of maybes
+- If you found nothing worth fixing, say so — an empty FIX section is a valid outcome

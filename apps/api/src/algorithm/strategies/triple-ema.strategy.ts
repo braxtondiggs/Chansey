@@ -15,6 +15,7 @@ interface TripleEMAConfig {
   requireFullAlignment: boolean;
   signalOnPartialCross: boolean;
   minConfidence: number;
+  minSpread: number;
 }
 
 type EMAAlignment = 'bullish' | 'bearish' | 'neutral';
@@ -141,8 +142,9 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       mediumPeriod: (config.mediumPeriod as number) ?? 21,
       slowPeriod: (config.slowPeriod as number) ?? 55,
       requireFullAlignment: (config.requireFullAlignment as boolean) ?? true,
-      signalOnPartialCross: (config.signalOnPartialCross as boolean) ?? false,
-      minConfidence: (config.minConfidence as number) ?? 0.6
+      signalOnPartialCross: (config.signalOnPartialCross as boolean) ?? true,
+      minConfidence: (config.minConfidence as number) ?? 0.5,
+      minSpread: (config.minSpread as number) ?? 0.003
     };
   }
 
@@ -227,6 +229,11 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
     const alignmentState = this.analyzeAlignmentState(fastEMA, mediumEMA, slowEMA, currentIndex);
 
     if (!alignmentState) {
+      return null;
+    }
+
+    // Minimum EMA spread filter: skip if EMAs are too close (noise cross)
+    if (alignmentState.emaSpread < config.minSpread) {
       return null;
     }
 
@@ -361,43 +368,38 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
   }
 
   /**
-   * Calculate confidence based on trend consistency
+   * Calculate confidence based on EMA spread velocity (rate of divergence)
    */
   private calculateConfidence(
     fastEMA: number[],
-    mediumEMA: number[],
+    _mediumEMA: number[],
     slowEMA: number[],
     alignmentState: AlignmentState,
     currentIndex: number,
-    isBullish: boolean
+    _isBullish: boolean
   ): number {
-    const lookback = 5;
-    const startIndex = Math.max(0, currentIndex - lookback);
-
-    // Check how many recent bars had consistent alignment trend
-    let consistentBars = 0;
-    let validBars = 0;
-    for (let i = startIndex; i < currentIndex; i++) {
-      if (!Number.isFinite(fastEMA[i]) || !Number.isFinite(mediumEMA[i]) || !Number.isFinite(slowEMA[i])) continue;
-
-      validBars++;
-      const barAlignment = this.getAlignment(fastEMA[i], mediumEMA[i], slowEMA[i]);
-      if (isBullish && (barAlignment === 'bullish' || barAlignment === 'neutral')) {
-        consistentBars++;
-      } else if (!isBullish && (barAlignment === 'bearish' || barAlignment === 'neutral')) {
-        consistentBars++;
-      }
+    // Measure rate of EMA divergence instead of pre-signal alignment
+    const velocityLookback = Math.min(5, currentIndex);
+    let spreadVelocity = 0;
+    let velocityCount = 0;
+    for (let i = currentIndex - velocityLookback + 1; i <= currentIndex; i++) {
+      if (
+        i < 1 ||
+        !Number.isFinite(fastEMA[i]) ||
+        !Number.isFinite(slowEMA[i]) ||
+        !Number.isFinite(fastEMA[i - 1]) ||
+        !Number.isFinite(slowEMA[i - 1])
+      )
+        continue;
+      const curSpread = (fastEMA[i] - slowEMA[i]) / slowEMA[i];
+      const prevSpread = (fastEMA[i - 1] - slowEMA[i - 1]) / slowEMA[i - 1];
+      spreadVelocity += Math.abs(curSpread) - Math.abs(prevSpread);
+      velocityCount++;
     }
-
-    const consistencyScore = validBars > 0 ? consistentBars / validBars : 0;
-
-    // EMA spread contributes to confidence
+    const avgVelocity = velocityCount > 0 ? spreadVelocity / velocityCount : 0;
+    const velocityScore = Math.min(1, Math.max(0, avgVelocity * 200));
     const spreadScore = Math.min(1, alignmentState.emaSpread * 8);
-
-    // Base confidence for alignment signals
-    const baseConfidence = 0.5;
-
-    return Math.min(1, baseConfidence + consistencyScore * 0.25 + spreadScore * 0.25);
+    return Math.min(1, 0.4 + velocityScore * 0.3 + spreadScore * 0.3);
   }
 
   /**
@@ -468,10 +470,17 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       ...super.getConfigSchema(),
       fastPeriod: { type: 'number', default: 8, min: 3, max: 15, description: 'Fast EMA period' },
       mediumPeriod: { type: 'number', default: 21, min: 10, max: 30, description: 'Medium EMA period' },
-      slowPeriod: { type: 'number', default: 55, min: 30, max: 100, description: 'Slow EMA period' },
+      slowPeriod: { type: 'number', default: 55, min: 45, max: 100, description: 'Slow EMA period' },
       requireFullAlignment: { type: 'boolean', default: true, description: 'Require all 3 EMAs aligned for signal' },
-      signalOnPartialCross: { type: 'boolean', default: false, description: 'Signal on fast/medium crossover' },
-      minConfidence: { type: 'number', default: 0.6, min: 0, max: 1, description: 'Minimum confidence required' }
+      signalOnPartialCross: { type: 'boolean', default: true, description: 'Signal on fast/medium crossover' },
+      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' },
+      minSpread: {
+        type: 'number',
+        default: 0.003,
+        min: 0,
+        max: 0.05,
+        description: 'Minimum EMA spread to generate signal. Filters noise crosses.'
+      }
     };
   }
 

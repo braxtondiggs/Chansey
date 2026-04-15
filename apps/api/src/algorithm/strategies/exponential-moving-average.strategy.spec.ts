@@ -56,12 +56,15 @@ describe('ExponentialMovingAverageStrategy', () => {
     jest.clearAllMocks();
   });
 
+  /** Default config that matches pre-tuned values so existing tests keep working with 30 data points */
+  const defaultTestConfig = { fastPeriod: 12, slowPeriod: 26, crossoverLookback: 3 };
+
   const buildContext = (prices: any[], config: Record<string, any> = {}) =>
     ({
       coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
       priceData: { btc: prices as any },
       timestamp: new Date(),
-      config
+      config: { ...defaultTestConfig, ...config }
     }) as AlgorithmContext;
 
   const mockEmaValues = (fast: number[], slow: number[], fastPeriod = 12, slowPeriod = 26) => {
@@ -366,7 +369,7 @@ describe('ExponentialMovingAverageStrategy', () => {
           eth: createMockPrices(5) as any
         },
         timestamp: new Date(),
-        config: {}
+        config: { slowPeriod: 26 }
       };
 
       expect(strategy.canExecute(context)).toBe(true);
@@ -383,7 +386,7 @@ describe('ExponentialMovingAverageStrategy', () => {
           eth: createMockPrices(3) as any
         },
         timestamp: new Date(),
-        config: {}
+        config: { slowPeriod: 26 }
       };
 
       expect(strategy.canExecute(context)).toBe(false);

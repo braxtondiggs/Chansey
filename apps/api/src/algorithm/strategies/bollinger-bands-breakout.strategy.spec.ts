@@ -93,7 +93,7 @@ describe('BollingerBandsBreakoutStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { minConfidence: 0 }
+        config: { minConfidence: 0, requireConfirmation: false }
       };
 
       const result = await strategy.execute(context);
@@ -142,7 +142,7 @@ describe('BollingerBandsBreakoutStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { minConfidence: 0 }
+        config: { minConfidence: 0, requireConfirmation: false }
       };
 
       const result = await strategy.execute(context);
@@ -265,6 +265,114 @@ describe('BollingerBandsBreakoutStrategy', () => {
       expect(result.signals[0].type).toBe(SignalType.BUY);
     });
 
+    it('should generate BUY with confirmationBars=3 when all 3 bars above upper band', async () => {
+      const prices = createMockPrices(30);
+      const upper = Array(30).fill(NaN);
+      const middle = Array(30).fill(NaN);
+      const lower = Array(30).fill(NaN);
+      const pb = Array(30).fill(NaN);
+      const bandwidth = Array(30).fill(NaN);
+
+      for (let i = 20; i < 30; i++) {
+        upper[i] = 115;
+        middle[i] = 100;
+        lower[i] = 85;
+        pb[i] = 0.5;
+        bandwidth[i] = 0.2 + (i - 20) * 0.01;
+      }
+
+      // Last 3 bars all above upper band
+      prices[27].avg = 118;
+      prices[28].avg = 120;
+      prices[29].avg = 122;
+      upper[27] = 115;
+      upper[28] = 115;
+      upper[29] = 115;
+      pb[27] = 1.1;
+      pb[28] = 1.2;
+      pb[29] = 1.33;
+      bandwidth[29] = 0.25;
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { requireConfirmation: true, confirmationBars: 3, minConfidence: 0 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+
+    it('should generate SELL with confirmationBars=3 when all 3 bars below lower band', async () => {
+      const prices = createMockPrices(30);
+      const upper = Array(30).fill(NaN);
+      const middle = Array(30).fill(NaN);
+      const lower = Array(30).fill(NaN);
+      const pb = Array(30).fill(NaN);
+      const bandwidth = Array(30).fill(NaN);
+
+      for (let i = 20; i < 30; i++) {
+        upper[i] = 115;
+        middle[i] = 100;
+        lower[i] = 85;
+        pb[i] = 0.5;
+        bandwidth[i] = 0.2 + (i - 20) * 0.01;
+      }
+
+      // Last 3 bars all below lower band
+      prices[27].avg = 82;
+      prices[28].avg = 80;
+      prices[29].avg = 78;
+      lower[27] = 85;
+      lower[28] = 85;
+      lower[29] = 85;
+      pb[27] = -0.1;
+      pb[28] = -0.2;
+      pb[29] = -0.33;
+      bandwidth[29] = 0.25;
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { requireConfirmation: true, confirmationBars: 3, minConfidence: 0 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.SELL);
+    });
+
     it('should block signal when confirmation direction mismatches breakout', async () => {
       // Both confirmation bars have price above upper band → bullish confirmation
       // But %B on last bar is < 0 → bearish breakout — direction mismatch should block
@@ -303,6 +411,150 @@ describe('BollingerBandsBreakoutStrategy', () => {
 
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(0);
+    });
+  });
+
+  describe('transition detection', () => {
+    it('should NOT signal when previous bar was also outside bands (no transition)', async () => {
+      const prices = createMockPrices(30);
+      prices[29].avg = 120;
+
+      const upper = Array(30).fill(NaN);
+      const middle = Array(30).fill(NaN);
+      const lower = Array(30).fill(NaN);
+      const pb = Array(30).fill(NaN);
+      const bandwidth = Array(30).fill(NaN);
+
+      for (let i = 20; i < 30; i++) {
+        upper[i] = 115;
+        middle[i] = 100;
+        lower[i] = 85;
+        pb[i] = 0.5;
+        bandwidth[i] = 0.2;
+      }
+      // Both bars outside upper band — no transition
+      pb[28] = 1.2;
+      pb[29] = 1.33;
+      bandwidth[29] = 0.2;
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { minConfidence: 0, requireConfirmation: false }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+  });
+
+  describe('squeeze filter', () => {
+    it('should block signal when bandwidth is too wide', async () => {
+      const prices = createMockPrices(30);
+      prices[29].avg = 120;
+
+      const upper = Array(30).fill(NaN);
+      const middle = Array(30).fill(NaN);
+      const lower = Array(30).fill(NaN);
+      const pb = Array(30).fill(NaN);
+      const bandwidth = Array(30).fill(NaN);
+
+      for (let i = 20; i < 30; i++) {
+        upper[i] = 115;
+        middle[i] = 100;
+        lower[i] = 85;
+        pb[i] = 0.5;
+        bandwidth[i] = 0.2; // Average bandwidth = 0.2
+      }
+      pb[28] = 0.5; // Previous bar inside bands
+      pb[29] = 1.33; // Breakout
+      bandwidth[29] = 0.5; // Current bandwidth 2.5x average (exceeds squeezeFactor=1.5)
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { minConfidence: 0, requireConfirmation: false }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('should allow signal when bandwidth is narrow (squeeze breakout)', async () => {
+      const prices = createMockPrices(30);
+      prices[29].avg = 120;
+
+      const upper = Array(30).fill(NaN);
+      const middle = Array(30).fill(NaN);
+      const lower = Array(30).fill(NaN);
+      const pb = Array(30).fill(NaN);
+      const bandwidth = Array(30).fill(NaN);
+
+      for (let i = 20; i < 30; i++) {
+        upper[i] = 115;
+        middle[i] = 100;
+        lower[i] = 85;
+        pb[i] = 0.5;
+        bandwidth[i] = 0.2;
+      }
+      pb[28] = 0.5;
+      pb[29] = 1.33;
+      bandwidth[29] = 0.25; // 1.25x average — within squeezeFactor
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { minConfidence: 0, requireConfirmation: false }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
     });
   });
 

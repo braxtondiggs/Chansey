@@ -172,6 +172,47 @@ describe('TripleEMAStrategy', () => {
       expect(result.signals[0].reason).toContain('Triple EMA bearish alignment');
     });
 
+    it('should block signal when EMA spread is below minSpread', async () => {
+      const prices = createMockPrices(70);
+
+      const fastEMA = Array(70).fill(NaN);
+      const mediumEMA = Array(70).fill(NaN);
+      const slowEMA = Array(70).fill(NaN);
+
+      // Set up transition to bullish alignment but with tiny spread
+      for (let i = 55; i < 70; i++) {
+        slowEMA[i] = 100;
+        mediumEMA[i] = 100.05;
+        fastEMA[i] = 100.1; // Spread = 0.1% — below default minSpread of 0.3%
+      }
+      // Previous bar was not aligned
+      fastEMA[68] = 99.95;
+      mediumEMA[68] = 100.05;
+      slowEMA[68] = 100;
+
+      // Current bar is aligned but tiny spread
+      fastEMA[69] = 100.1;
+      mediumEMA[69] = 100.05;
+      slowEMA[69] = 100;
+
+      indicatorService.calculateEMA
+        .mockResolvedValueOnce({ values: fastEMA, validCount: 60, period: 8, fromCache: false })
+        .mockResolvedValueOnce({ values: mediumEMA, validCount: 50, period: 21, fromCache: false })
+        .mockResolvedValueOnce({ values: slowEMA, validCount: 15, period: 55, fromCache: false });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { fastPeriod: 8, mediumPeriod: 21, slowPeriod: 55 }
+      };
+
+      const result = await strategy.execute(context);
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+    });
+
     it('should return no signals when EMAs are not aligned', async () => {
       const prices = createMockPrices(70);
 

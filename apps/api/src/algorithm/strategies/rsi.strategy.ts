@@ -105,9 +105,9 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
   private getConfigWithDefaults(config: Record<string, unknown>): RSIConfig {
     return {
       period: (config.period as number) ?? 14,
-      oversoldThreshold: (config.oversoldThreshold as number) ?? 30,
-      overboughtThreshold: (config.overboughtThreshold as number) ?? 70,
-      minConfidence: (config.minConfidence as number) ?? 0.6
+      oversoldThreshold: (config.oversoldThreshold as number) ?? 25,
+      overboughtThreshold: (config.overboughtThreshold as number) ?? 75,
+      minConfidence: (config.minConfidence as number) ?? 0.5
     };
   }
 
@@ -258,21 +258,21 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
       period: { type: 'number', default: 14, min: 5, max: 50, description: 'RSI calculation period' },
       oversoldThreshold: {
         type: 'number',
-        default: 30,
+        default: 25,
         min: 10,
-        max: 40,
+        max: 30,
         description: 'RSI level below which asset is oversold'
       },
       overboughtThreshold: {
         type: 'number',
-        default: 70,
+        default: 75,
         min: 60,
         max: 90,
         description: 'RSI level above which asset is overbought'
       },
       minConfidence: {
         type: 'number',
-        default: 0.6,
+        default: 0.5,
         min: 0,
         max: 1,
         description: 'Minimum confidence required to generate signal'

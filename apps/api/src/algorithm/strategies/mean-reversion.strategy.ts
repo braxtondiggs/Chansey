@@ -298,8 +298,8 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
       ...super.getConfigSchema(),
       period: { type: 'number', default: 20, min: 5, max: 100 },
       threshold: { type: 'number', default: 2, min: 1, max: 4 },
-      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1 },
-      enableDynamicThreshold: { type: 'boolean', default: false }
+      minConfidence: { type: 'number', default: 0.4, min: 0, max: 1 },
+      enableDynamicThreshold: { type: 'boolean', default: true }
     };
   }
 

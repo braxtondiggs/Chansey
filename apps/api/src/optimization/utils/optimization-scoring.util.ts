@@ -3,7 +3,7 @@ import { type WindowMetrics } from '@chansey/api-interfaces';
 import { SharpeRatioCalculator } from '../../common/metrics/sharpe-ratio.calculator';
 import { type OptimizationConfig } from '../interfaces';
 
-export const ZERO_TRADE_PENALTY = -10;
+export const ZERO_TRADE_PENALTY = -3;
 
 /**
  * Normalization ranges for composite score calculation.

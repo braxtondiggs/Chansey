@@ -87,6 +87,13 @@ describe('Confluence Evaluators', () => {
       expect(result.strength).toBe(0);
     });
 
+    it('should return neutral when EMA26 is zero', () => {
+      const { ema12, ema26 } = buildArrays(100, 0);
+      const result = evaluateEMASignal(ema12, ema26, 49);
+      expect(result.signal).toBe('neutral');
+      expect(result.strength).toBe(0);
+    });
+
     it('should increase strength with larger spread', () => {
       const { ema12: small12, ema26: small26 } = buildArrays(101, 100);
       const small = evaluateEMASignal(small12, small26, 49);
@@ -166,7 +173,19 @@ describe('Confluence Evaluators', () => {
       arr[49] = 0;
       const result = evaluateMACDSignal(arr, arr, arr, 49, 0.004);
       expect(result.signal).toBe('neutral');
-      expect(result.strength).toBe(0.3);
+      expect(result.strength).toBe(0.2);
+    });
+
+    it('should return neutral when histogram AND avgHistogram are both zero', () => {
+      const macd = Array(50).fill(NaN);
+      const signal = Array(50).fill(NaN);
+      const histogram = Array(50).fill(NaN);
+      macd[49] = 0;
+      signal[49] = 0;
+      histogram[49] = 0;
+      histogram[48] = 0;
+      const result = evaluateMACDSignal(macd, signal, histogram, 49, 0);
+      expect(result.signal).toBe('neutral');
     });
 
     it('should add momentum bonus when histogram direction and momentum agree', () => {

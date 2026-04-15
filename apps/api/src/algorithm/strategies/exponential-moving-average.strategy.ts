@@ -47,9 +47,9 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
 
     try {
       // Get configuration with defaults
-      const fastPeriod = (context.config.fastPeriod as number) || 12;
-      const slowPeriod = (context.config.slowPeriod as number) || 26;
-      const crossoverLookback = Math.max(1, Math.min(10, (context.config.crossoverLookback as number) || 3));
+      const fastPeriod = (context.config.fastPeriod as number) || 8;
+      const slowPeriod = (context.config.slowPeriod as number) || 50;
+      const crossoverLookback = Math.max(1, Math.min(10, (context.config.crossoverLookback as number) || 5));
       const isBacktest = !!(
         context.metadata?.backtestId ||
         context.metadata?.isOptimization ||
@@ -248,15 +248,15 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
   }
 
   getMinDataPoints(config: Record<string, unknown>): number {
-    const slowPeriod = (config.slowPeriod as number) ?? 26;
-    const crossoverLookback = (config.crossoverLookback as number) ?? 3;
+    const slowPeriod = (config.slowPeriod as number) ?? 50;
+    const crossoverLookback = (config.crossoverLookback as number) ?? 5;
     return slowPeriod + crossoverLookback;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
     return [
-      { type: 'EMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 12 } },
-      { type: 'EMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 26 } }
+      { type: 'EMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 8 } },
+      { type: 'EMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 50 } }
     ];
   }
 
@@ -277,17 +277,17 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
   getConfigSchema(): Record<string, unknown> {
     return {
       ...super.getConfigSchema(),
-      fastPeriod: { type: 'number', default: 12, min: 5, max: 50 },
-      slowPeriod: { type: 'number', default: 26, min: 10, max: 100 },
+      fastPeriod: { type: 'number', default: 8, min: 5, max: 50 },
+      slowPeriod: { type: 'number', default: 50, min: 10, max: 100 },
       crossoverLookback: {
         type: 'number',
-        default: 3,
+        default: 5,
         min: 1,
         max: 10,
         description: 'Number of bars to scan for crossover events'
       },
-      minConfidence: { type: 'number', default: 0.6, min: 0, max: 1 },
-      enableStopLoss: { type: 'boolean', default: true },
+      minConfidence: { type: 'number', default: 0.4, min: 0, max: 1 },
+      enableStopLoss: { type: 'boolean', default: false },
       stopLossPercentage: { type: 'number', default: 0.05, min: 0.01, max: 0.2 }
     };
   }
@@ -300,7 +300,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
       return false;
     }
 
-    const slowPeriod = (context.config.slowPeriod as number) || 26;
+    const slowPeriod = (context.config.slowPeriod as number) || 50;
 
     // At least one coin must have sufficient price data for EMA calculation
     return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], slowPeriod));

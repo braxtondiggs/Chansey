@@ -63,7 +63,7 @@ describe('ATRTrailingStopStrategy', () => {
         prices[i].high = 105;
         prices[i].low = 95;
       }
-      // Spike high early: stop = 130 - 5*2.5 = 117.5
+      // Spike high early: stop = 130 - 5*4.0 = 110
       prices[15].high = 130;
       // Last bar drops well below the trailing stop
       prices[29].avg = 80;
@@ -86,7 +86,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long' }
+        config: { atrPeriod: 14, atrMultiplier: 4.0, tradeDirection: 'long' }
       };
 
       const result = await strategy.execute(context);
@@ -121,7 +121,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long' }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long' }
       };
 
       const result = await strategy.execute(context);
@@ -154,7 +154,7 @@ describe('ATRTrailingStopStrategy', () => {
         prices[i].high = 105;
         prices[i].low = 95;
       }
-      // Spike a high early to set a high trailing stop
+      // Spike a high early to set a high trailing stop: stop = 130 - 5*3.5 = 112.5
       prices[15].high = 130;
       // Last bar: low triggers, avg doesn't
       prices[29].avg = 100;
@@ -177,7 +177,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', useHighLow: true }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', useHighLow: true, stopCooldownBars: 0 }
       };
 
       const result = await strategy.execute(context);
@@ -220,7 +220,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'short', useHighLow: true }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'short', useHighLow: true, stopCooldownBars: 0 }
       };
 
       const result = await strategy.execute(context);
@@ -261,7 +261,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', minConfidence: 0 }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 0 }
       };
 
       const result = await strategy.execute(context);
@@ -298,7 +298,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', minConfidence: 0 }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 0 }
       };
 
       const result = await strategy.execute(context);
@@ -317,7 +317,7 @@ describe('ATRTrailingStopStrategy', () => {
         prices[i].high = 105;
         prices[i].low = 95;
       }
-      // Spike high early to set trailing stop: stop = 130 - 5*2.5 = 117.5
+      // Spike high early to set trailing stop: stop = 130 - 5*3.5 = 112.5
       prices[15].high = 130;
       // Previous bar (28): triggers stop - low below 117.5
       prices[28].avg = 80;
@@ -344,7 +344,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', minConfidence: 0 }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 0 }
       };
 
       const result = await strategy.execute(context);
@@ -364,7 +364,7 @@ describe('ATRTrailingStopStrategy', () => {
         prices[i].high = 105;
         prices[i].low = 95;
       }
-      // No spike, trailing stop stays low: stop = 105 - 5*2.5 = 92.5
+      // No spike, trailing stop stays low: stop = 105 - 5*3.5 = 87.5
       // Both bar 28 and 29 have low=95, well above stop
 
       const atrValues = Array(30).fill(NaN);
@@ -383,7 +383,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', minConfidence: 0 }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 0 }
       };
 
       const result = await strategy.execute(context);
@@ -400,7 +400,7 @@ describe('ATRTrailingStopStrategy', () => {
         prices[i].high = 105;
         prices[i].low = 95;
       }
-      // Short stop = lowestLow + ATR*multiplier = 95 + 5*2.5 = 107.5
+      // Short stop = lowestLow + ATR*multiplier = 95 + 5*3.5 = 112.5
       // Previous bar (28): high above short stop (triggered)
       prices[28].avg = 110;
       prices[28].high = 115;
@@ -426,7 +426,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'short', minConfidence: 0 }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'short', minConfidence: 0, stopCooldownBars: 0 }
       };
 
       const result = await strategy.execute(context);
@@ -471,7 +471,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', minConfidence: 0 }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 0 }
       };
 
       const result = await strategy.execute(context);
@@ -500,9 +500,9 @@ describe('ATRTrailingStopStrategy', () => {
       prices[29].high = 85;
 
       // ATR is low (3) for most bars, then spikes to 8 on the last bar
-      // Previous stop = 105 - 3*2.5 = 97.5
-      // Raw current stop = 105 - 8*2.5 = 85
-      // Ratcheted stop = max(85, 97.5) = 97.5
+      // Previous stop = 105 - 3*3.5 = 94.5
+      // Raw current stop = 105 - 8*3.5 = 77
+      // Ratcheted stop = max(77, 94.5) = 94.5
       const atrValues = Array(30).fill(NaN);
       for (let i = 14; i < 29; i++) {
         atrValues[i] = 3;
@@ -520,7 +520,7 @@ describe('ATRTrailingStopStrategy', () => {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 2.5, tradeDirection: 'long', minConfidence: 0 }
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 0 }
       };
 
       const result = await strategy.execute(context);
@@ -528,9 +528,91 @@ describe('ATRTrailingStopStrategy', () => {
       expect(result.signals.length).toBeGreaterThan(0);
       const signal = result.signals[0];
 
-      // Ratcheted stop should hold at 97.5, not drop to raw 85
+      // Ratcheted stop should hold at 94.5, not drop to raw 77
       expect(signal.metadata?.stopLevel).toBeGreaterThanOrEqual(signal.metadata?.previousStopLevel as number);
-      expect(signal.metadata?.stopLevel).toBeCloseTo(97.5, 1);
+      expect(signal.metadata?.stopLevel).toBeCloseTo(94.5, 1);
+    });
+
+    it('should suppress entry signal when stop cooldown is active', async () => {
+      const prices = createMockPrices(30);
+      // Set up: trend flip where previous bar triggered stop, current bar recovers
+      for (let i = 0; i < 30; i++) {
+        prices[i].avg = 100;
+        prices[i].high = 105;
+        prices[i].low = 95;
+      }
+      // Spike high early: stop = 130 - 5*3.5 = 112.5
+      prices[15].high = 130;
+      // Bar 28 triggers stop (low=75 < 117.5)
+      prices[28].avg = 80;
+      prices[28].low = 75;
+      prices[28].high = 85;
+      // Bar 29 recovers above stop (trend flip entry candidate)
+      prices[29].avg = 125;
+      prices[29].low = 120;
+      prices[29].high = 130;
+
+      const atrValues = Array(30).fill(NaN);
+      for (let i = 14; i < 30; i++) {
+        atrValues[i] = 5;
+      }
+
+      indicatorService.calculateATR.mockResolvedValue({
+        values: atrValues,
+        validCount: 15,
+        period: 14,
+        fromCache: false
+      });
+
+      // First verify the entry fires without cooldown
+      const contextNoCooldown: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 0 }
+      };
+
+      const resultNoCooldown = await strategy.execute(contextNoCooldown);
+      const buySignalsNoCooldown = resultNoCooldown.signals.filter((s) => s.type === SignalType.BUY);
+      expect(buySignalsNoCooldown.length).toBeGreaterThan(0);
+
+      // Now with cooldown — bar 28 had a stop, so entry on bar 29 should be suppressed
+      indicatorService.calculateATR.mockResolvedValue({
+        values: atrValues,
+        validCount: 15,
+        period: 14,
+        fromCache: false
+      });
+
+      const contextWithCooldown: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 3 }
+      };
+
+      const resultWithCooldown = await strategy.execute(contextWithCooldown);
+      const buySignalsWithCooldown = resultWithCooldown.signals.filter((s) => s.type === SignalType.BUY);
+      expect(buySignalsWithCooldown).toHaveLength(0);
+    });
+
+    it('should include stopCooldownBars in config schema', () => {
+      const schema = strategy.getConfigSchema();
+      expect(schema['stopCooldownBars']).toBeDefined();
+      const cooldownSchema = schema['stopCooldownBars'] as Record<string, unknown>;
+      expect(cooldownSchema['default']).toBe(3);
+      expect(cooldownSchema['min']).toBe(0);
+      expect(cooldownSchema['max']).toBe(10);
+    });
+
+    it('should use updated default config values', () => {
+      const schema = strategy.getConfigSchema();
+      const multiplierSchema = schema['atrMultiplier'] as Record<string, unknown>;
+      const confidenceSchema = schema['minConfidence'] as Record<string, unknown>;
+
+      expect(multiplierSchema['default']).toBe(4.5);
+      expect(multiplierSchema['min']).toBe(3.5);
+      expect(confidenceSchema['default']).toBe(0.4);
     });
   });
 });
