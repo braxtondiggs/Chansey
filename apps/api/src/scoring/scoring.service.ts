@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 
 import { ComponentScores, GRADE_RANGES, MarketRegimeType, StrategyGrade } from '@chansey/api-interfaces';
 
+import { CorrelationScoringService } from './correlation-scoring.service';
 import { CalmarRatioCalculator } from './metrics/calmar-ratio.calculator';
 import { ProfitFactorCalculator } from './metrics/profit-factor.calculator';
 import { StabilityCalculator } from './metrics/stability.calculator';
@@ -35,7 +36,8 @@ export class ScoringService {
     private readonly calmarCalculator: CalmarRatioCalculator,
     private readonly winRateCalculator: WinRateCalculator,
     private readonly profitFactorCalculator: ProfitFactorCalculator,
-    private readonly stabilityCalculator: StabilityCalculator
+    private readonly stabilityCalculator: StabilityCalculator,
+    private readonly correlationScoringService: CorrelationScoringService
   ) {}
 
   /**
@@ -44,15 +46,24 @@ export class ScoringService {
   async calculateScore(
     strategyConfigId: string,
     backtestRun: BacktestRun,
-    wfaDegradation: number
+    wfaDegradation: number,
+    userId: string
   ): Promise<StrategyScore> {
     const results = backtestRun.results;
     if (!results) {
       throw new Error('Backtest results not available');
     }
 
+    // Calculate correlation with active deployments
+    let correlationValue = 0;
+    try {
+      correlationValue = await this.correlationScoringService.calculateMaxCorrelation(strategyConfigId, userId);
+    } catch (error) {
+      this.logger.warn(`Failed to calculate correlation for strategy ${strategyConfigId}: ${error}`);
+    }
+
     // Calculate component scores
-    const componentScores = this.calculateComponentScores(results, wfaDegradation);
+    const componentScores = this.calculateComponentScores(results, wfaDegradation, correlationValue);
 
     // Calculate overall weighted score
     const overallScore = this.calculateOverallScore(componentScores);
@@ -67,7 +78,7 @@ export class ScoringService {
     const promotionEligible = this.checkPromotionEligibility(overallScore, componentScores, results);
 
     // Generate warnings
-    const warnings = this.generateWarnings(componentScores, results, wfaDegradation);
+    const warnings = this.generateWarnings(componentScores, results, wfaDegradation, correlationValue);
 
     // Create and save score
     const score = this.strategyScoreRepo.create({
@@ -107,7 +118,7 @@ export class ScoringService {
       volatility: number;
     },
     wfaDegradation: number,
-    options?: { marketRegime?: MarketRegimeType }
+    options?: { marketRegime?: MarketRegimeType; correlationValue?: number }
   ): {
     overallScore: number;
     grade: StrategyGrade;
@@ -115,12 +126,13 @@ export class ScoringService {
     warnings: string[];
     regimeModifier: number;
   } {
-    const componentScores = this.calculateComponentScores(metrics, wfaDegradation);
+    const correlationValue = options?.correlationValue ?? 0;
+    const componentScores = this.calculateComponentScores(metrics, wfaDegradation, correlationValue);
     const baseScore = this.calculateOverallScore(componentScores);
     const regimeModifier = this.getRegimeModifier(options?.marketRegime);
     const overallScore = Math.max(0, Math.min(100, baseScore + regimeModifier));
     const grade = this.determineGrade(overallScore);
-    const warnings = this.generateWarnings(componentScores, metrics, wfaDegradation);
+    const warnings = this.generateWarnings(componentScores, metrics, wfaDegradation, correlationValue);
 
     return { overallScore, grade, componentScores, warnings, regimeModifier };
   }
@@ -153,7 +165,7 @@ export class ScoringService {
   /**
    * Calculate component scores for all metrics
    */
-  private calculateComponentScores(results: any, wfaDegradation: number): ComponentScores {
+  private calculateComponentScores(results: any, wfaDegradation: number, correlationValue = 0): ComponentScores {
     // Sharpe Ratio (25% weight)
     const sharpeScore = this.scoreMetric(results.sharpeRatio, {
       excellent: 2.0,
@@ -202,8 +214,13 @@ export class ScoringService {
       poor: 10
     });
 
-    // Correlation (10% weight) - will be calculated separately with other strategies
-    const correlationScore = 100; // Default to perfect score, updated later
+    // Correlation (10% weight) - inverse scoring: lower abs(correlation) is better
+    const correlationScore = this.scoreMetricInverse(Math.abs(correlationValue), {
+      excellent: 0.2,
+      good: 0.4,
+      acceptable: 0.7,
+      poor: 0.9
+    });
 
     return {
       sharpeRatio: {
@@ -243,7 +260,7 @@ export class ScoringService {
         percentile: 0
       },
       correlation: {
-        value: 0,
+        value: correlationValue,
         score: correlationScore,
         weight: SCORING_WEIGHTS.correlation,
         percentile: 0
@@ -350,7 +367,12 @@ export class ScoringService {
   /**
    * Generate warnings for concerning metrics
    */
-  private generateWarnings(componentScores: ComponentScores, results: any, wfaDegradation: number): string[] {
+  private generateWarnings(
+    componentScores: ComponentScores,
+    results: any,
+    wfaDegradation: number,
+    correlationValue = 0
+  ): string[] {
     const warnings: string[] = [];
 
     if (componentScores.sharpeRatio.value < 0.5) {
@@ -375,6 +397,10 @@ export class ScoringService {
 
     if (results.volatility > 1.5) {
       warnings.push('High volatility exceeds 150% annualized threshold');
+    }
+
+    if (Math.abs(correlationValue) > 0.7) {
+      warnings.push('High correlation with existing deployment reduces diversification');
     }
 
     return warnings;

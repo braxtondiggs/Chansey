@@ -8,6 +8,7 @@ import { PipelineProgressionService } from './pipeline-progression.service';
 import { PipelineStageExecutionService } from './pipeline-stage-execution.service';
 
 import { MarketRegimeService } from '../../market-regime/market-regime.service';
+import { CorrelationScoringService } from '../../scoring/correlation-scoring.service';
 import { ScoringService } from '../../scoring/scoring.service';
 import { DegradationCalculator } from '../../scoring/walk-forward/degradation.calculator';
 import { type User } from '../../users/users.entity';
@@ -76,6 +77,10 @@ describe('PipelineProgressionService', () => {
         {
           provide: DegradationCalculator,
           useValue: { calculateFromValues: jest.fn().mockReturnValue(50) }
+        },
+        {
+          provide: CorrelationScoringService,
+          useValue: { calculateMaxCorrelation: jest.fn().mockResolvedValue(0) }
         }
       ]
     }).compile();
@@ -217,7 +222,7 @@ describe('PipelineProgressionService', () => {
       expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(
         expect.objectContaining({ calmarRatio: expect.closeTo(1.5) }),
         50,
-        { marketRegime: 'BULL' }
+        { marketRegime: 'BULL', correlationValue: 0 }
       );
     });
 
@@ -231,11 +236,12 @@ describe('PipelineProgressionService', () => {
       expect(result.degradation).toBe(0);
       expect(degradationCalculator.calculateFromValues).not.toHaveBeenCalled();
       expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(expect.any(Object), 0, {
-        marketRegime: undefined
+        marketRegime: undefined,
+        correlationValue: 0
       });
     });
 
-    it('passes degradation clamped at 0 when calculator returns negative (improvement)', async () => {
+    it('applies half penalty for small negative degradation (-10 → effective 5)', async () => {
       marketRegimeService.getCurrentRegime.mockResolvedValue(null as never);
       degradationCalculator.calculateFromValues.mockReturnValue(-10);
       const pipeline = makePipeline({
@@ -244,10 +250,28 @@ describe('PipelineProgressionService', () => {
         } as never
       });
 
-      await service.calculatePipelineScore(pipeline, metrics);
+      const result = await service.calculatePipelineScore(pipeline, metrics);
 
-      // raw degradation negative; clamped to 0 for scoring
-      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(expect.any(Object), 0, expect.any(Object));
+      // raw degradation stays in result for debugging
+      expect(result.degradation).toBe(-10);
+      // effective degradation = abs(-10) * 0.5 = 5
+      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(expect.any(Object), 5, expect.any(Object));
+    });
+
+    it('applies half penalty for large negative degradation (-60 → effective 30)', async () => {
+      marketRegimeService.getCurrentRegime.mockResolvedValue(null as never);
+      degradationCalculator.calculateFromValues.mockReturnValue(-60);
+      const pipeline = makePipeline({
+        stageResults: {
+          historical: { sharpeRatio: 1.0, totalReturn: 0.05, maxDrawdown: 0.1, winRate: 0.5, totalTrades: 30 }
+        } as never
+      });
+
+      const result = await service.calculatePipelineScore(pipeline, metrics);
+
+      expect(result.degradation).toBe(-60);
+      // effective degradation = abs(-60) * 0.5 = 30
+      expect(scoringService.calculateScoreFromMetrics).toHaveBeenCalledWith(expect.any(Object), 30, expect.any(Object));
     });
 
     it('uses calmarRatio of 0 when drawdown is 0', async () => {
@@ -341,7 +365,7 @@ describe('PipelineProgressionService', () => {
       expect(result).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
     });
 
-    it('clamps negative degradation to 0 (improvement does not block deployment)', () => {
+    it('applies half penalty for negative degradation (-15 → effective 7.5, still within DEPLOY threshold)', () => {
       degradationCalculator.calculateFromValues.mockReturnValue(-15);
       const result = service.generateRecommendation({
         historical: { status: 'COMPLETED', sharpeRatio: 1.0, totalReturn: 0.1, maxDrawdown: 0.15, winRate: 0.5 },
@@ -354,8 +378,7 @@ describe('PipelineProgressionService', () => {
           winRate: 0.65
         }
       } as never);
-      // With Math.abs, -15 would become 15 (penalizing improvement).
-      // With Math.max(0, -15) it becomes 0, so strong metrics should yield DEPLOY.
+      // effective = abs(-15) * 0.5 = 7.5, which is ≤ 20 threshold → DEPLOY
       expect(result).toBe(DeploymentRecommendation.DEPLOY);
     });
 
