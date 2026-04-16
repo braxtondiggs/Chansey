@@ -53,8 +53,8 @@ const signalThrottle = new SignalThrottleService();
 const regimeGateService = new RegimeGateService();
 const volatilityCalculator = new VolatilityCalculator();
 const signalFilterChain = new SignalFilterChainService();
-const priceWindowService = new PriceWindowService();
 const multiTimeframeAggregator = new MultiTimeframeAggregatorService();
+const priceWindowService = new PriceWindowService(multiTimeframeAggregator);
 const tradeExecutor = new TradeExecutorService(slippageService, feeCalculator, portfolioState);
 const checkpointService = new CheckpointService();
 const exitSignalProcessor = new ExitSignalProcessorService();
@@ -2238,6 +2238,172 @@ describe('BacktestEngine next-bar execution', () => {
     expect(fillPrice).toBeGreaterThan(110); // slippage applied on top of open
     expect(fillPrice).toBeLessThan(103 * 1.1); // far from bar 0 close
     expect(fillPrice).toBeCloseTo(110, 0); // within 1 unit of bar 1's open
+  });
+
+  it('sizes percentage-based BUY signals using open-priced portfolio, not close-priced', async () => {
+    // Regression: pending-signal sizing must match fill-price timing. Before the fix,
+    // ctx.portfolio was revalued at CLOSE before flushPendingSignals ran — so a
+    // percentage-sized BUY queued on bar i-1 would size against close-priced
+    // portfolio on bar i while filling at bar i's open. That reintroduces the
+    // same lookahead bias the next-bar fix was meant to eliminate.
+    //
+    // Setup: BTC open=200 vs close=100 on bar 3 makes the pre/post fix totalValue
+    // observably different (existing BTC position worth $200 at open, $100 at close).
+    // Lows stay above the default 5% stop-loss (95.05 from 100.05 entry) so the
+    // exit tracker doesn't fire and pollute the trade list.
+    const candles = [
+      // Bar 0: BTC/ETH both stable
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 100,
+        high: 105,
+        low: 99,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'ETH',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        open: 200,
+        high: 205,
+        low: 199,
+        close: 200,
+        volume: 1000
+      }),
+      // Bar 1: BTC fills here at open=100 (slippage-adjusted to 100.05)
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T01:00:00.000Z'),
+        open: 100,
+        high: 105,
+        low: 99,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'ETH',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T01:00:00.000Z'),
+        open: 200,
+        high: 205,
+        low: 199,
+        close: 200,
+        volume: 1000
+      }),
+      // Bar 2: ETH percentage signal queued here
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T02:00:00.000Z'),
+        open: 100,
+        high: 105,
+        low: 99,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'ETH',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T02:00:00.000Z'),
+        open: 200,
+        high: 205,
+        low: 199,
+        close: 200,
+        volume: 1000
+      }),
+      // Bar 3: ETH fills here. BTC open=200 vs close=100 diverge meaningfully.
+      new OHLCCandle({
+        coinId: 'BTC',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T03:00:00.000Z'),
+        open: 200,
+        high: 205,
+        low: 99,
+        close: 100,
+        volume: 1000
+      }),
+      new OHLCCandle({
+        coinId: 'ETH',
+        exchangeId: 'exchange-1',
+        timestamp: new Date('2024-01-01T03:00:00.000Z'),
+        open: 200,
+        high: 255,
+        low: 199,
+        close: 250,
+        volume: 1000
+      })
+    ];
+
+    const algorithmRegistry = {
+      executeAlgorithm: jest
+        .fn()
+        .mockResolvedValueOnce({
+          success: true,
+          signals: [{ type: SignalType.BUY, coinId: 'BTC', quantity: 1, reason: 'entry', confidence: 0.5 }]
+        })
+        .mockResolvedValueOnce({ success: true, signals: [] })
+        .mockResolvedValueOnce({
+          success: true,
+          signals: [{ type: SignalType.BUY, coinId: 'ETH', strength: 0.5, reason: 'sized-entry', confidence: 0.5 }]
+        })
+        .mockResolvedValueOnce({ success: true, signals: [] })
+    };
+    const ohlcService = { getCandlesByDateRange: jest.fn().mockResolvedValue(candles) };
+    const engine = createEngine(algorithmRegistry, ohlcService);
+
+    const result = await engine.executeHistoricalBacktest(
+      {
+        id: 'bt-nextbar-sizing',
+        name: 'Next-bar sizing',
+        initialCapital: 10000,
+        tradingFee: 0,
+        startDate: new Date('2024-01-01T00:00:00.000Z'),
+        endDate: new Date('2024-01-01T04:00:00.000Z'),
+        algorithm: { id: 'algo-1' },
+        configSnapshot: { parameters: {} }
+      } as any,
+      [{ id: 'BTC', symbol: 'BTC' } as any, { id: 'ETH', symbol: 'ETH' } as any],
+      {
+        dataset: {
+          id: 'dataset-nextbar-sizing',
+          startAt: new Date('2024-01-01T00:00:00.000Z'),
+          endAt: new Date('2024-01-01T04:00:00.000Z')
+        } as any,
+        deterministicSeed: 'seed-nextbar-sizing'
+      }
+    );
+
+    // Two fills: BTC on bar 1, ETH on bar 3.
+    expect(result.trades).toHaveLength(2);
+    const ethTrade = result.trades.find((t) => t.baseCoin?.id === 'ETH');
+    expect(ethTrade).toBeDefined();
+    expect((ethTrade?.executedAt as Date).toISOString()).toBe('2024-01-01T03:00:00.000Z');
+
+    // Derive expected sizing from open-priced portfolio (the fix).
+    const SLIPPAGE_BPS = 5; // DEFAULT_SLIPPAGE_CONFIG.fixedBps
+    const slippageFactor = 1 + SLIPPAGE_BPS / 10000;
+    const btcFillPrice = 100 * slippageFactor; // 100.05
+    const cashAfterBtcBuy = 10000 - 1 * btcFillPrice; // 9899.95
+    const portfolioAtBar3Open = cashAfterBtcBuy + 1 * 200; // BTC valued at bar 3 open (200) = 10099.95
+    const ethInvestmentFixed = portfolioAtBar3Open * 0.5; // 5049.975
+    const ethQuantityFixed = ethInvestmentFixed / 200;
+    const ethFillPrice = 200 * slippageFactor; // 200.1
+    const expectedEthTotalValue = ethQuantityFixed * ethFillPrice;
+
+    // Buggy baseline: portfolio revalued at bar 3 CLOSE (BTC=100) before flush.
+    const portfolioAtBar3Close = cashAfterBtcBuy + 1 * 100; // 9999.95
+    const ethInvestmentBuggy = portfolioAtBar3Close * 0.5;
+    const ethQuantityBuggy = ethInvestmentBuggy / 200;
+    const buggyEthTotalValue = ethQuantityBuggy * ethFillPrice;
+
+    expect(ethTrade?.totalValue).toBeCloseTo(expectedEthTotalValue, 4);
+    // The two values differ by ~50, more than enough to detect a regression
+    // at precision=0 (the fixed value rounds to 5052, the buggy one to 5002).
+    expect(Math.round((ethTrade?.totalValue ?? 0) as number)).not.toBe(Math.round(buggyEthTotalValue));
   });
 
   it('drops pending signals at the final trading bar (no next bar to fill at)', async () => {

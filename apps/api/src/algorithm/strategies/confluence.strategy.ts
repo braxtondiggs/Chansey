@@ -284,9 +284,9 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
    */
   private async shouldBlockBuyFromDailyTrend(context: AlgorithmContext, coinId: string): Promise<boolean> {
     const dailyHistory = context.priceDataByTimeframe?.[PriceTimeframe.DAILY]?.[coinId];
-    // Need at least 51 bars for EMA50 + 5-bar slope lookback.
+    // Need at least 55 bars: 50 for EMA50 first valid value + 5-bar slope lookback.
     const SLOPE_LOOKBACK = 5;
-    const MIN_BARS = 50 + SLOPE_LOOKBACK + 1;
+    const MIN_BARS = 50 + SLOPE_LOOKBACK;
     if (!dailyHistory || dailyHistory.length < MIN_BARS) {
       return false;
     }

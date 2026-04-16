@@ -77,15 +77,12 @@ export class BacktestBarProcessor {
     }
     const marketData: MarketData = { timestamp, prices: priceMap };
 
-    // Always update portfolio values and advance price windows (needed for indicator warmup)
-    ctx.portfolio = this.portfolioState.updateValues(ctx.portfolio, marketData.prices);
-
-    this.applyForcedExits(ctx, timestamp, marketData);
-
     const priceData = this.priceWindow.advancePriceWindows(ctx.priceCtx, ctx.coins, timestamp);
     const priceDataByTimeframe = this.priceWindow.advanceMultiTimeframeWindows(ctx.priceCtx, ctx.coins, timestamp);
 
     if (isWarmup) {
+      ctx.portfolio = this.portfolioState.updateValues(ctx.portfolio, marketData.prices);
+      this.applyForcedExits(ctx, timestamp, marketData);
       await this.processWarmupBar(ctx, i, timestamp, priceData, currentPrices, priceDataByTimeframe);
       return null;
     }
@@ -139,8 +136,21 @@ export class BacktestBarProcessor {
   ): Promise<void> {
     const iterStart = Date.now();
 
-    // Flush signals queued on bar i-1 at this bar's open (next-bar execution).
+    // Step 1: Revalue portfolio at OPEN prices so pending-signal sizing matches fill price.
+    const openPriceMap = new Map<string, number>();
+    for (const candle of currentPrices) {
+      openPriceMap.set(candle.coinId, this.priceWindow.getOpenPriceValue(candle));
+    }
+    ctx.portfolio = this.portfolioState.updateValues(ctx.portfolio, openPriceMap);
+
+    // Step 2: Flush signals queued on bar i-1 at this bar's open.
     await this.flushPendingSignals(ctx, timestamp, currentPrices);
+
+    // Step 3: Re-baseline portfolio at CLOSE for the rest of the bar (exits, algorithm, drawdown).
+    ctx.portfolio = this.portfolioState.updateValues(ctx.portfolio, marketData.prices);
+
+    // Step 4: Forced exits (liquidation/delisting) at close — now correctly AFTER open fills.
+    this.applyForcedExits(ctx, timestamp, marketData);
 
     // Exit tracker: check SL/TP/trailing exits BEFORE algorithm runs new decisions
     if (ctx.exitTracker) {

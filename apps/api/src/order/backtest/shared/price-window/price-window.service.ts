@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { binarySearchLeft, binarySearchRight } from './binary-search.util';
+import { MultiTimeframeAggregatorService } from './multi-timeframe-aggregator.service';
 import { PRICE_TIMEFRAME_WINDOW_SIZES, PriceTimeframe } from './price-timeframe';
 
 import { Coin } from '../../../../coin/coin.entity';
@@ -43,6 +44,8 @@ export type AggregatedTimeframes = Map<PriceTimeframe, Map<string, PriceSummary[
 
 @Injectable()
 export class PriceWindowService {
+  constructor(private readonly aggregator: MultiTimeframeAggregatorService) {}
+
   getPriceTimestamp(candle: OHLCCandle): Date {
     return candle.timestamp;
   }
@@ -349,7 +352,16 @@ export class PriceWindowService {
       }
     }
 
-    return { pricesByTimestamp, timestamps, immutablePriceData, volumeMap, filteredCandles, tradingStartIndex: 0 };
+    const aggregatedTimeframes = this.aggregator.aggregate(immutablePriceData.summariesByCoin);
+    return {
+      pricesByTimestamp,
+      timestamps,
+      immutablePriceData,
+      volumeMap,
+      filteredCandles,
+      tradingStartIndex: 0,
+      aggregatedTimeframes
+    };
   }
 
   async filterCoinsWithSufficientData(

@@ -1,3 +1,4 @@
+import { MultiTimeframeAggregatorService } from './multi-timeframe-aggregator.service';
 import { PriceTimeframe, PRICE_TIMEFRAME_WINDOW_SIZES } from './price-timeframe';
 import { type AggregatedTimeframes, PriceWindowService } from './price-window.service';
 
@@ -8,7 +9,7 @@ describe('PriceWindowService', () => {
   let service: PriceWindowService;
 
   beforeEach(() => {
-    service = new PriceWindowService();
+    service = new PriceWindowService(new MultiTimeframeAggregatorService());
   });
 
   const makeCandle = (coinId: string, ts: number, close = 100): OHLCCandle =>
@@ -296,6 +297,25 @@ describe('PriceWindowService', () => {
       expect(ctx.higherTimeframes).toBeDefined();
       service.clearPriceData({}, ctx);
       expect(ctx.higherTimeframes).toBeUndefined();
+    });
+
+    it('precomputeWindowData populates aggregatedTimeframes', () => {
+      const HOUR_MS = 60 * 60 * 1000;
+      const candles: OHLCCandle[] = [];
+      for (let h = 0; h < 24; h++) {
+        candles.push(makeCandle('btc', h * HOUR_MS));
+      }
+      const preloaded = new Map<string, OHLCCandle[]>([['btc', candles]]);
+      const result = service.precomputeWindowData(
+        [{ id: 'btc' } as any],
+        preloaded,
+        new Date(0),
+        new Date(24 * HOUR_MS)
+      );
+
+      expect(result.aggregatedTimeframes).toBeDefined();
+      expect(result.aggregatedTimeframes?.get(PriceTimeframe.FOUR_HOUR)?.get('btc')).toHaveLength(6);
+      expect(result.aggregatedTimeframes?.get(PriceTimeframe.DAILY)?.get('btc')).toHaveLength(1);
     });
   });
 });
