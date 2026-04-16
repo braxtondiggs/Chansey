@@ -309,12 +309,15 @@ export class BacktestResultService {
     processedCount: number,
     totalCount: number
   ): Promise<void> {
+    // Cast: TypeORM's QueryDeepPartialEntity rejects the nested
+    // Record<string, unknown> inside TradingSignal.metadata (pendingSignals).
+    // The column is jsonb so the value is persisted verbatim regardless.
     await this.backtestRepository.update(backtestId, {
       checkpointState: checkpoint,
       lastCheckpointAt: new Date(),
       processedTimestampCount: processedCount,
       totalTimestampCount: totalCount
-    });
+    } as Parameters<typeof this.backtestRepository.update>[1]);
 
     this.logger.debug(
       `Saved checkpoint for backtest ${backtestId} at index ${checkpoint.lastProcessedIndex} (${processedCount}/${totalCount})`

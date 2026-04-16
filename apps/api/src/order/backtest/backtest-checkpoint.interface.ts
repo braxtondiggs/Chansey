@@ -1,5 +1,6 @@
 import { type SerializableExitTrackerState } from './shared/exits/backtest-exit-tracker';
 import { type SerializableThrottleState } from './shared/throttle/signal-throttle.interface';
+import { type TradingSignal } from './shared/types';
 
 /**
  * Position state within a portfolio checkpoint.
@@ -65,6 +66,13 @@ export interface BacktestCheckpointState {
 
   /** Exit tracker state for resume capability (positions with SL/TP/trailing levels) */
   exitTrackerState?: SerializableExitTrackerState;
+
+  /**
+   * Pending strategy signals queued on the last processed bar that must fill
+   * at the next bar's open. Persisted so live-replay resume doesn't lose them.
+   * Backward-compatible: older checkpoints without this field default to [].
+   */
+  pendingSignals?: TradingSignal[];
 
   /** SHA256 checksum (first 16 chars) for data integrity verification */
   checksum: string;

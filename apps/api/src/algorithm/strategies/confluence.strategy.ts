@@ -21,6 +21,7 @@ import { generateSignalFromConfluence } from './confluence-signals.util';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { PriceTimeframe } from '../../order/backtest/shared/price-window/price-timeframe';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -99,13 +100,17 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         // Generate trading signal if confluence is met
         const currentPrice = priceHistory[priceHistory.length - 1].avg;
         const isFuturesShort = config.enableShortSignals && context.metadata?.marketType === 'futures';
+        const blockBuy = config.enableDailyTrendFilter
+          ? await this.shouldBlockBuyFromDailyTrend(context, coin.id)
+          : false;
         const tradingSignal = generateSignalFromConfluence(
           coin.id,
           coin.symbol,
           currentPrice,
           confluenceScore,
           config,
-          isFuturesShort
+          isFuturesShort,
+          blockBuy
         );
 
         if (tradingSignal) {
@@ -268,6 +273,42 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
       averageStrength,
       isVolatilityFiltered
     };
+  }
+
+  /**
+   * Opt-in daily trend filter: returns true when the daily EMA50 slope is
+   * negative (falling), signalling that BUY signals on the 1h feed should be
+   * suppressed. Silently returns false when daily data is unavailable — the
+   * filter degrades to flag-off behavior rather than blocking trades on
+   * missing data.
+   */
+  private async shouldBlockBuyFromDailyTrend(context: AlgorithmContext, coinId: string): Promise<boolean> {
+    const dailyHistory = context.priceDataByTimeframe?.[PriceTimeframe.DAILY]?.[coinId];
+    // Need at least 51 bars for EMA50 + 5-bar slope lookback.
+    const SLOPE_LOOKBACK = 5;
+    const MIN_BARS = 50 + SLOPE_LOOKBACK + 1;
+    if (!dailyHistory || dailyHistory.length < MIN_BARS) {
+      return false;
+    }
+
+    try {
+      const ema = await this.indicatorService.calculateEMA(
+        { coinId: `${coinId}:daily`, prices: dailyHistory, period: 50 },
+        this
+      );
+      const values = ema.values;
+      const lastIdx = values.length - 1;
+      const priorIdx = lastIdx - SLOPE_LOOKBACK;
+      if (priorIdx < 0) return false;
+      const now = values[lastIdx];
+      const prior = values[priorIdx];
+      if (!Number.isFinite(now) || !Number.isFinite(prior)) return false;
+      return now - prior < 0;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.debug(`Daily trend filter failed for ${coinId}: ${err.message}`);
+      return false;
+    }
   }
 
   /**

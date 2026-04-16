@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { binarySearchLeft, binarySearchRight } from './binary-search.util';
+import { PRICE_TIMEFRAME_WINDOW_SIZES, PriceTimeframe } from './price-timeframe';
 
 import { Coin } from '../../../../coin/coin.entity';
 import { OHLCCandle, PriceSummary, PriceSummaryByPeriod } from '../../../../ohlc/ohlc-candle.entity';
@@ -11,14 +12,34 @@ import { ImmutablePriceTrackingData, PrecomputedWindowData } from '../optimizati
 /** Maximum price history entries kept per coin in the sliding window. */
 const MAX_WINDOW_SIZE = 500;
 
+/**
+ * Per-timeframe mutable state mirroring the base 1h tracking context.
+ * Populated by `initMultiTimeframe` and advanced by
+ * `advanceMultiTimeframeWindows` in lockstep with the base loop.
+ */
+export interface TimeframeTrackingState {
+  summariesByCoin: Map<string, PriceSummary[]>;
+  timestampsByCoin: Map<string, Date[]>;
+  indexByCoin: Map<string, number>;
+  windowsByCoin: Map<string, RingBuffer<PriceSummary>>;
+}
+
 export interface PriceTrackingContext {
   timestampsByCoin: Map<string, Date[]>;
   summariesByCoin: Map<string, PriceSummary[]>;
   indexByCoin: Map<string, number>;
   windowsByCoin: Map<string, RingBuffer<PriceSummary>>;
+  /** Optional higher-timeframe tracking (4h / 1d / 1w). */
+  higherTimeframes?: Map<PriceTimeframe, TimeframeTrackingState>;
   btcRegimeSma?: IncrementalSma;
   btcCoinId?: string;
 }
+
+/**
+ * Pre-aggregated higher-TF summaries organized by coin, used to prime
+ * optimization runs (built once per unique date range, reused per combo).
+ */
+export type AggregatedTimeframes = Map<PriceTimeframe, Map<string, PriceSummary[]>>;
 
 @Injectable()
 export class PriceWindowService {
@@ -36,8 +57,22 @@ export class PriceWindowService {
       coin: candle.coinId,
       date: candle.timestamp,
       high: candle.high,
-      low: candle.low
+      low: candle.low,
+      open: candle.open,
+      close: candle.close,
+      volume: candle.volume
     };
+  }
+
+  /**
+   * Resolve the opening price for next-bar execution.
+   * Falls back to `avg` for aggregated summaries where `open` may be missing.
+   */
+  getOpenPriceValue(candle: OHLCCandle | PriceSummary): number {
+    if ('coinId' in candle) {
+      return candle.open;
+    }
+    return candle.open ?? candle.avg;
   }
 
   initPriceTracking(historicalPrices: OHLCCandle[], coinIds: string[]): PriceTrackingContext {
@@ -91,7 +126,10 @@ export class PriceWindowService {
     return { timestampsByCoin, summariesByCoin };
   }
 
-  initPriceTrackingFromPrecomputed(immutable: ImmutablePriceTrackingData): PriceTrackingContext {
+  initPriceTrackingFromPrecomputed(
+    immutable: ImmutablePriceTrackingData,
+    aggregatedTimeframes?: AggregatedTimeframes
+  ): PriceTrackingContext {
     const indexByCoin = new Map<string, number>();
     const windowsByCoin = new Map<string, RingBuffer<PriceSummary>>();
 
@@ -100,12 +138,18 @@ export class PriceWindowService {
       windowsByCoin.set(coinId, new RingBuffer<PriceSummary>(MAX_WINDOW_SIZE));
     }
 
-    return {
+    const ctx: PriceTrackingContext = {
       timestampsByCoin: immutable.timestampsByCoin,
       summariesByCoin: immutable.summariesByCoin,
       indexByCoin,
       windowsByCoin
     };
+
+    if (aggregatedTimeframes) {
+      this.initMultiTimeframe(ctx, aggregatedTimeframes);
+    }
+
+    return ctx;
   }
 
   advancePriceWindows(ctx: PriceTrackingContext, coins: Coin[], timestamp: Date): PriceSummaryByPeriod {
@@ -132,6 +176,72 @@ export class PriceWindowService {
     return priceData;
   }
 
+  /**
+   * Prime a tracking context with higher-timeframe state from pre-aggregated summaries.
+   * Must be called after `initPriceTracking` (or `initPriceTrackingFromPrecomputed`)
+   * but before the first `advanceMultiTimeframeWindows` call.
+   */
+  initMultiTimeframe(ctx: PriceTrackingContext, aggregated: AggregatedTimeframes): void {
+    const higherTimeframes = new Map<PriceTimeframe, TimeframeTrackingState>();
+    for (const [tf, perCoin] of aggregated) {
+      if (tf === PriceTimeframe.HOURLY) continue;
+      const windowSize = PRICE_TIMEFRAME_WINDOW_SIZES[tf];
+      const summariesByCoin = new Map<string, PriceSummary[]>();
+      const timestampsByCoin = new Map<string, Date[]>();
+      const indexByCoin = new Map<string, number>();
+      const windowsByCoin = new Map<string, RingBuffer<PriceSummary>>();
+
+      for (const [coinId, summaries] of perCoin) {
+        summariesByCoin.set(coinId, summaries);
+        timestampsByCoin.set(
+          coinId,
+          summaries.map((s) => s.date)
+        );
+        indexByCoin.set(coinId, -1);
+        windowsByCoin.set(coinId, new RingBuffer<PriceSummary>(windowSize));
+      }
+
+      higherTimeframes.set(tf, { summariesByCoin, timestampsByCoin, indexByCoin, windowsByCoin });
+    }
+    ctx.higherTimeframes = higherTimeframes;
+  }
+
+  /**
+   * Advance each configured higher-timeframe window up to (and including) `timestamp`.
+   * Returns a per-timeframe price data map for direct consumption by
+   * `AlgorithmContext.priceDataByTimeframe`.
+   */
+  advanceMultiTimeframeWindows(
+    ctx: PriceTrackingContext,
+    coins: Coin[],
+    timestamp: Date
+  ): Partial<Record<PriceTimeframe, PriceSummaryByPeriod>> {
+    const out: Partial<Record<PriceTimeframe, PriceSummaryByPeriod>> = {};
+    if (!ctx.higherTimeframes) return out;
+
+    for (const [tf, state] of ctx.higherTimeframes) {
+      const tfData: PriceSummaryByPeriod = {};
+      for (const coin of coins) {
+        const coinTimestamps = state.timestampsByCoin.get(coin.id) ?? [];
+        const summaries = state.summariesByCoin.get(coin.id) ?? [];
+        const window = state.windowsByCoin.get(coin.id);
+        if (!window) continue;
+        let pointer = state.indexByCoin.get(coin.id) ?? -1;
+        while (pointer + 1 < coinTimestamps.length && coinTimestamps[pointer + 1] <= timestamp) {
+          pointer += 1;
+          window.push(summaries[pointer]);
+        }
+        state.indexByCoin.set(coin.id, pointer);
+        if (window.length > 0) {
+          tfData[coin.id] = window.toArray();
+        }
+      }
+      out[tf] = tfData;
+    }
+
+    return out;
+  }
+
   clearPriceData(pricesByTimestamp: Record<string, OHLCCandle[]>, priceCtx: PriceTrackingContext): void {
     for (const key of Object.keys(pricesByTimestamp)) {
       delete pricesByTimestamp[key];
@@ -140,6 +250,16 @@ export class PriceWindowService {
     priceCtx.summariesByCoin.clear();
     priceCtx.windowsByCoin.clear();
     priceCtx.indexByCoin.clear();
+    if (priceCtx.higherTimeframes) {
+      for (const state of priceCtx.higherTimeframes.values()) {
+        state.summariesByCoin.clear();
+        state.timestampsByCoin.clear();
+        state.windowsByCoin.clear();
+        state.indexByCoin.clear();
+      }
+      priceCtx.higherTimeframes.clear();
+      priceCtx.higherTimeframes = undefined;
+    }
     priceCtx.btcRegimeSma = undefined;
     priceCtx.btcCoinId = undefined;
   }

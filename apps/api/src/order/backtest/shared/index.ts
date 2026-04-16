@@ -5,6 +5,7 @@ export {
   BacktestContextFactory,
   BacktestLoopRunner,
   BacktestSignalTradeService,
+  BarCheckpointCoordinator,
   ExecuteOptions,
   ExecuteTradeResult,
   ForcedExitService,

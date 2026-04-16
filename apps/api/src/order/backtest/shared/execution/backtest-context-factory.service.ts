@@ -29,7 +29,7 @@ import { SeededRandom } from '../../seeded-random';
 import { ExitSignalProcessorService } from '../exit-signals';
 import { MetricsAccumulatorService } from '../metrics-accumulator';
 import { Portfolio, PortfolioStateService } from '../portfolio';
-import { PriceWindowService } from '../price-window';
+import { MultiTimeframeAggregatorService, PriceWindowService } from '../price-window';
 import { CompositeRegimeService } from '../regime';
 import { DEFAULT_SLIPPAGE_CONFIG, mapSlippageModelType, SlippageModelType, SlippageService } from '../slippage';
 import { SlippageContextService } from '../slippage-context';
@@ -61,6 +61,7 @@ export class BacktestContextFactory {
     private readonly signalThrottle: SignalThrottleService,
     private readonly coinListingEventService: CoinListingEventService,
     private readonly priceWindow: PriceWindowService,
+    private readonly multiTfAggregator: MultiTimeframeAggregatorService,
     private readonly compositeRegimeSvc: CompositeRegimeService,
     private readonly slippageCtxSvc: SlippageContextService,
     private readonly exitSignalProcessorSvc: ExitSignalProcessorService,
@@ -195,6 +196,17 @@ export class BacktestContextFactory {
     if (ctx.btcCoin) {
       ctx.priceCtx.btcRegimeSma = new IncrementalSma(REGIME_SMA_PERIOD);
       ctx.priceCtx.btcCoinId = ctx.btcCoin.id;
+    }
+
+    // Phase 1 multi-timeframe aggregation — pure, in-memory.
+    // Aggregated from the full 1h summary series so higher-TF buckets
+    // cover the complete date range the loop will iterate over.
+    const aggregated = this.multiTfAggregator.aggregate(ctx.priceCtx.summariesByCoin);
+    this.priceWindow.initMultiTimeframe(ctx.priceCtx, aggregated);
+
+    // Restore queued signals from checkpoint (next-bar execution buffer).
+    if (isResuming && options.resumeFrom?.pendingSignals) {
+      ctx.pendingSignals.push(...options.resumeFrom.pendingSignals);
     }
 
     // Fast-forward price windows on resume
@@ -403,7 +415,9 @@ export class BacktestContextFactory {
 
     if (startIndex > 0) {
       for (let j = 0; j < startIndex; j++) {
-        this.priceWindow.advancePriceWindows(ctx.priceCtx, coins, new Date(timestamps[j]));
+        const ts = new Date(timestamps[j]);
+        this.priceWindow.advancePriceWindows(ctx.priceCtx, coins, ts);
+        this.priceWindow.advanceMultiTimeframeWindows(ctx.priceCtx, coins, ts);
       }
       this.logger.log(`Fast-forwarded price windows through ${startIndex} timestamps for resume`);
     }

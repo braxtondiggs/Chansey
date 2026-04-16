@@ -57,6 +57,7 @@ describe('OptimizationCoreService', () => {
       clearPriceData: jest.fn(),
       extractCandleSegments: jest.fn().mockReturnValue([]),
       advancePriceWindows: jest.fn().mockReturnValue(new Map()),
+      advanceMultiTimeframeWindows: jest.fn().mockReturnValue({}),
       getPriceValue: jest.fn().mockImplementation((c: OHLCCandle) => c.close),
       precomputeWindowData: jest.fn(),
       filterCoinsWithSufficientData: jest

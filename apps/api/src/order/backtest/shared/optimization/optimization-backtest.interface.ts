@@ -1,5 +1,6 @@
 import { type OHLCCandle, type PriceSummary } from '../../../../ohlc/ohlc-candle.entity';
 import { type ExitConfig } from '../../../interfaces/exit-config.interface';
+import { type PriceTimeframe } from '../price-window/price-timeframe';
 import { type SlippageConfig } from '../slippage';
 
 /**
@@ -75,4 +76,10 @@ export interface PrecomputedWindowData {
    *  Indicators are computed on the full range including warm-up, but trades
    *  are only executed at and after this index. Defaults to 0 (no warm-up). */
   tradingStartIndex: number;
+  /**
+   * Optional multi-timeframe aggregations of the base 1h summaries.
+   * Built once per unique date range so every combo reuses the same
+   * higher-timeframe history without repeating the O(n) aggregation.
+   */
+  aggregatedTimeframes?: Map<PriceTimeframe, Map<string, PriceSummary[]>>;
 }

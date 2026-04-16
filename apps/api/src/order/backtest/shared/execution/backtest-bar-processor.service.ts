@@ -3,24 +3,22 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LoopContext } from './backtest-loop-context';
 import { mapStrategySignal } from './backtest-loop-runner.types';
 import { BacktestSignalTradeService } from './backtest-signal-trade.service';
+import { BarCheckpointCoordinator } from './bar-checkpoint-coordinator.service';
 import { ForcedExitService } from './forced-exit.service';
 import { TradeExecutorService } from './trade-executor.service';
 
+import { AlgorithmContext } from '../../../../algorithm/interfaces';
 import { AlgorithmRegistry } from '../../../../algorithm/registry/algorithm-registry.service';
 import { AlgorithmNotRegisteredException } from '../../../../common/exceptions';
 import { OHLCCandle, PriceSummaryByPeriod } from '../../../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../../../shared/error.util';
-import { BacktestAbortedError } from '../../backtest-aborted.error';
-import { BacktestCheckpointState } from '../../backtest-checkpoint.interface';
-import { CheckpointResults, LiveReplayExecuteResult, ReplaySpeed } from '../../backtest-pacing.interface';
+import { LiveReplayExecuteResult, ReplaySpeed } from '../../backtest-pacing.interface';
 import { BacktestStreamService } from '../../backtest-stream.service';
 import { BacktestTrade } from '../../backtest-trade.entity';
-import { CheckpointService } from '../checkpoint';
 import { ExitSignalProcessorService } from '../exit-signals';
-import { MetricsAccumulatorService } from '../metrics-accumulator';
-import { OpportunitySellService } from '../opportunity-selling';
 import { PortfolioStateService } from '../portfolio';
 import { PriceWindowService } from '../price-window';
+import { PriceTimeframe } from '../price-window/price-timeframe';
 import { CompositeRegimeService } from '../regime';
 import { SlippageContextService } from '../slippage-context';
 import { SignalThrottleService } from '../throttle';
@@ -32,15 +30,10 @@ const ALGORITHM_CALL_TIMEOUT_MS = 90_000;
 const MAX_CONSECUTIVE_ERRORS = 10;
 /** Heartbeat interval for stale detection (~30s) */
 const HEARTBEAT_INTERVAL_MS = 30_000;
-/** Max consecutive pause-check failures before forced pause */
-const MAX_CONSECUTIVE_PAUSE_FAILURES = 3;
 
 /**
  * Processes a single timestamp bar within the backtest loop.
- *
- * Extracted from BacktestLoopRunner to isolate per-bar logic (warmup,
- * algorithm execution, signal processing, trade execution, checkpointing)
- * from the orchestrator's initialization and cleanup phases.
+ * Checkpoint/pause bookkeeping is delegated to BarCheckpointCoordinator.
  */
 @Injectable()
 export class BacktestBarProcessor {
@@ -54,22 +47,18 @@ export class BacktestBarProcessor {
     private readonly priceWindow: PriceWindowService,
     private readonly compositeRegimeSvc: CompositeRegimeService,
     private readonly slippageCtxSvc: SlippageContextService,
-    private readonly checkpointSvc: CheckpointService,
     private readonly exitSignalProcessorSvc: ExitSignalProcessorService,
     private readonly forcedExitSvc: ForcedExitService,
     private readonly tradeExecutor: TradeExecutorService,
-    private readonly metricsAccSvc: MetricsAccumulatorService,
-    private readonly opportunitySellSvc: OpportunitySellService,
-    private readonly signalTradeSvc: BacktestSignalTradeService
+    private readonly signalTradeSvc: BacktestSignalTradeService,
+    private readonly checkpointCoordinator: BarCheckpointCoordinator
   ) {}
 
-  /**
-   * Process one timestamp bar. Returns a LiveReplayExecuteResult if paused, null to continue.
-   */
+  /** Process one timestamp bar. Returns a LiveReplayExecuteResult if paused, null to continue. */
   async processBar(ctx: LoopContext, i: number): Promise<LiveReplayExecuteResult | null> {
     // Live-replay: check for pause request BEFORE processing this timestamp
     if (ctx.isLiveReplay && ctx.liveReplayOpts?.shouldPause) {
-      const pauseResult = await this.checkPauseRequest(ctx, i);
+      const pauseResult = await this.checkpointCoordinator.checkPauseRequest(ctx, i);
       if (pauseResult && 'paused' in pauseResult) {
         return pauseResult as LiveReplayExecuteResult;
       }
@@ -86,77 +75,38 @@ export class BacktestBarProcessor {
     for (const price of currentPrices) {
       priceMap.set(price.coinId, this.priceWindow.getPriceValue(price));
     }
-    const marketData: MarketData = {
-      timestamp,
-      prices: priceMap
-    };
+    const marketData: MarketData = { timestamp, prices: priceMap };
 
     // Always update portfolio values and advance price windows (needed for indicator warmup)
     ctx.portfolio = this.portfolioState.updateValues(ctx.portfolio, marketData.prices);
 
-    // Check for liquidated positions after price update
-    const liquidationTrades = this.forcedExitSvc.checkAndApplyLiquidations(
-      ctx.portfolio,
-      marketData,
-      ctx.backtest.tradingFee,
-      ctx.coinMap,
-      ctx.quoteCoin
-    );
-    for (const liqTrade of liquidationTrades) {
-      liqTrade.executedAt = timestamp;
-      ctx.trades.push(liqTrade as Partial<BacktestTrade>);
-    }
-
-    // Update last known prices for delisting penalty calculation
-    for (const [coinId, price] of marketData.prices) {
-      ctx.lastKnownPrices.set(coinId, price);
-    }
-
-    // Check for delisting forced exits
-    if (ctx.delistingDates.size > 0) {
-      const delistingTrades = this.forcedExitSvc.checkAndApplyDelistingExits(
-        ctx.portfolio,
-        ctx.delistingDates,
-        ctx.lastKnownPrices,
-        timestamp,
-        ctx.options.delistingPenalty ?? 0.9,
-        ctx.exitTracker,
-        ctx.coinMap,
-        ctx.quoteCoin
-      );
-      for (const dt of delistingTrades) {
-        dt.executedAt = timestamp;
-        dt.backtest = ctx.backtest;
-        ctx.trades.push(dt);
-      }
-    }
+    this.applyForcedExits(ctx, timestamp, marketData);
 
     const priceData = this.priceWindow.advancePriceWindows(ctx.priceCtx, ctx.coins, timestamp);
+    const priceDataByTimeframe = this.priceWindow.advanceMultiTimeframeWindows(ctx.priceCtx, ctx.coins, timestamp);
 
     if (isWarmup) {
-      await this.processWarmupBar(ctx, i, timestamp, priceData, marketData, currentPrices);
+      await this.processWarmupBar(ctx, i, timestamp, priceData, currentPrices, priceDataByTimeframe);
       return null;
     }
 
-    await this.processTradingBar(ctx, i, timestamp, currentPrices, marketData, priceData);
+    await this.processTradingBar(ctx, i, timestamp, currentPrices, marketData, priceData, priceDataByTimeframe);
     return null;
   }
 
-  /**
-   * Handle warmup iteration (algorithm priming only, no trading/recording).
-   */
+  /** Warmup iteration: algorithm priming only, no trading/recording. */
   private async processWarmupBar(
     ctx: LoopContext,
     i: number,
     timestamp: Date,
-    priceData: ReturnType<PriceWindowService['advancePriceWindows']>,
-    _marketData: MarketData,
-    currentPrices: OHLCCandle[]
+    priceData: PriceSummaryByPeriod,
+    currentPrices: OHLCCandle[],
+    priceDataByTimeframe: Partial<Record<PriceTimeframe, PriceSummaryByPeriod>>
   ): Promise<void> {
     const warmupRegime = ctx.btcCoin
       ? this.compositeRegimeSvc.computeCompositeRegime(ctx.btcCoin.id, ctx.priceCtx)
       : null;
-    const context = this.buildAlgorithmContext(ctx, priceData, timestamp, {
+    const context = this.buildAlgorithmContext(ctx, priceData, timestamp, priceDataByTimeframe, {
       compositeRegime: ctx.isLiveReplay ? undefined : warmupRegime?.compositeRegime,
       volatilityRegime: ctx.isLiveReplay ? undefined : warmupRegime?.volatilityRegime
     });
@@ -177,18 +127,20 @@ export class BacktestBarProcessor {
     this.slippageCtxSvc.updatePrevCandleMap(ctx.prevCandleMap, currentPrices);
   }
 
-  /**
-   * Execute algorithm + process signals for a trading bar.
-   */
+  /** Execute algorithm + process signals for a trading bar. */
   private async processTradingBar(
     ctx: LoopContext,
     i: number,
     timestamp: Date,
     currentPrices: OHLCCandle[],
     marketData: MarketData,
-    priceData: ReturnType<PriceWindowService['advancePriceWindows']>
+    priceData: PriceSummaryByPeriod,
+    priceDataByTimeframe: Partial<Record<PriceTimeframe, PriceSummaryByPeriod>>
   ): Promise<void> {
     const iterStart = Date.now();
+
+    // Flush signals queued on bar i-1 at this bar's open (next-bar execution).
+    await this.flushPendingSignals(ctx, timestamp, currentPrices);
 
     // Exit tracker: check SL/TP/trailing exits BEFORE algorithm runs new decisions
     if (ctx.exitTracker) {
@@ -237,12 +189,114 @@ export class BacktestBarProcessor {
       ? this.compositeRegimeSvc.computeCompositeRegime(ctx.btcCoin.id, ctx.priceCtx)
       : null;
 
-    const context = this.buildAlgorithmContext(ctx, priceData, timestamp, {
+    const context = this.buildAlgorithmContext(ctx, priceData, timestamp, priceDataByTimeframe, {
       compositeRegime: barRegimeResult?.compositeRegime,
       volatilityRegime: barRegimeResult?.volatilityRegime
     });
 
-    let strategySignals: TradingSignal[] = [];
+    const strategySignals = await this.executeAlgorithmWithRetry(ctx, i, timestamp, context);
+
+    // Apply signal throttle: cooldowns, daily cap, min sell %
+    const throttled = this.signalThrottle.filterSignals(
+      strategySignals,
+      ctx.throttleState,
+      ctx.throttleConfig,
+      timestamp.getTime()
+    ).accepted;
+
+    // Regime gate + regime-scaled position sizing + concentration filter
+    const concentrationCtx = this.compositeRegimeSvc.buildConcentrationContext(ctx.portfolio, marketData);
+    const { filteredSignals, barMaxAllocation, barMinAllocation } = this.compositeRegimeSvc.applyBarRegime(
+      throttled,
+      ctx.priceCtx,
+      {
+        btcCoin: ctx.btcCoin,
+        regimeGateEnabled: ctx.regimeGateEnabled,
+        enableRegimeScaledSizing: ctx.enableRegimeScaledSizing,
+        riskLevel: ctx.riskLevel,
+        concentrationContext: concentrationCtx
+      },
+      { maxAllocation: ctx.maxAllocation, minAllocation: ctx.minAllocation },
+      barRegimeResult
+    );
+
+    await this.dispatchFilteredSignals(ctx, filteredSignals, timestamp, marketData, currentPrices, {
+      barMaxAllocation,
+      barMinAllocation
+    });
+
+    // Update peak/drawdown
+    if (ctx.portfolio.totalValue > ctx.peakValue) ctx.peakValue = ctx.portfolio.totalValue;
+    const currentDrawdown =
+      ctx.peakValue === 0 ? 0 : Math.max(0, (ctx.peakValue - ctx.portfolio.totalValue) / ctx.peakValue);
+    if (currentDrawdown > ctx.maxDrawdown) ctx.maxDrawdown = currentDrawdown;
+
+    const tradingRelativeIdx = i - ctx.effectiveTradingStartIndex;
+    await this.recordPeriodicSnapshot(ctx, i, timestamp, marketData, tradingRelativeIdx, currentDrawdown);
+
+    this.slippageCtxSvc.updatePrevCandleMap(ctx.prevCandleMap, currentPrices);
+
+    if (!ctx.isLiveReplay && Date.now() - iterStart > 5000) {
+      this.logger.warn(
+        `Slow iteration ${i}/${ctx.effectiveTimestampCount} took ${Date.now() - iterStart}ms at ${timestamp.toISOString()}`
+      );
+    }
+
+    await this.heartbeatAndYield(ctx, i);
+
+    if (ctx.options.abortSignal?.aborted) {
+      await this.checkpointCoordinator.writeEmergencyAndAbort(ctx, i, timestamp);
+    }
+
+    if (ctx.options.onCheckpoint && i - ctx.lastCheckpointIndex >= ctx.checkpointInterval) {
+      await this.checkpointCoordinator.persist(ctx, i, timestamp, tradingRelativeIdx);
+    }
+  }
+
+  /** Apply liquidation + delisting forced exits to the portfolio for this bar. */
+  private applyForcedExits(ctx: LoopContext, timestamp: Date, marketData: MarketData): void {
+    const liquidationTrades = this.forcedExitSvc.checkAndApplyLiquidations(
+      ctx.portfolio,
+      marketData,
+      ctx.backtest.tradingFee,
+      ctx.coinMap,
+      ctx.quoteCoin
+    );
+    for (const liqTrade of liquidationTrades) {
+      liqTrade.executedAt = timestamp;
+      ctx.trades.push(liqTrade as Partial<BacktestTrade>);
+    }
+
+    for (const [coinId, price] of marketData.prices) {
+      ctx.lastKnownPrices.set(coinId, price);
+    }
+
+    if (ctx.delistingDates.size > 0) {
+      const delistingTrades = this.forcedExitSvc.checkAndApplyDelistingExits(
+        ctx.portfolio,
+        ctx.delistingDates,
+        ctx.lastKnownPrices,
+        timestamp,
+        ctx.options.delistingPenalty ?? 0.9,
+        ctx.exitTracker,
+        ctx.coinMap,
+        ctx.quoteCoin
+      );
+      for (const dt of delistingTrades) {
+        dt.executedAt = timestamp;
+        dt.backtest = ctx.backtest;
+        ctx.trades.push(dt);
+      }
+    }
+  }
+
+  /** Run the algorithm with timeout + consecutive-error tracking; returns non-HOLD signals. */
+  private async executeAlgorithmWithRetry(
+    ctx: LoopContext,
+    i: number,
+    timestamp: Date,
+    context: AlgorithmContext
+  ): Promise<TradingSignal[]> {
     try {
       const algoExecStart = Date.now();
       const result = await this.executeWithTimeout(
@@ -251,7 +305,6 @@ export class BacktestBarProcessor {
         `Algorithm timed out at iteration ${i}/${ctx.effectiveTimestampCount} (${timestamp.toISOString()})`
       );
 
-      // Historical mode: log slow executions
       if (!ctx.isLiveReplay) {
         const algoExecDuration = Date.now() - algoExecStart;
         if (algoExecDuration > 5000) {
@@ -262,13 +315,13 @@ export class BacktestBarProcessor {
         }
       }
 
-      if (result.success && result.signals?.length) {
-        strategySignals = result.signals
-          .map((s) => mapStrategySignal(s, result.exitConfig))
-          .filter((signal) => signal.action !== 'HOLD');
-      }
       ctx.watchdog.recordSuccess();
       ctx.consecutiveErrors = 0;
+
+      if (!result.success || !result.signals?.length) return [];
+      return result.signals
+        .map((s) => mapStrategySignal(s, result.exitConfig))
+        .filter((signal) => signal.action !== 'HOLD');
     } catch (error: unknown) {
       if (error instanceof AlgorithmNotRegisteredException) {
         throw error;
@@ -283,282 +336,72 @@ export class BacktestBarProcessor {
       if (ctx.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
         throw new Error(`Algorithm failed ${MAX_CONSECUTIVE_ERRORS} consecutive times. Last error: ${err.message}`);
       }
-    }
-
-    // Apply signal throttle: cooldowns, daily cap, min sell %
-    strategySignals = this.signalThrottle.filterSignals(
-      strategySignals,
-      ctx.throttleState,
-      ctx.throttleConfig,
-      timestamp.getTime()
-    ).accepted;
-
-    // Regime gate + regime-scaled position sizing + concentration filter
-    const concentrationCtx = this.compositeRegimeSvc.buildConcentrationContext(ctx.portfolio, marketData);
-
-    const { filteredSignals, barMaxAllocation, barMinAllocation } = this.compositeRegimeSvc.applyBarRegime(
-      strategySignals,
-      ctx.priceCtx,
-      {
-        btcCoin: ctx.btcCoin,
-        regimeGateEnabled: ctx.regimeGateEnabled,
-        enableRegimeScaledSizing: ctx.enableRegimeScaledSizing,
-        riskLevel: ctx.riskLevel,
-        concentrationContext: concentrationCtx
-      },
-      { maxAllocation: ctx.maxAllocation, minAllocation: ctx.minAllocation },
-      barRegimeResult
-    );
-    strategySignals = filteredSignals;
-
-    for (const strategySignal of strategySignals) {
-      await this.signalTradeSvc.processSignalTrade(
-        ctx,
-        strategySignal,
-        timestamp,
-        marketData,
-        currentPrices,
-        barMaxAllocation,
-        barMinAllocation
-      );
-    }
-
-    // Update peak/drawdown
-    if (ctx.portfolio.totalValue > ctx.peakValue) {
-      ctx.peakValue = ctx.portfolio.totalValue;
-    }
-    const currentDrawdown =
-      ctx.peakValue === 0 ? 0 : Math.max(0, (ctx.peakValue - ctx.portfolio.totalValue) / ctx.peakValue);
-    if (currentDrawdown > ctx.maxDrawdown) {
-      ctx.maxDrawdown = currentDrawdown;
-    }
-
-    // Periodic snapshots (every 24h relative index or last bar)
-    const tradingRelativeIdx = i - ctx.effectiveTradingStartIndex;
-    if (tradingRelativeIdx % 24 === 0 || i === ctx.effectiveTimestampCount - 1) {
-      ctx.snapshots.push({
-        timestamp,
-        portfolioValue: ctx.portfolio.totalValue,
-        cashBalance: ctx.portfolio.cashBalance,
-        holdings: this.exitSignalProcessorSvc.portfolioToHoldings(ctx.portfolio, marketData.prices),
-        cumulativeReturn: (ctx.portfolio.totalValue - ctx.backtest.initialCapital) / ctx.backtest.initialCapital,
-        drawdown: currentDrawdown,
-        backtest: ctx.backtest
-      });
-
-      if (ctx.options.telemetryEnabled && this.backtestStream) {
-        await this.backtestStream.publishMetric(ctx.backtest.id, 'portfolio_value', ctx.portfolio.totalValue, 'USD', {
-          timestamp: timestamp.toISOString(),
-          ...(ctx.isLiveReplay ? { isLiveReplay: 1, replaySpeed: ReplaySpeed[ctx.replaySpeed] } : {})
-        });
-      }
-    }
-
-    // Update previous candle map for spread estimation
-    this.slippageCtxSvc.updatePrevCandleMap(ctx.prevCandleMap, currentPrices);
-
-    // Iteration timing telemetry (historical only — live-replay has intentional delays)
-    if (!ctx.isLiveReplay) {
-      const iterDuration = Date.now() - iterStart;
-      if (iterDuration > 5000) {
-        this.logger.warn(
-          `Slow iteration ${i}/${ctx.effectiveTimestampCount} took ${iterDuration}ms at ${timestamp.toISOString()}`
-        );
-      }
-    }
-
-    await this.heartbeatAndYield(ctx, i);
-
-    // Emergency checkpoint on SIGTERM
-    if (ctx.options.abortSignal?.aborted) {
-      await this.writeEmergencyCheckpointAndAbort(ctx, i, timestamp);
-    }
-
-    // Checkpoint callback: save state periodically for resume capability
-    const timeSinceLastCheckpoint = i - ctx.lastCheckpointIndex;
-    if (ctx.options.onCheckpoint && timeSinceLastCheckpoint >= ctx.checkpointInterval) {
-      await this.persistCheckpoint(ctx, i, timestamp, tradingRelativeIdx);
+      return [];
     }
   }
 
-  /**
-   * Periodic heartbeat + yield to event loop.
-   */
+  /** Hard-SL fills in-bar; every other signal queues for next-bar open. */
+  private async dispatchFilteredSignals(
+    ctx: LoopContext,
+    signals: TradingSignal[],
+    timestamp: Date,
+    marketData: MarketData,
+    currentPrices: OHLCCandle[],
+    allocationLimits: { barMaxAllocation: number; barMinAllocation: number }
+  ): Promise<void> {
+    for (const strategySignal of signals) {
+      if (strategySignal.metadata?.hardStopLoss === true) {
+        await this.signalTradeSvc.processSignalTrade(
+          ctx,
+          strategySignal,
+          timestamp,
+          marketData,
+          currentPrices,
+          allocationLimits.barMaxAllocation,
+          allocationLimits.barMinAllocation
+        );
+      } else {
+        ctx.pendingSignals.push(strategySignal);
+      }
+    }
+  }
+
+  /** Push a snapshot every 24 trading bars or at the final bar + optional telemetry. */
+  private async recordPeriodicSnapshot(
+    ctx: LoopContext,
+    i: number,
+    timestamp: Date,
+    marketData: MarketData,
+    tradingRelativeIdx: number,
+    currentDrawdown: number
+  ): Promise<void> {
+    if (tradingRelativeIdx % 24 !== 0 && i !== ctx.effectiveTimestampCount - 1) return;
+
+    ctx.snapshots.push({
+      timestamp,
+      portfolioValue: ctx.portfolio.totalValue,
+      cashBalance: ctx.portfolio.cashBalance,
+      holdings: this.exitSignalProcessorSvc.portfolioToHoldings(ctx.portfolio, marketData.prices),
+      cumulativeReturn: (ctx.portfolio.totalValue - ctx.backtest.initialCapital) / ctx.backtest.initialCapital,
+      drawdown: currentDrawdown,
+      backtest: ctx.backtest
+    });
+
+    if (ctx.options.telemetryEnabled && this.backtestStream) {
+      await this.backtestStream.publishMetric(ctx.backtest.id, 'portfolio_value', ctx.portfolio.totalValue, 'USD', {
+        timestamp: timestamp.toISOString(),
+        ...(ctx.isLiveReplay ? { isLiveReplay: 1, replaySpeed: ReplaySpeed[ctx.replaySpeed] } : {})
+      });
+    }
+  }
+
+  /** Periodic heartbeat + yield to event loop. */
   private async heartbeatAndYield(ctx: LoopContext, i: number): Promise<void> {
     if (ctx.options.onHeartbeat && Date.now() - ctx.lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
       await ctx.options.onHeartbeat(i, ctx.effectiveTimestampCount);
       ctx.lastHeartbeatTime = Date.now();
     }
-
-    // Yield to the event loop periodically
-    if (i % 100 === 0) {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-  }
-
-  /**
-   * Check for pause request in live-replay mode.
-   */
-  private async checkPauseRequest(
-    ctx: LoopContext,
-    i: number
-  ): Promise<LiveReplayExecuteResult | { consecutivePauseFailures: number } | null> {
-    const liveOpts = ctx.liveReplayOpts;
-    if (!liveOpts) return null;
-
-    try {
-      const shouldPauseNow = await (liveOpts.shouldPause as () => Promise<boolean>)();
-
-      if (!shouldPauseNow) {
-        return { consecutivePauseFailures: 0 };
-      }
-
-      return this.buildPauseResult(ctx, i, liveOpts.onPaused);
-    } catch (pauseError: unknown) {
-      const err = toErrorInfo(pauseError);
-      const newFailures = ctx.consecutivePauseFailures + 1;
-      this.logger.warn(
-        `Pause check failed at index ${i} (attempt ${newFailures}/${MAX_CONSECUTIVE_PAUSE_FAILURES}): ${err.message}`
-      );
-
-      if (newFailures >= MAX_CONSECUTIVE_PAUSE_FAILURES) {
-        this.logger.error(
-          `Pause check failed ${MAX_CONSECUTIVE_PAUSE_FAILURES} times consecutively, forcing precautionary pause`
-        );
-        return this.buildPauseResult(ctx, i, liveOpts.onPaused);
-      }
-
-      return { consecutivePauseFailures: newFailures };
-    }
-  }
-
-  /**
-   * Build a pause result with checkpoint state and partial final metrics.
-   */
-  private async buildPauseResult(
-    ctx: LoopContext,
-    i: number,
-    onPaused?: (state: BacktestCheckpointState) => Promise<void>
-  ): Promise<LiveReplayExecuteResult> {
-    const checkpointState = this.buildCheckpointSnapshot(ctx, i - 1, ctx.timestamps[Math.max(0, i - 1)]);
-
-    this.logger.log(`Live replay paused at index ${i - 1}/${ctx.timestamps.length}`);
-
-    if (onPaused) {
-      await onPaused(checkpointState);
-    }
-
-    // Calculate partial final metrics using accumulators for correctness across checkpoints
-    this.metricsAccSvc.harvestMetrics(ctx.trades, ctx.snapshots, ctx.metricsAcc.callbacks);
-    const finalMetrics = this.metricsAccSvc.calculateFinalMetricsFromAccumulators(
-      ctx.backtest.initialCapital,
-      ctx.backtest.startDate,
-      ctx.backtest.endDate,
-      ctx.portfolio,
-      ctx.metricsAcc.totalTradeCount,
-      ctx.metricsAcc.totalSellCount,
-      ctx.metricsAcc.totalWinningSellCount,
-      ctx.metricsAcc.snapshotValues,
-      ctx.maxDrawdown,
-      ctx.metricsAcc.grossProfit,
-      ctx.metricsAcc.grossLoss
-    );
-
-    return {
-      trades: ctx.trades,
-      signals: ctx.signals,
-      simulatedFills: ctx.simulatedFills,
-      snapshots: ctx.snapshots,
-      finalMetrics,
-      paused: true,
-      pausedCheckpoint: checkpointState
-    };
-  }
-
-  /**
-   * Build checkpoint state — shared by regular checkpoints, pause, and emergency.
-   */
-  private buildCheckpointSnapshot(ctx: LoopContext, index: number, timestampStr: string): BacktestCheckpointState {
-    const currentSells = this.checkpointSvc.countSells(ctx.trades);
-    return this.checkpointSvc.buildCheckpointState({
-      lastProcessedIndex: index,
-      lastProcessedTimestamp: timestampStr,
-      portfolio: ctx.portfolio,
-      peakValue: ctx.peakValue,
-      maxDrawdown: ctx.maxDrawdown,
-      rngState: ctx.rng.getState(),
-      tradesCount: ctx.totalPersistedCounts.trades + ctx.trades.length,
-      signalsCount: ctx.totalPersistedCounts.signals + ctx.signals.length,
-      fillsCount: ctx.totalPersistedCounts.fills + ctx.simulatedFills.length,
-      snapshotsCount: ctx.totalPersistedCounts.snapshots + ctx.snapshots.length,
-      sellsCount: ctx.metricsAcc.totalSellCount + currentSells.sells,
-      winningSellsCount: ctx.metricsAcc.totalWinningSellCount + currentSells.winningSells,
-      serializedThrottleState: this.signalThrottle.serialize(ctx.throttleState),
-      grossProfit: ctx.metricsAcc.grossProfit + currentSells.grossProfit,
-      grossLoss: ctx.metricsAcc.grossLoss + currentSells.grossLoss,
-      exitTrackerState: ctx.exitTracker?.serialize()
-    });
-  }
-
-  /**
-   * Persist a checkpoint: build state, call onCheckpoint, harvest metrics, clear arrays.
-   */
-  private async persistCheckpoint(
-    ctx: LoopContext,
-    i: number,
-    timestamp: Date,
-    tradingRelativeIdx: number
-  ): Promise<void> {
-    const checkpointState = this.buildCheckpointSnapshot(ctx, i, timestamp.toISOString());
-
-    const checkpointResults: CheckpointResults = {
-      trades: ctx.trades.slice(ctx.lastCheckpointCounts.trades),
-      signals: ctx.signals.slice(ctx.lastCheckpointCounts.signals),
-      simulatedFills: ctx.simulatedFills.slice(ctx.lastCheckpointCounts.fills),
-      snapshots: ctx.snapshots.slice(ctx.lastCheckpointCounts.snapshots)
-    };
-
-    await ctx.options.onCheckpoint?.(checkpointState, checkpointResults, ctx.tradingTimestampCount);
-
-    // Harvest metrics from current arrays into accumulators before clearing
-    this.metricsAccSvc.harvestMetrics(ctx.trades, ctx.snapshots, ctx.metricsAcc.callbacks);
-
-    // Update cumulative persisted counts and clear arrays to free memory
-    ctx.totalPersistedCounts.trades += ctx.trades.length;
-    ctx.totalPersistedCounts.signals += ctx.signals.length;
-    ctx.totalPersistedCounts.fills += ctx.simulatedFills.length;
-    ctx.totalPersistedCounts.snapshots += ctx.snapshots.length;
-    ctx.trades.length = 0;
-    ctx.signals.length = 0;
-    ctx.simulatedFills.length = 0;
-    ctx.snapshots.length = 0;
-    ctx.lastCheckpointCounts = { trades: 0, signals: 0, fills: 0, snapshots: 0 };
-    ctx.lastCheckpointIndex = i;
-
-    this.logger.debug(
-      `${ctx.isLiveReplay ? 'Live replay c' : 'C'}heckpoint saved at index ${i}/${ctx.effectiveTimestampCount} (${((tradingRelativeIdx / ctx.tradingTimestampCount) * 100).toFixed(1)}%)`
-    );
-  }
-
-  /**
-   * Write an emergency checkpoint and throw BacktestAbortedError.
-   */
-  async writeEmergencyCheckpointAndAbort(ctx: LoopContext, i: number, timestamp: Date): Promise<never> {
-    if (ctx.options.onCheckpoint) {
-      const emergencyState = this.buildCheckpointSnapshot(ctx, i, timestamp.toISOString());
-      const emergencyResults: CheckpointResults = {
-        trades: ctx.trades.slice(ctx.lastCheckpointCounts.trades),
-        signals: ctx.signals.slice(ctx.lastCheckpointCounts.signals),
-        simulatedFills: ctx.simulatedFills.slice(ctx.lastCheckpointCounts.fills),
-        snapshots: ctx.snapshots.slice(ctx.lastCheckpointCounts.snapshots)
-      };
-      await ctx.options.onCheckpoint(emergencyState, emergencyResults, ctx.tradingTimestampCount);
-    } else {
-      this.logger.warn(
-        `Backtest ${ctx.backtest.id} aborted but no checkpoint callback available — state may not be recoverable`
-      );
-    }
-    throw new BacktestAbortedError(ctx.backtest.id);
+    if (i % 100 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
   }
 
   private delay(ms: number): Promise<void> {
@@ -577,8 +420,10 @@ export class BacktestBarProcessor {
     ctx: LoopContext,
     priceData: PriceSummaryByPeriod,
     timestamp: Date,
+    priceDataByTimeframe: Partial<Record<PriceTimeframe, PriceSummaryByPeriod>>,
     regime: Record<string, unknown>
   ) {
+    const hasHigherTimeframes = Object.keys(priceDataByTimeframe).length > 0;
     return {
       coins: ctx.coins,
       priceData,
@@ -591,7 +436,53 @@ export class BacktestBarProcessor {
       })(),
       availableBalance: ctx.portfolio.cashBalance,
       metadata: ctx.algoMetadata,
+      ...(hasHigherTimeframes
+        ? {
+            priceDataByTimeframe: {
+              [PriceTimeframe.HOURLY]: priceData,
+              ...priceDataByTimeframe
+            }
+          }
+        : {}),
       ...regime
     };
+  }
+
+  /**
+   * Flush signals queued on bar i-1. They fill at the current bar's open —
+   * the next-bar-execution fix for same-bar close lookahead bias. Signals
+   * for coins that have since delisted are dropped rather than filled at a
+   * stale level. Allocation limits stay at ctx-level (bar-regime adjustment
+   * applies to new decisions on this bar, not prior-bar orders).
+   */
+  private async flushPendingSignals(ctx: LoopContext, timestamp: Date, currentPrices: OHLCCandle[]): Promise<void> {
+    if (ctx.pendingSignals.length === 0) return;
+
+    const openPriceMap = new Map<string, number>();
+    for (const candle of currentPrices) {
+      openPriceMap.set(candle.coinId, this.priceWindow.getOpenPriceValue(candle));
+    }
+    const openMarketData: MarketData = { timestamp, prices: openPriceMap };
+
+    const queued = ctx.pendingSignals;
+    ctx.pendingSignals = [];
+
+    for (const pending of queued) {
+      if (!openPriceMap.has(pending.coinId)) {
+        this.logger.debug(
+          `Dropping pending ${pending.action} signal for coin ${pending.coinId} — no price on bar ${timestamp.toISOString()}`
+        );
+        continue;
+      }
+      await this.signalTradeSvc.processSignalTrade(
+        ctx,
+        pending,
+        timestamp,
+        openMarketData,
+        currentPrices,
+        ctx.maxAllocation,
+        ctx.minAllocation
+      );
+    }
   }
 }

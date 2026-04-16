@@ -173,13 +173,16 @@ export class BacktestRecoveryService implements OnApplicationBootstrap {
     // If a crash occurs between the DB update and queue.add(), the PENDING backtest will have
     // no job — this is safe because the recovery service already detects orphaned PENDING
     // backtests with no valid queue job (lines 84-93) and re-queues them on the next restart.
+    // Cast: TypeORM's QueryDeepPartialEntity rejects the nested
+    // Record<string, unknown> inside TradingSignal.metadata (pendingSignals).
+    // The column is jsonb so the value is persisted verbatim regardless.
     await this.backtestRepository.update(backtest.id, {
       status: BacktestStatus.PENDING,
       configSnapshot: updatedConfigSnapshot as Record<string, any>,
       checkpointState: backtest.checkpointState,
       lastCheckpointAt: backtest.lastCheckpointAt,
       processedTimestampCount: backtest.processedTimestampCount
-    });
+    } as Parameters<typeof this.backtestRepository.update>[1]);
 
     await queue.add('execute-backtest', payload, {
       jobId: backtest.id,

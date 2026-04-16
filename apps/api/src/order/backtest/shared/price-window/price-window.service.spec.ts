@@ -1,6 +1,7 @@
-import { PriceWindowService } from './price-window.service';
+import { PriceTimeframe, PRICE_TIMEFRAME_WINDOW_SIZES } from './price-timeframe';
+import { type AggregatedTimeframes, PriceWindowService } from './price-window.service';
 
-import { OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
+import { OHLCCandle, type PriceSummary } from '../../../../ohlc/ohlc-candle.entity';
 import { IncrementalSma } from '../../incremental-sma';
 
 describe('PriceWindowService', () => {
@@ -22,7 +23,7 @@ describe('PriceWindowService', () => {
     });
 
   describe('buildPriceSummary', () => {
-    it('maps candle fields to PriceSummary with close as avg', () => {
+    it('maps candle fields to PriceSummary with close as avg and preserves OHLCV', () => {
       const candle = makeCandle('btc', 1000, 50000);
       const summary = service.buildPriceSummary(candle);
       expect(summary).toEqual({
@@ -30,8 +31,33 @@ describe('PriceWindowService', () => {
         coin: 'btc',
         date: new Date(1000),
         high: 50010,
-        low: 49990
+        low: 49990,
+        open: 49995,
+        close: 50000,
+        volume: 1000
       });
+    });
+  });
+
+  describe('getOpenPriceValue', () => {
+    it('returns candle.open for OHLCCandle input', () => {
+      const candle = makeCandle('btc', 1000, 50000);
+      expect(service.getOpenPriceValue(candle)).toBe(49995);
+    });
+
+    it('returns summary.open for PriceSummary input, falling back to avg', () => {
+      const withOpen: PriceSummary = {
+        coin: 'btc',
+        date: new Date(0),
+        avg: 100,
+        high: 101,
+        low: 99,
+        open: 95,
+        close: 100
+      };
+      const withoutOpen: PriceSummary = { coin: 'btc', date: new Date(0), avg: 100, high: 101, low: 99 };
+      expect(service.getOpenPriceValue(withOpen)).toBe(95);
+      expect(service.getOpenPriceValue(withoutOpen)).toBe(100);
     });
   });
 
@@ -204,6 +230,72 @@ describe('PriceWindowService', () => {
       expect(result.filtered[0].id).toBe('btc');
       expect(result.excludedCount).toBe(1);
       expect(result.excludedDetails).toEqual(['ETH(50/100)']);
+    });
+  });
+
+  describe('multi-timeframe windows', () => {
+    const makeSummary = (coin: string, ts: number, close = 100): PriceSummary => ({
+      coin,
+      date: new Date(ts),
+      avg: close,
+      high: close + 1,
+      low: close - 1,
+      open: close - 0.5,
+      close,
+      volume: 1
+    });
+
+    it('initMultiTimeframe sizes each ring buffer to the configured per-timeframe window', () => {
+      const ctx = service.initPriceTracking([], ['btc']);
+      const aggregated: AggregatedTimeframes = new Map([
+        [PriceTimeframe.FOUR_HOUR, new Map([['btc', [makeSummary('btc', 0)]]])],
+        [PriceTimeframe.DAILY, new Map([['btc', [makeSummary('btc', 0)]]])]
+      ]);
+      service.initMultiTimeframe(ctx, aggregated);
+
+      const fourH = ctx.higherTimeframes?.get(PriceTimeframe.FOUR_HOUR);
+      const daily = ctx.higherTimeframes?.get(PriceTimeframe.DAILY);
+      expect(fourH).toBeDefined();
+      expect(daily).toBeDefined();
+      expect(fourH?.indexByCoin.get('btc')).toBe(-1);
+      expect(daily?.indexByCoin.get('btc')).toBe(-1);
+      expect(fourH?.windowsByCoin.get('btc')?.length).toBe(0);
+      // Ring buffer capacity is respected — sanity check by pushing beyond size.
+      const cap = PRICE_TIMEFRAME_WINDOW_SIZES[PriceTimeframe.FOUR_HOUR];
+      const buf = fourH?.windowsByCoin.get('btc');
+      expect(buf).toBeDefined();
+      if (!buf) return;
+      for (let i = 0; i < cap + 5; i++) buf.push(makeSummary('btc', i));
+      expect(buf.length).toBe(cap);
+    });
+
+    it('advanceMultiTimeframeWindows advances pointers in sync with the base 1h loop', () => {
+      const ctx = service.initPriceTracking([], ['btc']);
+      const fourHourSummaries = [
+        makeSummary('btc', 0),
+        makeSummary('btc', 4 * 60 * 60 * 1000),
+        makeSummary('btc', 8 * 60 * 60 * 1000)
+      ];
+      service.initMultiTimeframe(ctx, new Map([[PriceTimeframe.FOUR_HOUR, new Map([['btc', fourHourSummaries]])]]));
+
+      // Advance to t=5h: two bars are <= timestamp (0h and 4h), third (8h) is not.
+      const out = service.advanceMultiTimeframeWindows(ctx, [{ id: 'btc' } as any], new Date(5 * 60 * 60 * 1000));
+      expect(out[PriceTimeframe.FOUR_HOUR]?.['btc']).toHaveLength(2);
+      expect(ctx.higherTimeframes?.get(PriceTimeframe.FOUR_HOUR)?.indexByCoin.get('btc')).toBe(1);
+    });
+
+    it('returns empty object when ctx has no higherTimeframes', () => {
+      const ctx = service.initPriceTracking([], ['btc']);
+      const out = service.advanceMultiTimeframeWindows(ctx, [{ id: 'btc' } as any], new Date(0));
+      expect(out).toEqual({});
+    });
+
+    it('clearPriceData wipes higherTimeframes state', () => {
+      const ctx = service.initPriceTracking([], ['btc']);
+      service.initMultiTimeframe(ctx, new Map([[PriceTimeframe.DAILY, new Map([['btc', [makeSummary('btc', 0)]]])]]));
+      expect(ctx.higherTimeframes).toBeDefined();
+      service.clearPriceData({}, ctx);
+      expect(ctx.higherTimeframes).toBeUndefined();
     });
   });
 });

@@ -1,6 +1,7 @@
 import { type CompositeRegimeType, type MarketRegimeType } from '@chansey/api-interfaces';
 
 import { type CandleData } from '../../ohlc/ohlc-candle.entity';
+import { type PriceTimeframe } from '../../order/backtest/shared/price-window/price-timeframe';
 import { type Order } from '../../order/order.entity';
 
 /**
@@ -74,4 +75,15 @@ export interface AlgorithmContext {
    * Available in both backtest and live trading contexts.
    */
   volatilityRegime?: MarketRegimeType;
+
+  /**
+   * Price data grouped by timeframe. When present, higher timeframes contain
+   * only *completed* bars — no partial trailing candles. The HOURLY entry,
+   * when present, mirrors `priceData` for ergonomic access.
+   *
+   * Currently only populated in backtest / paper-trading / live-replay
+   * contexts. Live trading passes `undefined` until a future phase wires
+   * up realtime aggregation.
+   */
+  priceDataByTimeframe?: Partial<Record<PriceTimeframe, Record<string, CandleData[]>>>;
 }
