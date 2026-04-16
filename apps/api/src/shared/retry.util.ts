@@ -94,7 +94,7 @@ export function isTransientError(error: Error): boolean {
 
   // PostgreSQL connection errors
   if (
-    message.includes('connection terminated unexpectedly') ||
+    message.includes('connection terminated') ||
     message.includes('server closed the connection unexpectedly') ||
     message.includes('connection is not open') ||
     message.includes('too many connections') ||
@@ -102,8 +102,16 @@ export function isTransientError(error: Error): boolean {
     message.includes('terminating connection due to administrator command') ||
     message.includes('could not connect to server') ||
     message.includes('the database system is starting up') ||
-    message.includes('the database system is shutting down')
+    message.includes('the database system is shutting down') ||
+    message.includes('timeout exceeded when trying to connect') ||
+    (message.includes('canceling statement due to') && message.includes('timeout')) ||
+    message.includes('connection timeout')
   ) {
+    return true;
+  }
+
+  // Redis transient errors
+  if (message.includes('redis is loading') || message.includes('loading the dataset in memory')) {
     return true;
   }
 
