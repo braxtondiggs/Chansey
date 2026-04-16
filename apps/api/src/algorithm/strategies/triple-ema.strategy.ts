@@ -141,10 +141,10 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       fastPeriod: (config.fastPeriod as number) ?? 8,
       mediumPeriod: (config.mediumPeriod as number) ?? 21,
       slowPeriod: (config.slowPeriod as number) ?? 55,
-      requireFullAlignment: (config.requireFullAlignment as boolean) ?? true,
+      requireFullAlignment: (config.requireFullAlignment as boolean) ?? false,
       signalOnPartialCross: (config.signalOnPartialCross as boolean) ?? true,
-      minConfidence: (config.minConfidence as number) ?? 0.5,
-      minSpread: (config.minSpread as number) ?? 0.003
+      minConfidence: (config.minConfidence as number) ?? 0.3,
+      minSpread: (config.minSpread as number) ?? 0.001
     };
   }
 
@@ -232,19 +232,14 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       return null;
     }
 
-    // Minimum EMA spread filter: skip if EMAs are too close (noise cross)
-    if (alignmentState.emaSpread < config.minSpread) {
-      return null;
-    }
-
     const currentPrice = prices[currentIndex].avg;
     const currentFast = fastEMA[currentIndex];
     const currentMedium = mediumEMA[currentIndex];
     const currentSlow = slowEMA[currentIndex];
 
-    // Check for full alignment change (strongest signal)
+    // Check for alignment change (strongest signal)
     if (alignmentState.current !== alignmentState.previous) {
-      if (alignmentState.current === 'bullish') {
+      if (alignmentState.current === 'bullish' && alignmentState.emaSpread >= config.minSpread) {
         // Transition to bullish alignment
         const strength = this.calculateSignalStrength(alignmentState);
         const confidence = this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, true);
@@ -269,7 +264,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         };
       }
 
-      if (alignmentState.current === 'bearish') {
+      if (alignmentState.current === 'bearish' && alignmentState.emaSpread >= config.minSpread) {
         // Transition to bearish alignment
         const strength = this.calculateSignalStrength(alignmentState);
         const confidence = this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, false);
@@ -293,6 +288,60 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
           }
         };
       }
+
+      // Breakdown: alignment lost — exit signal (bypasses minSpread since converging EMAs ARE the signal)
+      if (alignmentState.current === 'neutral') {
+        if (alignmentState.previous === 'bullish') {
+          const strength = this.calculateSignalStrength(alignmentState) * 0.6;
+
+          return {
+            type: SignalType.SELL,
+            coinId,
+            strength,
+            price: currentPrice,
+            confidence: 0.5,
+            reason: `Triple EMA breakdown: Bullish alignment lost — Fast EMA (${currentFast.toFixed(4)}) no longer above Medium EMA (${currentMedium.toFixed(4)}) and Slow EMA (${currentSlow.toFixed(4)})`,
+            metadata: {
+              symbol: coinSymbol,
+              fastEMA: currentFast,
+              mediumEMA: currentMedium,
+              slowEMA: currentSlow,
+              alignment: 'neutral',
+              previousAlignment: 'bullish',
+              emaSpread: alignmentState.emaSpread,
+              alignmentType: 'breakdown'
+            }
+          };
+        }
+
+        if (alignmentState.previous === 'bearish') {
+          const strength = this.calculateSignalStrength(alignmentState) * 0.6;
+
+          return {
+            type: SignalType.BUY,
+            coinId,
+            strength,
+            price: currentPrice,
+            confidence: 0.5,
+            reason: `Triple EMA breakdown: Bearish alignment lost — Fast EMA (${currentFast.toFixed(4)}) no longer below Medium EMA (${currentMedium.toFixed(4)}) and Slow EMA (${currentSlow.toFixed(4)})`,
+            metadata: {
+              symbol: coinSymbol,
+              fastEMA: currentFast,
+              mediumEMA: currentMedium,
+              slowEMA: currentSlow,
+              alignment: 'neutral',
+              previousAlignment: 'bearish',
+              emaSpread: alignmentState.emaSpread,
+              alignmentType: 'breakdown'
+            }
+          };
+        }
+      }
+    }
+
+    // Minimum EMA spread filter for partial cross signals
+    if (alignmentState.emaSpread < config.minSpread) {
+      return null;
     }
 
     // Optional: Signal on partial crossover (fast/medium cross while medium/slow aligned)
@@ -470,13 +519,13 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       ...super.getConfigSchema(),
       fastPeriod: { type: 'number', default: 8, min: 3, max: 15, description: 'Fast EMA period' },
       mediumPeriod: { type: 'number', default: 21, min: 10, max: 30, description: 'Medium EMA period' },
-      slowPeriod: { type: 'number', default: 55, min: 45, max: 100, description: 'Slow EMA period' },
-      requireFullAlignment: { type: 'boolean', default: true, description: 'Require all 3 EMAs aligned for signal' },
+      slowPeriod: { type: 'number', default: 55, min: 30, max: 100, description: 'Slow EMA period' },
+      requireFullAlignment: { type: 'boolean', default: false, description: 'Require all 3 EMAs aligned for signal' },
       signalOnPartialCross: { type: 'boolean', default: true, description: 'Signal on fast/medium crossover' },
-      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' },
+      minConfidence: { type: 'number', default: 0.3, min: 0, max: 1, description: 'Minimum confidence required' },
       minSpread: {
         type: 'number',
-        default: 0.003,
+        default: 0.001,
         min: 0,
         max: 0.05,
         description: 'Minimum EMA spread to generate signal. Filters noise crosses.'

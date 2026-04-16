@@ -611,7 +611,7 @@ describe('ATRTrailingStopStrategy', () => {
       const confidenceSchema = schema['minConfidence'] as Record<string, unknown>;
 
       expect(multiplierSchema['default']).toBe(4.5);
-      expect(multiplierSchema['min']).toBe(3.5);
+      expect(multiplierSchema['min']).toBe(2.0);
       expect(confidenceSchema['default']).toBe(0.4);
     });
   });
