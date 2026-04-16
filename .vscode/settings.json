@@ -1,32 +1,33 @@
 {
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
-  "prettier.prettierPath": "./node_modules/prettier",
-  "prettier.resolveGlobalModules": false,
-  "cSpell.words": ["Backtest", "bullmq", "chansey", "cymbit", "devkit", "fastify", "nestjs", "nrwl", "pino", "typeorm"],
   "editor.formatOnPaste": false,
-  "prettier.configPath": ".prettierrc",
   "editor.codeActionsOnSave": {
     "source.addMissingImports": "explicit",
     "source.fixAll.eslint": "always"
   },
+  "prettier.prettierPath": "./node_modules/prettier",
+  "prettier.resolveGlobalModules": false,
+  "prettier.configPath": ".prettierrc",
+  "eslint.workingDirectories": [{ "mode": "auto" }],
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "cSpell.words": ["Backtest", "bullmq", "chansey", "cymbit", "devkit", "fastify", "nestjs", "nrwl", "pino", "typeorm"],
   "vsicons.presets.angular": true,
-  "tailwindCSS.experimental.classRegex": [["className=\"([^\"\\\\]*)\"", "\"([^\"]*)\""]],
-  "tailwindCSS.includeLanguages": {
-    "typescript": "javascript",
-    "typescriptreact": "javascript"
+  "jest.runMode": "on-demand",
+  "search.exclude": {
+    "**/dist": true,
+    "**/tmp": true,
+    "**/.nx/cache": true
   },
-  "shellcheck.ignorePatterns": {
-    "**/.env.example": true
-  },
-  "files.associations": {
-    "*.d.ts": "typescript"
+  "typescript.preferences.autoImportFileExcludePatterns": ["dist", "node_modules/.cache"],
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "chat.mcp.discovery.enabled": {
     "claude-desktop": true,
     "windsurf": true,
     "cursor-global": true,
     "cursor-workspace": true
-  },
-  "nxConsole.generateAiAgentRules": false
+  }
 }
