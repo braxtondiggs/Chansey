@@ -254,8 +254,8 @@ describe('TripleEMAStrategy', () => {
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(1);
       expect(result.signals[0].type).toBe(SignalType.SELL);
-      expect(result.signals[0].metadata!.alignmentType).toBe('breakdown');
-      expect(result.signals[0].metadata!.previousAlignment).toBe('bullish');
+      expect(result.signals[0].metadata?.alignmentType).toBe('breakdown');
+      expect(result.signals[0].metadata?.previousAlignment).toBe('bullish');
       expect(result.signals[0].reason).toContain('Bullish alignment lost');
     });
 
@@ -298,8 +298,8 @@ describe('TripleEMAStrategy', () => {
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(1);
       expect(result.signals[0].type).toBe(SignalType.BUY);
-      expect(result.signals[0].metadata!.alignmentType).toBe('breakdown');
-      expect(result.signals[0].metadata!.previousAlignment).toBe('bearish');
+      expect(result.signals[0].metadata?.alignmentType).toBe('breakdown');
+      expect(result.signals[0].metadata?.previousAlignment).toBe('bearish');
       expect(result.signals[0].reason).toContain('Bearish alignment lost');
     });
 
@@ -342,7 +342,7 @@ describe('TripleEMAStrategy', () => {
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(1);
       expect(result.signals[0].type).toBe(SignalType.SELL);
-      expect(result.signals[0].metadata!.alignmentType).toBe('breakdown');
+      expect(result.signals[0].metadata?.alignmentType).toBe('breakdown');
     });
 
     it('should return no signals when EMAs are not aligned', async () => {
