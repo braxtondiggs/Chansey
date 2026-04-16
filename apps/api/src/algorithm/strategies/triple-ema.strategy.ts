@@ -292,15 +292,15 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       // Breakdown: alignment lost — exit signal (bypasses minSpread since converging EMAs ARE the signal)
       if (alignmentState.current === 'neutral') {
         if (alignmentState.previous === 'bullish') {
-          const strength = this.calculateSignalStrength(alignmentState) * 0.6;
+          const strength = Math.max(0.7, this.calculateSignalStrength(alignmentState));
 
           return {
             type: SignalType.SELL,
             coinId,
             strength,
             price: currentPrice,
-            confidence: 0.5,
-            reason: `Triple EMA breakdown: Bullish alignment lost — Fast EMA (${currentFast.toFixed(4)}) no longer above Medium EMA (${currentMedium.toFixed(4)}) and Slow EMA (${currentSlow.toFixed(4)})`,
+            confidence: Math.max(0.7, config.minConfidence),
+            reason: `Triple EMA breakdown: Bullish alignment lost — Fast > Medium > Slow no longer holds (Fast: ${currentFast.toFixed(4)}, Medium: ${currentMedium.toFixed(4)}, Slow: ${currentSlow.toFixed(4)})`,
             metadata: {
               symbol: coinSymbol,
               fastEMA: currentFast,
@@ -315,15 +315,15 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         }
 
         if (alignmentState.previous === 'bearish') {
-          const strength = this.calculateSignalStrength(alignmentState) * 0.6;
+          const strength = Math.max(0.7, this.calculateSignalStrength(alignmentState));
 
           return {
             type: SignalType.BUY,
             coinId,
             strength,
             price: currentPrice,
-            confidence: 0.5,
-            reason: `Triple EMA breakdown: Bearish alignment lost — Fast EMA (${currentFast.toFixed(4)}) no longer below Medium EMA (${currentMedium.toFixed(4)}) and Slow EMA (${currentSlow.toFixed(4)})`,
+            confidence: Math.max(0.7, config.minConfidence),
+            reason: `Triple EMA breakdown: Bearish alignment lost — Fast < Medium < Slow no longer holds (Fast: ${currentFast.toFixed(4)}, Medium: ${currentMedium.toFixed(4)}, Slow: ${currentSlow.toFixed(4)})`,
             metadata: {
               symbol: coinSymbol,
               fastEMA: currentFast,

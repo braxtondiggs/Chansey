@@ -64,6 +64,15 @@ describe('retry.util', () => {
       expect(isTransientError(new Error('could not connect to server: Connection refused'))).toBe(true);
       expect(isTransientError(new Error('the database system is starting up'))).toBe(true);
       expect(isTransientError(new Error('the database system is shutting down'))).toBe(true);
+      expect(isTransientError(new Error('Connection terminated due to connection timeout'))).toBe(true);
+      expect(isTransientError(new Error('timeout exceeded when trying to connect'))).toBe(true);
+      expect(isTransientError(new Error('canceling statement due to statement timeout'))).toBe(true);
+      expect(isTransientError(new Error('connection timeout expired'))).toBe(true);
+    });
+
+    it('should identify Redis loading errors as transient', () => {
+      expect(isTransientError(new Error('LOADING Redis is loading the dataset in memory'))).toBe(true);
+      expect(isTransientError(new Error('redis is loading'))).toBe(true);
     });
 
     it('should not identify business errors as transient', () => {
