@@ -227,6 +227,7 @@ describe('PaperTradingMonitoringService', () => {
           sharpeRatio: 1.2,
           duration: 'N/A',
           startedAt: null,
+          stoppedReason: null,
           createdAt: createdAt.toISOString()
         }
       ]);

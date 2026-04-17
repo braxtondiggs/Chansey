@@ -95,19 +95,59 @@ describe('PipelineProgressionService', () => {
   });
 
   describe('evaluateOptimizationProgression', () => {
-    it('passes when improvement meets threshold', () => {
+    it('passes when improvement meets threshold and bestScore is non-negative', () => {
       const { passed, failures } = service.evaluateOptimizationProgression(
         makePipeline(),
-        DEFAULT_PROGRESSION_RULES.optimization.minImprovement
+        DEFAULT_PROGRESSION_RULES.optimization.minImprovement,
+        10
       );
       expect(passed).toBe(true);
       expect(failures).toHaveLength(0);
     });
 
-    it('fails when improvement is below threshold', () => {
-      const { passed, failures } = service.evaluateOptimizationProgression(makePipeline(), 0);
+    it('passes when bestScore equals the threshold (boundary)', () => {
+      const { passed, failures } = service.evaluateOptimizationProgression(
+        makePipeline(),
+        DEFAULT_PROGRESSION_RULES.optimization.minImprovement,
+        0
+      );
+      expect(passed).toBe(true);
+      expect(failures).toHaveLength(0);
+    });
+
+    it('fails with only absolute-score reason when bestScore < 0 but improvement is strong', () => {
+      const { passed, failures } = service.evaluateOptimizationProgression(makePipeline(), 200, -2);
       expect(passed).toBe(false);
       expect(failures).toHaveLength(1);
+      expect(failures[0]).toContain('Best test score');
+      expect(failures[0]).toContain('lost money');
+    });
+
+    it('fails with only improvement reason when bestScore is non-negative but improvement is too low', () => {
+      const { passed, failures } = service.evaluateOptimizationProgression(makePipeline(), 0, 5);
+      expect(passed).toBe(false);
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toContain('Improvement');
+    });
+
+    it('fails with both reasons when bestScore < 0 and improvement is too low', () => {
+      const { passed, failures } = service.evaluateOptimizationProgression(makePipeline(), 0, -4);
+      expect(passed).toBe(false);
+      expect(failures).toHaveLength(2);
+      expect(failures.some((f) => f.includes('Best test score'))).toBe(true);
+      expect(failures.some((f) => f.includes('Improvement'))).toBe(true);
+    });
+
+    it('honors a custom minAbsoluteScore override in progressionRules', () => {
+      const pipeline = makePipeline({
+        progressionRules: {
+          ...DEFAULT_PROGRESSION_RULES,
+          optimization: { minImprovement: 3, minAbsoluteScore: 20 }
+        }
+      });
+      const { passed, failures } = service.evaluateOptimizationProgression(pipeline, 10, 15);
+      expect(passed).toBe(false);
+      expect(failures.some((f) => f.includes('Best test score'))).toBe(true);
     });
   });
 
@@ -486,6 +526,53 @@ describe('PipelineProgressionService', () => {
       expect(pipeline.status).toBe(PipelineStatus.COMPLETED);
       expect(pipeline.currentStage).toBe(PipelineStage.COMPLETED);
       expect(eventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_COMPLETED, expect.any(Object));
+    });
+  });
+
+  describe('markInconclusiveAndComplete', () => {
+    it('sets recommendation=INCONCLUSIVE_RETRY and clears score/failureReason', async () => {
+      const pipeline = makePipeline({
+        pipelineScore: 42,
+        scoreGrade: 'C',
+        failureReason: 'should be cleared'
+      });
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.markInconclusiveAndComplete(pipeline, 'insufficient signals over 5 days');
+
+      expect(pipeline.status).toBe(PipelineStatus.COMPLETED);
+      expect(pipeline.currentStage).toBe(PipelineStage.COMPLETED);
+      expect(pipeline.recommendation).toBe(DeploymentRecommendation.INCONCLUSIVE_RETRY);
+      expect(pipeline.pipelineScore).toBeNull();
+      expect(pipeline.scoreGrade).toBeNull();
+      expect(pipeline.failureReason).toBeNull();
+      expect(pipeline.completedAt).toBeInstanceOf(Date);
+    });
+
+    it('emits PIPELINE_COMPLETED with inconclusive flag', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.markInconclusiveAndComplete(pipeline, 'starved');
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        PIPELINE_EVENTS.PIPELINE_COMPLETED,
+        expect.objectContaining({
+          pipelineId: pipeline.id,
+          recommendation: DeploymentRecommendation.INCONCLUSIVE_RETRY,
+          inconclusive: true
+        })
+      );
+    });
+
+    it('does NOT set status to FAILED (distinct from failPipeline)', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.markInconclusiveAndComplete(pipeline, 'starved');
+
+      expect(pipeline.status).not.toBe(PipelineStatus.FAILED);
+      expect(eventEmitter.emit).not.toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_FAILED, expect.anything());
     });
   });
 });

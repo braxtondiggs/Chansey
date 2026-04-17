@@ -1,6 +1,13 @@
 import { type PaperTradingSession, PaperTradingStatus } from './entities';
 
-export type StopReason = 'max_drawdown' | 'target_reached' | 'min_trades_reached' | 'duration_reached';
+import { getInsufficientSignalThreshold } from '../../tasks/dto/pipeline-orchestration.dto';
+
+export type StopReason =
+  | 'max_drawdown'
+  | 'target_reached'
+  | 'min_trades_reached'
+  | 'duration_reached'
+  | 'insufficient_signals';
 
 /**
  * Parse duration string (e.g. "30d", "24h") to milliseconds.
@@ -31,7 +38,14 @@ export function parseDuration(duration: string): number {
  * Precedence (order matters):
  *   1. Safety overrides — maxDrawdown / targetReturn protect capital
  *   2. Min-trades gate — ensures statistical significance before graduation
- *   3. Duration cap — hard time limit prevents runaway sessions
+ *   3. Insufficient-signals gate — early termination when the strategy is
+ *      not producing enough signals to ever satisfy the trade-count gate
+ *   4. Duration cap — hard time limit prevents runaway sessions
+ *
+ * Min-trades runs before insufficient-signals because satisfying the target
+ * trade count is the primary completion path — once hit, starvation no
+ * longer applies. In practice, min-trades thresholds (30-50) are much
+ * higher than starvation floors (2-3), so the two rarely race.
  *
  * Returns the first triggered reason, or null if none apply.
  * Pure function — does not mutate the session or perform I/O. The caller
@@ -63,7 +77,16 @@ export function evaluateStopReason(
     return 'min_trades_reached';
   }
 
-  // 3. Duration cap
+  // 3. Insufficient-signals gate
+  if (session.startedAt) {
+    const { checkAfterDays, minTradesByThen } = getInsufficientSignalThreshold(session.riskLevel);
+    const daysRun = (Date.now() - session.startedAt.getTime()) / 86_400_000;
+    if (daysRun >= checkAfterDays && (session.totalTrades ?? 0) < minTradesByThen) {
+      return 'insufficient_signals';
+    }
+  }
+
+  // 4. Duration cap
   if (session.duration && session.startedAt) {
     const startTime = session.startedAt.getTime();
     const now = Date.now();

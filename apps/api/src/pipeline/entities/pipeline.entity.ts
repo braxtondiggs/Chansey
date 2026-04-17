@@ -148,11 +148,11 @@ export class Pipeline {
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({ description: 'Composite pipeline score (0-100)', required: false })
-  pipelineScore?: number;
+  pipelineScore?: number | null;
 
   @Column({ type: 'varchar', length: 2, nullable: true })
   @ApiProperty({ description: 'Letter grade (A-F)', required: false })
-  scoreGrade?: string;
+  scoreGrade?: string | null;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   @ApiProperty({ description: 'Market regime at time of scoring', required: false })
@@ -166,7 +166,7 @@ export class Pipeline {
   @IsOptional()
   @Column({ type: 'text', nullable: true })
   @ApiProperty({ description: 'Reason for failure if status is FAILED', required: false })
-  failureReason?: string;
+  failureReason?: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   @ApiProperty({ description: 'When the pipeline was created' })

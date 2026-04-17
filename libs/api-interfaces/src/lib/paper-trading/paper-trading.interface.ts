@@ -53,6 +53,20 @@ export enum PaperTradingSignalStatus {
   ERROR = 'ERROR'
 }
 
+/**
+ * Reason a paper-trading session was stopped / completed.
+ *
+ * Mirrors the backend `StopReason` union (see
+ * `apps/api/src/order/paper-trading/paper-trading-session.util.ts`). Exported
+ * for use by the admin UI when rendering status labels/severity.
+ */
+export type PaperTradingStopReason =
+  | 'max_drawdown'
+  | 'target_reached'
+  | 'min_trades_reached'
+  | 'duration_reached'
+  | 'insufficient_signals';
+
 export interface StopConditions {
   maxDrawdown?: number;
   targetReturn?: number;

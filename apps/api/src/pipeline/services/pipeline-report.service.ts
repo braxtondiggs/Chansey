@@ -73,7 +73,9 @@ export class PipelineReportService {
 
     // Save report to pipeline
     pipeline.summaryReport = report;
-    pipeline.recommendation = recommendation;
+    if (pipeline.recommendation !== DeploymentRecommendation.INCONCLUSIVE_RETRY) {
+      pipeline.recommendation = recommendation;
+    }
     await this.pipelineRepository.save(pipeline);
 
     this.logger.log(

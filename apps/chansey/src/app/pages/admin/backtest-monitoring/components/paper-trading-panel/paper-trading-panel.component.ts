@@ -11,8 +11,16 @@ import { TooltipModule } from 'primeng/tooltip';
 import {
   PaginatedPaperTradingSessionsDto,
   PaperTradingMonitoringDto,
+  PaperTradingSessionListItemDto,
   PaperTradingStatus
 } from '@chansey/api-interfaces';
+
+type TagSeverity = 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast';
+
+interface StatusPresentation {
+  label: string;
+  severity: TagSeverity;
+}
 
 @Component({
   selector: 'app-paper-trading-panel',
@@ -205,7 +213,8 @@ import {
               <td>{{ session.name }}</td>
               <td>{{ session.algorithmName }}</td>
               <td>
-                <p-tag [severity]="getSessionStatusSeverity(session.status)" [value]="session.status" />
+                @let presentation = getSessionStatusPresentation(session);
+                <p-tag [severity]="presentation.severity" [value]="presentation.label" />
                 @if (session.status === PaperTradingStatus.ACTIVE) {
                   <p-progressBar [value]="session.progressPercent" [showValue]="false" styleClass="h-1 mt-1" />
                 }
@@ -259,22 +268,40 @@ export class PaperTradingPanelComponent {
     this.pageChange.emit(page);
   }
 
-  getSessionStatusSeverity(
-    status: PaperTradingStatus
-  ): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' {
-    switch (status) {
+  /**
+   * Map (status, stoppedReason) to a user-facing label and tag severity.
+   *
+   * Keeps `insufficient_signals` visually distinct from real failures — it's a
+   * neutral "this strategy isn't a fit right now" outcome, not a bug/crash.
+   */
+  getSessionStatusPresentation(session: PaperTradingSessionListItemDto): StatusPresentation {
+    switch (session.status) {
       case PaperTradingStatus.ACTIVE:
-        return 'info';
-      case PaperTradingStatus.COMPLETED:
-        return 'success';
+        return { label: 'Active', severity: 'info' };
       case PaperTradingStatus.PAUSED:
-        return 'warn';
-      case PaperTradingStatus.FAILED:
-        return 'danger';
+        return { label: 'Paused', severity: 'warn' };
       case PaperTradingStatus.STOPPED:
-        return 'secondary';
+        return { label: 'Stopped', severity: 'secondary' };
+      case PaperTradingStatus.FAILED:
+        return { label: 'Error', severity: 'danger' };
+      case PaperTradingStatus.COMPLETED: {
+        switch (session.stoppedReason) {
+          case 'target_reached':
+            return { label: 'Target Reached', severity: 'success' };
+          case 'min_trades_reached':
+            return { label: 'Completed', severity: 'success' };
+          case 'duration_reached':
+            return { label: 'Time Cap Reached', severity: 'info' };
+          case 'max_drawdown':
+            return { label: 'Risk Limit Hit', severity: 'warn' };
+          case 'insufficient_signals':
+            return { label: 'Inconclusive — Low Activity', severity: 'secondary' };
+          default:
+            return { label: 'Completed', severity: 'success' };
+        }
+      }
       default:
-        return 'secondary';
+        return { label: session.status, severity: 'secondary' };
     }
   }
 }

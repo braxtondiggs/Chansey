@@ -183,6 +183,7 @@ export class PaperTradingSessionListItemDto {
   @ApiProperty() duration: string;
   @ApiProperty({ nullable: true }) startedAt: string | null;
   @ApiProperty() createdAt: string;
+  @ApiProperty({ nullable: true, required: false }) stoppedReason?: string | null;
 }
 
 export class PaginatedPaperTradingSessionsDto {

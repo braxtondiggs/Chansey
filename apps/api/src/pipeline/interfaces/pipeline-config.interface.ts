@@ -39,7 +39,13 @@ export enum PipelineStage {
 export enum DeploymentRecommendation {
   DEPLOY = 'DEPLOY',
   NEEDS_REVIEW = 'NEEDS_REVIEW',
-  DO_NOT_DEPLOY = 'DO_NOT_DEPLOY'
+  DO_NOT_DEPLOY = 'DO_NOT_DEPLOY',
+  /**
+   * Neutral outcome when the strategy could not produce enough signals to
+   * satisfy the trade-count gate during paper trading. Not a failure — the
+   * orchestrator is expected to retry with fresh optimization parameters.
+   */
+  INCONCLUSIVE_RETRY = 'INCONCLUSIVE_RETRY'
 }
 
 /**
@@ -160,6 +166,12 @@ export interface PipelineProgressionRules {
   optimization: {
     /** Minimum improvement over baseline (percentage) */
     minImprovement: number;
+    /**
+     * Minimum absolute walk-forward test score. Runs where the best combination
+     * scores below this are rejected outright — prevents shipping losing params
+     * that only look good relative to a worse baseline. Default: 0
+     */
+    minAbsoluteScore?: number;
   };
   paperTrading: StageProgressionThresholds;
   /** Minimum composite score (0-100) to pass LIVE_REPLAY gate. Default: 30 */
@@ -171,7 +183,8 @@ export interface PipelineProgressionRules {
  */
 export const DEFAULT_PROGRESSION_RULES: PipelineProgressionRules = {
   optimization: {
-    minImprovement: 3 // 3% improvement over baseline
+    minImprovement: 3, // 3% improvement over baseline
+    minAbsoluteScore: 0 // reject runs whose best combo scored negative
   },
   paperTrading: {
     minSharpeRatio: 0.3,

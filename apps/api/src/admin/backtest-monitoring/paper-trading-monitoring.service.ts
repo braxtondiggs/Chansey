@@ -93,7 +93,8 @@ export class PaperTradingMonitoringService {
       sharpeRatio: s.sharpeRatio ?? null,
       duration: s.duration || 'N/A',
       startedAt: s.startedAt?.toISOString() ?? null,
-      createdAt: s.createdAt.toISOString()
+      createdAt: s.createdAt.toISOString(),
+      stoppedReason: s.stoppedReason ?? null
     }));
 
     const totalPages = Math.ceil(total / limit);

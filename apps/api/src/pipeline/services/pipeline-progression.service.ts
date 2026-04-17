@@ -42,11 +42,23 @@ export class PipelineProgressionService {
     private readonly correlationScoringService: CorrelationScoringService
   ) {}
 
-  evaluateOptimizationProgression(pipeline: Pipeline, improvement: number): { passed: boolean; failures: string[] } {
-    const threshold = pipeline.progressionRules.optimization.minImprovement;
+  evaluateOptimizationProgression(
+    pipeline: Pipeline,
+    improvement: number,
+    bestScore: number
+  ): { passed: boolean; failures: string[] } {
+    const minImprovement = pipeline.progressionRules.optimization.minImprovement;
+    const minAbsoluteScore = pipeline.progressionRules.optimization.minAbsoluteScore ?? 0;
     const failures: string[] = [];
-    if (improvement < threshold) {
-      failures.push(`Improvement ${improvement.toFixed(2)}% < min ${threshold.toFixed(2)}%`);
+
+    if (bestScore < minAbsoluteScore) {
+      failures.push(
+        `Best test score ${bestScore.toFixed(2)} < minimum ${minAbsoluteScore.toFixed(2)} ` +
+          `— all tested combinations lost money in walk-forward testing`
+      );
+    }
+    if (improvement < minImprovement) {
+      failures.push(`Improvement ${improvement.toFixed(2)}% < min ${minImprovement.toFixed(2)}%`);
     }
     return { passed: failures.length === 0, failures };
   }
@@ -307,6 +319,36 @@ export class PipelineProgressionService {
 
     this.eventEmitter.emit(PIPELINE_EVENTS.PIPELINE_FAILED, {
       pipelineId: pipeline.id,
+      reason,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Mark a pipeline as COMPLETED with an INCONCLUSIVE_RETRY recommendation.
+   *
+   * Used when the paper-trading stage terminated early due to signal starvation
+   * — the strategy is not a fit for the current market regime, but this is a
+   * neutral outcome (not a bug / not a failure). The orchestrator will retry
+   * on its next cycle with fresh optimization parameters.
+   */
+  async markInconclusiveAndComplete(pipeline: Pipeline, reason: string): Promise<void> {
+    pipeline.status = PipelineStatus.COMPLETED;
+    pipeline.currentStage = PipelineStage.COMPLETED;
+    pipeline.completedAt = new Date();
+    pipeline.recommendation = DeploymentRecommendation.INCONCLUSIVE_RETRY;
+    pipeline.pipelineScore = null;
+    pipeline.scoreGrade = null;
+    pipeline.failureReason = null;
+
+    await this.pipelineRepository.save(pipeline);
+
+    this.logger.log(`Pipeline ${pipeline.id} marked inconclusive: ${reason}`);
+
+    this.eventEmitter.emit(PIPELINE_EVENTS.PIPELINE_COMPLETED, {
+      pipelineId: pipeline.id,
+      recommendation: pipeline.recommendation,
+      inconclusive: true,
       reason,
       timestamp: new Date().toISOString()
     });
