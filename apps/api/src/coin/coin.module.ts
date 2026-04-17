@@ -14,6 +14,7 @@ import { SimplePriceController } from './simple-price.controller';
 import { CoinDetailSyncService } from './tasks/coin-detail-sync.service';
 import { CoinSnapshotPruneTask } from './tasks/coin-snapshot-prune.task';
 import { CoinSyncTask } from './tasks/coin-sync.task';
+import { ExchangeTickerFetcherService } from './ticker-pairs/services/exchange-ticker-fetcher.service';
 import { TickerPairSyncTask } from './ticker-pairs/tasks/ticker-pairs-sync.task';
 import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from './ticker-pairs/ticker-pairs.service';
@@ -54,6 +55,7 @@ import { SharedCacheModule } from '../shared-cache.module';
     CoinDetailSyncService,
     CoinSnapshotPruneTask,
     CoinSyncTask,
+    ExchangeTickerFetcherService,
     TickerPairService,
     TickerPairSyncTask
   ]

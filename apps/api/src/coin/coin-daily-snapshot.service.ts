@@ -142,23 +142,49 @@ export class CoinDailySnapshotService {
   }
 
   /**
-   * Find coins that have fewer than `minDays` snapshots, indicating they need backfill.
+   * Find coins that need historical snapshot backfill.
+   * Primary signal: `coin.snapshotBackfillCompletedAt IS NULL` — backfill is one-shot,
+   * so once the flag is set we never re-fetch. `minDays` is retained as a secondary
+   * safety net for coins that are flagged but have unexpectedly few snapshots (e.g.
+   * manually marked by an admin) — those get reconsidered.
+   *
+   * Split into two queries so Step 1 uses IDX_coin_backfill_pending (partial index
+   * on `WHERE snapshotBackfillCompletedAt IS NULL`). A single correlated-count
+   * query cannot use that index and defeats the point of the flag.
    */
   async getCoinsNeedingBackfill(coinIds: string[], minDays = 30): Promise<string[]> {
     if (coinIds.length === 0) return [];
 
-    const results = await this.repo
-      .createQueryBuilder('s')
-      .select('s.coinId', 'coinId')
-      .addSelect('COUNT(*)', 'cnt')
-      .where('s.coinId IN (:...coinIds)', { coinIds })
-      .groupBy('s.coinId')
-      .getRawMany<{ coinId: string; cnt: string }>();
+    // Step 1: unflagged coins — uses IDX_coin_backfill_pending.
+    const pendingRows = await this.repo.manager
+      .createQueryBuilder()
+      .select('c.id', 'id')
+      .from('coin', 'c')
+      .where('c.id IN (:...coinIds)', { coinIds })
+      .andWhere('c."snapshotBackfillCompletedAt" IS NULL')
+      .getRawMany<{ id: string }>();
 
-    const countMap = new Map(results.map((r) => [r.coinId, parseInt(r.cnt, 10)]));
+    const pendingIds = pendingRows.map((r) => r.id);
+    const pendingSet = new Set(pendingIds);
+    const flaggedIds = coinIds.filter((id) => !pendingSet.has(id));
 
-    // Return coins with fewer than minDays snapshots (including coins with zero)
-    return coinIds.filter((id) => (countMap.get(id) ?? 0) < minDays);
+    // Step 2: safety net — flagged coins whose snapshot count is below minDays.
+    // Skip entirely when nothing is flagged.
+    let undercountedIds: string[] = [];
+    if (flaggedIds.length > 0) {
+      const counts = await this.repo
+        .createQueryBuilder('s')
+        .select('s.coinId', 'coinId')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('s.coinId IN (:...flaggedIds)', { flaggedIds })
+        .groupBy('s.coinId')
+        .getRawMany<{ coinId: string; cnt: string }>();
+
+      const countMap = new Map(counts.map((r) => [r.coinId, parseInt(r.cnt, 10)]));
+      undercountedIds = flaggedIds.filter((id) => (countMap.get(id) ?? 0) < minDays);
+    }
+
+    return [...pendingIds, ...undercountedIds];
   }
 
   /**

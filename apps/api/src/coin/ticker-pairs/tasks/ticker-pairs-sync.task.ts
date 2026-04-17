@@ -1,17 +1,16 @@
 import { InjectQueue, Processor } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { CronExpression } from '@nestjs/schedule';
 
 import { Job, Queue } from 'bullmq';
 
 import { ExchangeService } from '../../../exchange/exchange.service';
 import { FailSafeWorkerHost } from '../../../failed-jobs/fail-safe-worker-host';
 import { FailedJobService } from '../../../failed-jobs/failed-job.service';
-import { CoinGeckoClientService } from '../../../shared/coingecko-client.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../../shared/distributed-lock.service';
 import { toErrorInfo } from '../../../shared/error.util';
 import { CoinService } from '../../coin.service';
+import { ExchangeTickerFetcherService } from '../services/exchange-ticker-fetcher.service';
 import { TickerPairStatus, TickerPairs } from '../ticker-pairs.entity';
 import { TickerPairService } from '../ticker-pairs.service';
 
@@ -34,7 +33,7 @@ export class TickerPairSyncTask extends FailSafeWorkerHost implements OnModuleIn
     private readonly coin: CoinService,
     private readonly exchange: ExchangeService,
     private readonly tickerPair: TickerPairService,
-    private readonly gecko: CoinGeckoClientService,
+    private readonly tickerFetcher: ExchangeTickerFetcherService,
     private readonly lockService: DistributedLockService,
     failedJobService: FailedJobService
   ) {
@@ -78,7 +77,10 @@ export class TickerPairSyncTask extends FailSafeWorkerHost implements OnModuleIn
         description: 'Scheduled ticker pair sync job'
       },
       {
-        repeat: { pattern: CronExpression.EVERY_WEEK },
+        // Staggered 2h after coin-sync (Sunday 00:00 UTC) so the shared ticker
+        // cache populated by coin-sync is warm when this job runs. Running both
+        // at the same cron defeats the cache — both miss, both paginate.
+        repeat: { pattern: '0 2 * * 0' },
         attempts: 3,
         backoff: {
           type: 'exponential',
@@ -89,7 +91,7 @@ export class TickerPairSyncTask extends FailSafeWorkerHost implements OnModuleIn
       }
     );
 
-    this.logger.log('Ticker pair sync job scheduled with weekly cron pattern');
+    this.logger.log('Ticker pair sync job scheduled for Sunday 02:00 UTC');
   }
 
   /**
@@ -167,152 +169,124 @@ export class TickerPairSyncTask extends FailSafeWorkerHost implements OnModuleIn
       for (const exchange of supportedExchanges) {
         try {
           this.logger.log(`Processing ticker pairs for ${exchange.name} (${exchange.slug})`);
-          let page = 1;
           const exchangePairs = new Set<string>();
-          let totalProcessedTickers = 0;
 
-          // Paginate through all tickers for this exchange
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            let tickers = [];
-            const id = exchange.slug === 'coinbase' ? 'gdax' : exchange.slug.toLowerCase();
+          // Fetch all tickers (cached by ExchangeTickerFetcherService — no per-page loop needed)
+          const tickers = await this.tickerFetcher.fetchAllTickersForExchange(exchange.slug);
 
-            try {
-              // Get tickers from CoinGecko for this exchange
-              const response = await this.gecko.client.exchanges.tickers.get(id, { page });
+          if (tickers.length === 0) {
+            this.logger.warn(`No tickers returned for ${exchange.name}, skipping`);
+            processedExchanges++;
+            await job.updateProgress(40 + Math.floor((processedExchanges / totalExchanges) * 50));
+            continue;
+          }
 
-              tickers = response.tickers || [];
+          // Process each ticker
+          for (const ticker of tickers) {
+            // Extract coin IDs from the ticker data
+            const baseId = ticker.coin_id?.toLowerCase();
+            const quoteId = ticker.target_coin_id?.toLowerCase();
+            const baseSymbol = String(ticker.base ?? '');
+            const targetSymbol = String(ticker.target ?? '');
 
-              if (tickers.length === 0) {
-                this.logger.log(
-                  `Completed loading ticker data for ${exchange.name}, total processed: ${totalProcessedTickers}`
-                );
-                break;
-              }
-
-              totalProcessedTickers += tickers.length;
-            } catch (tickerError: unknown) {
-              const err = toErrorInfo(tickerError);
-              this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${err.message}`);
-              // If we're on the first page and encounter an error, break out completely
-              if (page === 1) break;
-
-              // Otherwise try to move to the next page and continue
-              page++;
+            // Skip tickers with missing symbols
+            if (!baseSymbol || !targetSymbol) {
+              this.logger.debug(`Skipping ticker with missing base or target symbol`);
               continue;
             }
 
-            // Process each ticker from the current page
-            for (const ticker of tickers) {
-              // Extract coin IDs from the ticker data
-              const baseId = ticker.coin_id?.toLowerCase();
-              const quoteId = ticker.target_coin_id?.toLowerCase();
-              const baseSymbol = String(ticker.base ?? '');
-              const targetSymbol = String(ticker.target ?? '');
+            // Get the coin objects from our database
+            const baseCoin = baseId ? coinsBySlug.get(baseId) : undefined;
+            const quoteCoin = quoteId ? coinsBySlug.get(quoteId) : undefined;
 
-              // Skip tickers with missing symbols
-              if (!baseSymbol || !targetSymbol) {
-                this.logger.debug(`Skipping ticker with missing base or target symbol`);
-                continue;
-              }
+            // Determine if this is a fiat pair
+            const baseIsFiat = !baseCoin && this.isFiatCurrency(baseSymbol);
+            const quoteIsFiat = !quoteCoin && this.isFiatCurrency(targetSymbol);
+            const isFiatPair = baseIsFiat || quoteIsFiat;
 
-              // Get the coin objects from our database
-              const baseCoin = baseId ? coinsBySlug.get(baseId) : undefined;
-              const quoteCoin = quoteId ? coinsBySlug.get(quoteId) : undefined;
-
-              // Determine if this is a fiat pair
-              const baseIsFiat = !baseCoin && this.isFiatCurrency(baseSymbol);
-              const quoteIsFiat = !quoteCoin && this.isFiatCurrency(targetSymbol);
-              const isFiatPair = baseIsFiat || quoteIsFiat;
-
-              // Skip if neither coin exists and it's not a fiat pair
-              if (!baseCoin && !quoteCoin && !isFiatPair) {
-                this.logger.debug(
-                  `Skipping ticker ${baseSymbol}/${targetSymbol}: coins not found in database and not fiat pair`
-                );
-                continue;
-              }
-
-              // Skip if one coin exists but the other doesn't and it's not fiat
-              if ((!baseCoin && !baseIsFiat) || (!quoteCoin && !quoteIsFiat)) {
-                this.logger.debug(
-                  `Skipping ticker ${baseSymbol}/${targetSymbol}: missing coin in database (base: ${!!baseCoin || baseIsFiat}, quote: ${!!quoteCoin || quoteIsFiat})`
-                );
-                continue;
-              }
-
-              // Create a unique key for this ticker pair
-              const baseKey = baseCoin?.id || baseSymbol;
-              const quoteKey = quoteCoin?.id || targetSymbol;
-              const pairKey = `${baseKey}-${quoteKey}-${exchange.id}`;
-              exchangePairs.add(pairKey);
-
-              // Look for an existing ticker pair matching this one
-              const existingPair = existingPairs.find((p) => {
-                if (isFiatPair) {
-                  // For fiat pairs, match by symbol and exchange
-                  const expectedSymbol = `${baseSymbol}${targetSymbol}`.toUpperCase();
-                  return p.symbol === expectedSymbol && p.exchange.id === exchange.id;
-                } else {
-                  // For regular pairs, match by coin IDs
-                  return (
-                    p.baseAsset?.id === baseCoin?.id &&
-                    p.quoteAsset?.id === quoteCoin?.id &&
-                    p.exchange.id === exchange.id
-                  );
-                }
-              });
-
-              if (!existingPair) {
-                // Create a new ticker pair
-                const pairData: any = {
-                  exchange,
-                  volume: Number(ticker.volume ?? 0),
-                  tradeUrl: ticker.trade_url,
-                  spreadPercentage: Number(ticker.bid_ask_spread_percentage ?? 0),
-                  lastTraded: ticker.last_traded_at ?? new Date(),
-                  fetchAt: new Date(),
-                  status: DEFAULT_STATUS,
-                  isSpotTradingAllowed: DEFAULT_SPOT_TRADING_ALLOWED,
-                  isMarginTradingAllowed: DEFAULT_MARGIN_TRADING_ALLOWED,
-                  isFiatPair
-                };
-
-                if (isFiatPair) {
-                  // For fiat pairs, store symbols instead of coin references
-                  pairData.baseAssetSymbol = baseSymbol.toLowerCase();
-                  pairData.quoteAssetSymbol = targetSymbol.toLowerCase();
-                  // Only set coin references if they exist
-                  if (baseCoin) pairData.baseAsset = baseCoin;
-                  if (quoteCoin) pairData.quoteAsset = quoteCoin;
-                } else {
-                  // For regular pairs, use coin references
-                  pairData.baseAsset = baseCoin;
-                  pairData.quoteAsset = quoteCoin;
-                }
-
-                const newPair = await this.tickerPair.createTickerPair(pairData);
-
-                newPairs.push(newPair);
-              } else {
-                // Update the existing pair with new data
-                Object.assign(existingPair, {
-                  volume: Number(ticker.volume ?? existingPair.volume),
-                  tradeUrl: ticker.trade_url ?? existingPair.tradeUrl,
-                  spreadPercentage: Number(ticker.bid_ask_spread_percentage ?? existingPair.spreadPercentage),
-                  lastTraded: ticker.last_traded_at ?? existingPair.lastTraded,
-                  fetchAt: new Date()
-                  // Not updating status or trading flags as they should be managed separately
-                });
-              }
+            // Skip if neither coin exists and it's not a fiat pair
+            if (!baseCoin && !quoteCoin && !isFiatPair) {
+              this.logger.debug(
+                `Skipping ticker ${baseSymbol}/${targetSymbol}: coins not found in database and not fiat pair`
+              );
+              continue;
             }
 
-            this.logger.log(`Processed page ${page} for ${exchange.name}, found ${tickers.length} ticker pairs`);
+            // Skip if one coin exists but the other doesn't and it's not fiat
+            if ((!baseCoin && !baseIsFiat) || (!quoteCoin && !quoteIsFiat)) {
+              this.logger.debug(
+                `Skipping ticker ${baseSymbol}/${targetSymbol}: missing coin in database (base: ${!!baseCoin || baseIsFiat}, quote: ${!!quoteCoin || quoteIsFiat})`
+              );
+              continue;
+            }
 
-            // Apply standard rate limiting to avoid CoinGecko API issues
-            await new Promise((r) => setTimeout(r, 1000));
-            page++;
+            // Create a unique key for this ticker pair
+            const baseKey = baseCoin?.id || baseSymbol;
+            const quoteKey = quoteCoin?.id || targetSymbol;
+            const pairKey = `${baseKey}-${quoteKey}-${exchange.id}`;
+            exchangePairs.add(pairKey);
+
+            // Look for an existing ticker pair matching this one
+            const existingPair = existingPairs.find((p) => {
+              if (isFiatPair) {
+                // For fiat pairs, match by symbol and exchange
+                const expectedSymbol = `${baseSymbol}${targetSymbol}`.toUpperCase();
+                return p.symbol === expectedSymbol && p.exchange.id === exchange.id;
+              } else {
+                // For regular pairs, match by coin IDs
+                return (
+                  p.baseAsset?.id === baseCoin?.id &&
+                  p.quoteAsset?.id === quoteCoin?.id &&
+                  p.exchange.id === exchange.id
+                );
+              }
+            });
+
+            if (!existingPair) {
+              // Create a new ticker pair
+              const pairData: any = {
+                exchange,
+                volume: Number(ticker.volume ?? 0),
+                tradeUrl: ticker.trade_url,
+                spreadPercentage: Number(ticker.bid_ask_spread_percentage ?? 0),
+                lastTraded: ticker.last_traded_at ?? new Date(),
+                fetchAt: new Date(),
+                status: DEFAULT_STATUS,
+                isSpotTradingAllowed: DEFAULT_SPOT_TRADING_ALLOWED,
+                isMarginTradingAllowed: DEFAULT_MARGIN_TRADING_ALLOWED,
+                isFiatPair
+              };
+
+              if (isFiatPair) {
+                // For fiat pairs, store symbols instead of coin references
+                pairData.baseAssetSymbol = baseSymbol.toLowerCase();
+                pairData.quoteAssetSymbol = targetSymbol.toLowerCase();
+                // Only set coin references if they exist
+                if (baseCoin) pairData.baseAsset = baseCoin;
+                if (quoteCoin) pairData.quoteAsset = quoteCoin;
+              } else {
+                // For regular pairs, use coin references
+                pairData.baseAsset = baseCoin;
+                pairData.quoteAsset = quoteCoin;
+              }
+
+              const newPair = await this.tickerPair.createTickerPair(pairData);
+
+              newPairs.push(newPair);
+            } else {
+              // Update the existing pair with new data
+              Object.assign(existingPair, {
+                volume: Number(ticker.volume ?? existingPair.volume),
+                tradeUrl: ticker.trade_url ?? existingPair.tradeUrl,
+                spreadPercentage: Number(ticker.bid_ask_spread_percentage ?? existingPair.spreadPercentage),
+                lastTraded: ticker.last_traded_at ?? existingPair.lastTraded,
+                fetchAt: new Date()
+                // Not updating status or trading flags as they should be managed separately
+              });
+            }
           }
+
+          this.logger.log(`Processed ${tickers.length} ticker pairs for ${exchange.name}`);
 
           // Find pairs that are no longer present in the exchange data
           // and should be removed or marked as inactive

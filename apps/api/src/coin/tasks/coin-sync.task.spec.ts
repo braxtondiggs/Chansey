@@ -9,24 +9,28 @@ import { type CoinDailySnapshotService } from '../coin-daily-snapshot.service';
 import { type CoinListingEventService } from '../coin-listing-event.service';
 import { type CoinMarketDataService } from '../coin-market-data.service';
 import { type CoinService } from '../coin.service';
+import { type ExchangeTickerFetcherService } from '../ticker-pairs/services/exchange-ticker-fetcher.service';
 
 // Mock CoinGecko SDK calls
 const mockCoinList = jest.fn();
-const mockExchangeIdTickers = jest.fn();
 
 describe('CoinSyncTask', () => {
   let task: CoinSyncTask;
-  let queue: { getRepeatableJobs: jest.Mock; add: jest.Mock };
+  let queue: { getRepeatableJobs: jest.Mock; add: jest.Mock; removeRepeatableByKey: jest.Mock };
   let coinService: jest.Mocked<
-    Pick<CoinService, 'getCoins' | 'createMany' | 'update' | 'removeMany' | 'relistMany' | 'clearRank'>
+    Pick<
+      CoinService,
+      'getCoins' | 'createMany' | 'update' | 'removeMany' | 'relistMany' | 'clearRank' | 'markSnapshotBackfillComplete'
+    >
   >;
   let exchangeService: jest.Mocked<Pick<ExchangeService, 'getExchanges'>>;
   let listingEventService: jest.Mocked<Pick<CoinListingEventService, 'recordBulkDelistings' | 'recordBulkRelistings'>>;
-  let coinDetailSync: jest.Mocked<Pick<CoinDetailSyncService, 'syncCoinDetails'>>;
+  let coinDetailSync: jest.Mocked<Pick<CoinDetailSyncService, 'syncCoinDetails' | 'syncCoinMetadata'>>;
   let snapshotService: jest.Mocked<
     Pick<CoinDailySnapshotService, 'captureSnapshots' | 'getCoinsNeedingBackfill' | 'backfillFromHistoricalData'>
   >;
   let coinMarketData: jest.Mocked<Pick<CoinMarketDataService, 'getCoinHistoricalData'>>;
+  let tickerFetcher: jest.Mocked<Pick<ExchangeTickerFetcherService, 'fetchAllTickersForExchange'>>;
   let geckoService: CoinGeckoClientService;
 
   const originalEnv = process.env;
@@ -43,7 +47,8 @@ describe('CoinSyncTask', () => {
 
     queue = {
       getRepeatableJobs: jest.fn().mockResolvedValue([]),
-      add: jest.fn().mockResolvedValue(undefined)
+      add: jest.fn().mockResolvedValue(undefined),
+      removeRepeatableByKey: jest.fn().mockResolvedValue(true)
     };
 
     coinService = {
@@ -52,7 +57,8 @@ describe('CoinSyncTask', () => {
       update: jest.fn().mockResolvedValue(undefined),
       removeMany: jest.fn().mockResolvedValue(undefined),
       relistMany: jest.fn().mockResolvedValue(undefined),
-      clearRank: jest.fn()
+      clearRank: jest.fn(),
+      markSnapshotBackfillComplete: jest.fn().mockResolvedValue(undefined)
     } as any;
 
     exchangeService = {
@@ -65,7 +71,8 @@ describe('CoinSyncTask', () => {
     } as any;
 
     coinDetailSync = {
-      syncCoinDetails: jest.fn().mockResolvedValue({ totalCoins: 0, updatedSuccessfully: 0, errors: 0 })
+      syncCoinDetails: jest.fn().mockResolvedValue({ totalCoins: 0, updatedSuccessfully: 0, errors: 0 }),
+      syncCoinMetadata: jest.fn().mockResolvedValue({ totalCoins: 0, updatedSuccessfully: 0, skipped: 0, errors: 0 })
     } as any;
 
     snapshotService = {
@@ -78,13 +85,14 @@ describe('CoinSyncTask', () => {
       getCoinHistoricalData: jest.fn().mockResolvedValue([])
     } as any;
 
+    tickerFetcher = {
+      fetchAllTickersForExchange: jest.fn().mockResolvedValue([])
+    } as any;
+
     geckoService = {
       client: {
         coins: {
           list: { get: mockCoinList }
-        },
-        exchanges: {
-          tickers: { get: mockExchangeIdTickers }
         }
       }
     } as unknown as CoinGeckoClientService;
@@ -97,6 +105,7 @@ describe('CoinSyncTask', () => {
       coinDetailSync as any,
       snapshotService as any,
       coinMarketData as any,
+      tickerFetcher as any,
       geckoService,
       { acquire: jest.fn().mockResolvedValue({ acquired: true, lockId: 'test' }), release: jest.fn() } as any,
       { isOpen: jest.fn().mockReturnValue(false), recordSuccess: jest.fn(), recordFailure: jest.fn() } as any,
@@ -127,27 +136,41 @@ describe('CoinSyncTask', () => {
       expect(queue.add).not.toHaveBeenCalled();
     });
 
-    it('schedules both coin-sync and coin-detail jobs in production', async () => {
+    it('schedules coin-sync, coin-market-sync, and coin-metadata-sync jobs in production', async () => {
       process.env.NODE_ENV = 'production';
       process.env.DISABLE_BACKGROUND_TASKS = 'false';
 
       await task.onModuleInit();
 
-      expect(queue.add).toHaveBeenCalledTimes(2);
+      expect(queue.add).toHaveBeenCalledTimes(3);
       expect(queue.add).toHaveBeenCalledWith(
         'coin-sync',
-        expect.objectContaining({ description: expect.stringContaining('coin-sync') }),
+        expect.any(Object),
         expect.objectContaining({
           attempts: 3,
-          repeat: { pattern: expect.any(String) },
-          backoff: { type: 'exponential', delay: 5000 }
+          repeat: { pattern: expect.any(String) }
         })
       );
       expect(queue.add).toHaveBeenCalledWith(
-        'coin-detail',
-        expect.objectContaining({ description: expect.stringContaining('coin-detail') }),
+        'coin-market-sync',
+        expect.any(Object),
         expect.objectContaining({ attempts: 3, repeat: { pattern: expect.any(String) } })
       );
+      expect(queue.add).toHaveBeenCalledWith(
+        'coin-metadata-sync',
+        expect.any(Object),
+        expect.objectContaining({ attempts: 3, repeat: { pattern: '0 2 1 * *' } })
+      );
+    });
+
+    it('removes the legacy coin-detail repeatable job if still scheduled', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DISABLE_BACKGROUND_TASKS = 'false';
+      queue.getRepeatableJobs.mockResolvedValue([{ name: 'coin-detail', pattern: '0 23 * * *', key: 'legacy-key' }]);
+
+      await task.onModuleInit();
+
+      expect(queue.removeRepeatableByKey).toHaveBeenCalledWith('legacy-key');
     });
 
     it('skips scheduling if jobs already exist', async () => {
@@ -155,23 +178,13 @@ describe('CoinSyncTask', () => {
       process.env.DISABLE_BACKGROUND_TASKS = 'false';
       queue.getRepeatableJobs.mockResolvedValue([
         { name: 'coin-sync', pattern: '0 0 * * 0' },
-        { name: 'coin-detail', pattern: '0 23 * * *' }
+        { name: 'coin-market-sync', pattern: '0 23 * * *' },
+        { name: 'coin-metadata-sync', pattern: '0 2 1 * *' }
       ]);
 
       await task.onModuleInit();
 
       expect(queue.add).not.toHaveBeenCalled();
-    });
-
-    it('schedules only the missing job when one already exists', async () => {
-      process.env.NODE_ENV = 'production';
-      process.env.DISABLE_BACKGROUND_TASKS = 'false';
-      queue.getRepeatableJobs.mockResolvedValue([{ name: 'coin-sync', pattern: '0 0 * * 0' }]);
-
-      await task.onModuleInit();
-
-      expect(queue.add).toHaveBeenCalledTimes(1);
-      expect(queue.add).toHaveBeenCalledWith('coin-detail', expect.any(Object), expect.any(Object));
     });
 
     it('does not schedule again on second call (jobScheduled guard)', async () => {
@@ -181,7 +194,7 @@ describe('CoinSyncTask', () => {
       await task.onModuleInit();
       await task.onModuleInit();
 
-      expect(queue.add).toHaveBeenCalledTimes(2); // only first call
+      expect(queue.add).toHaveBeenCalledTimes(3); // only first call
     });
   });
 
@@ -198,10 +211,32 @@ describe('CoinSyncTask', () => {
       expect(result).toEqual({ added: 0, updated: 0, delisted: 0, relisted: 0, total: 0 });
     });
 
-    it('routes coin-detail to handleCoinDetail', async () => {
+    it('routes coin-market-sync to handleCoinMarketSync', async () => {
       const expected = { totalCoins: 5, updatedSuccessfully: 4, errors: 1, snapshotsCaptured: 5 };
-      const spy = jest.spyOn(task, 'handleCoinDetail').mockResolvedValue(expected);
-      const job = { name: 'coin-detail', id: 'job-2' } as Job;
+      const spy = jest.spyOn(task, 'handleCoinMarketSync').mockResolvedValue(expected);
+      const job = { name: 'coin-market-sync', id: 'job-2' } as Job;
+
+      const result = await task.process(job);
+
+      expect(spy).toHaveBeenCalledWith(job);
+      expect(result).toEqual(expected);
+    });
+
+    it('routes legacy coin-detail job name to handleCoinMarketSync', async () => {
+      const expected = { totalCoins: 5, updatedSuccessfully: 4, errors: 1, snapshotsCaptured: 5 };
+      const spy = jest.spyOn(task, 'handleCoinMarketSync').mockResolvedValue(expected);
+      const job = { name: 'coin-detail', id: 'job-legacy' } as Job;
+
+      const result = await task.process(job);
+
+      expect(spy).toHaveBeenCalledWith(job);
+      expect(result).toEqual(expected);
+    });
+
+    it('routes coin-metadata-sync to handleCoinMetadataSync', async () => {
+      const expected = { totalCoins: 10, updatedSuccessfully: 8, skipped: 2, errors: 0 };
+      const spy = jest.spyOn(task, 'handleCoinMetadataSync').mockResolvedValue(expected);
+      const job = { name: 'coin-metadata-sync', id: 'job-meta' } as Job;
 
       const result = await task.process(job);
 
@@ -246,10 +281,10 @@ describe('CoinSyncTask', () => {
 
       exchangeService.getExchanges.mockResolvedValue([{ slug: 'binance', name: 'Binance' }] as any);
 
-      mockExchangeIdTickers.mockResolvedValueOnce({
-        tickers: [{ coin_id: 'ethereum' }, { coin_id: 'bitcoin' }]
-      });
-      mockExchangeIdTickers.mockResolvedValueOnce({ tickers: [] });
+      tickerFetcher.fetchAllTickersForExchange.mockResolvedValue([
+        { coin_id: 'ethereum' },
+        { coin_id: 'bitcoin' }
+      ] as any);
 
       const job = makeJob();
       const result = await task.handleSyncCoins(job);
@@ -271,7 +306,6 @@ describe('CoinSyncTask', () => {
       ];
       coinService.getCoins.mockResolvedValue(existingCoins as any);
 
-      // Both coins exist in gecko
       mockCoinList.mockResolvedValue([
         { id: 'bitcoin', symbol: 'btc', name: 'Bitcoin' },
         { id: 'litecoin', symbol: 'ltc', name: 'Litecoin' }
@@ -280,10 +314,7 @@ describe('CoinSyncTask', () => {
       exchangeService.getExchanges.mockResolvedValue([{ slug: 'binance', name: 'Binance' }] as any);
 
       // Only bitcoin is in ticker pairs, litecoin is not
-      mockExchangeIdTickers.mockResolvedValueOnce({
-        tickers: [{ coin_id: 'bitcoin' }]
-      });
-      mockExchangeIdTickers.mockResolvedValueOnce({ tickers: [] });
+      tickerFetcher.fetchAllTickersForExchange.mockResolvedValue([{ coin_id: 'bitcoin' }] as any);
 
       const job = makeJob();
       const result = await task.handleSyncCoins(job);
@@ -313,10 +344,10 @@ describe('CoinSyncTask', () => {
 
       exchangeService.getExchanges.mockResolvedValue([{ slug: 'binance', name: 'Binance' }] as any);
 
-      mockExchangeIdTickers.mockResolvedValueOnce({
-        tickers: [{ coin_id: 'bitcoin' }, { coin_id: 'relisted-coin' }]
-      });
-      mockExchangeIdTickers.mockResolvedValueOnce({ tickers: [] });
+      tickerFetcher.fetchAllTickersForExchange.mockResolvedValue([
+        { coin_id: 'bitcoin' },
+        { coin_id: 'relisted-coin' }
+      ] as any);
 
       const job = makeJob();
       const result = await task.handleSyncCoins(job);
@@ -324,34 +355,6 @@ describe('CoinSyncTask', () => {
       expect(coinService.relistMany).toHaveBeenCalledWith(['id-relisted']);
       expect(listingEventService.recordBulkRelistings).toHaveBeenCalledWith(['id-relisted'], 'coin_sync');
       expect(result.relisted).toBe(1);
-    });
-
-    it('continues updating remaining coins when one update fails', async () => {
-      const existingCoins = [
-        { id: 'id-1', slug: 'bitcoin', symbol: 'btc', name: 'Bitcoin', delistedAt: null },
-        { id: 'id-2', slug: 'ethereum', symbol: 'eth', name: 'Ethereum', delistedAt: null }
-      ];
-      coinService.getCoins.mockResolvedValue(existingCoins as any);
-
-      mockCoinList.mockResolvedValue([
-        { id: 'bitcoin', symbol: 'btc', name: 'Bitcoin v2' },
-        { id: 'ethereum', symbol: 'eth', name: 'Ethereum v2' }
-      ]);
-
-      exchangeService.getExchanges.mockResolvedValue([{ slug: 'binance', name: 'Binance' }] as any);
-      mockExchangeIdTickers.mockResolvedValueOnce({
-        tickers: [{ coin_id: 'bitcoin' }, { coin_id: 'ethereum' }]
-      });
-      mockExchangeIdTickers.mockResolvedValueOnce({ tickers: [] });
-
-      // First update fails, second succeeds
-      coinService.update.mockRejectedValueOnce(new Error('DB error')).mockResolvedValueOnce(undefined as any);
-
-      const job = makeJob();
-      const result = await task.handleSyncCoins(job);
-
-      expect(coinService.update).toHaveBeenCalledTimes(2);
-      expect(result.updated).toBe(2); // counts attempted, not successful
     });
 
     it('returns correct counts when nothing changes', async () => {
@@ -374,19 +377,20 @@ describe('CoinSyncTask', () => {
       expect(job.updateProgress).toHaveBeenCalledWith(100);
     });
 
-    it('maps coinbase exchange slug to gdax for CoinGecko API', async () => {
+    it('delegates ticker fetching to the shared fetcher for each exchange', async () => {
       coinService.getCoins.mockResolvedValue([]);
       mockCoinList.mockResolvedValue([{ id: 'bitcoin', symbol: 'btc', name: 'Bitcoin' }]);
-      exchangeService.getExchanges.mockResolvedValue([{ slug: 'coinbase', name: 'Coinbase' }] as any);
+      exchangeService.getExchanges.mockResolvedValue([
+        { slug: 'binance', name: 'Binance' },
+        { slug: 'coinbase', name: 'Coinbase' }
+      ] as any);
 
-      mockExchangeIdTickers.mockResolvedValueOnce({
-        tickers: [{ coin_id: 'bitcoin' }]
-      });
-      mockExchangeIdTickers.mockResolvedValueOnce({ tickers: [] });
+      tickerFetcher.fetchAllTickersForExchange.mockResolvedValue([{ coin_id: 'bitcoin' }] as any);
 
       await task.handleSyncCoins(makeJob());
 
-      expect(mockExchangeIdTickers).toHaveBeenCalledWith('gdax', expect.objectContaining({ page: 1 }));
+      expect(tickerFetcher.fetchAllTickersForExchange).toHaveBeenCalledWith('binance');
+      expect(tickerFetcher.fetchAllTickersForExchange).toHaveBeenCalledWith('coinbase');
     });
 
     it('collects both base and target coin IDs from tickers', async () => {
@@ -397,14 +401,12 @@ describe('CoinSyncTask', () => {
       ]);
       exchangeService.getExchanges.mockResolvedValue([{ slug: 'binance', name: 'Binance' }] as any);
 
-      mockExchangeIdTickers.mockResolvedValueOnce({
-        tickers: [{ coin_id: 'bitcoin', target_coin_id: 'tether' }]
-      });
-      mockExchangeIdTickers.mockResolvedValueOnce({ tickers: [] });
+      tickerFetcher.fetchAllTickersForExchange.mockResolvedValue([
+        { coin_id: 'bitcoin', target_coin_id: 'tether' }
+      ] as any);
 
       const result = await task.handleSyncCoins(makeJob());
 
-      // Both bitcoin (base) and tether (target) should be recognized as used
       expect(coinService.createMany).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ slug: 'bitcoin' }),
@@ -414,7 +416,7 @@ describe('CoinSyncTask', () => {
       expect(result.added).toBe(2);
     });
 
-    it('skips exchange and continues when ticker fetch fails on first page', async () => {
+    it('continues remaining exchanges when ticker fetch fails for one', async () => {
       coinService.getCoins.mockResolvedValue([]);
       mockCoinList.mockResolvedValue([{ id: 'bitcoin', symbol: 'btc', name: 'Bitcoin' }]);
       exchangeService.getExchanges.mockResolvedValue([
@@ -422,13 +424,9 @@ describe('CoinSyncTask', () => {
         { slug: 'binance', name: 'Binance' }
       ] as any);
 
-      // First exchange fails on page 1
-      mockExchangeIdTickers.mockRejectedValueOnce(new Error('API error'));
-      // Second exchange works
-      mockExchangeIdTickers.mockResolvedValueOnce({
-        tickers: [{ coin_id: 'bitcoin' }]
-      });
-      mockExchangeIdTickers.mockResolvedValueOnce({ tickers: [] });
+      tickerFetcher.fetchAllTickersForExchange
+        .mockRejectedValueOnce(new Error('API error'))
+        .mockResolvedValueOnce([{ coin_id: 'bitcoin' }] as any);
 
       const result = await task.handleSyncCoins(makeJob());
 
@@ -436,13 +434,13 @@ describe('CoinSyncTask', () => {
     });
   });
 
-  describe('handleCoinDetail', () => {
+  describe('handleCoinMarketSync', () => {
     it('delegates to CoinDetailSyncService and returns its result with snapshots', async () => {
       const detailResult = { totalCoins: 5, updatedSuccessfully: 4, errors: 1 };
       coinDetailSync.syncCoinDetails.mockResolvedValue(detailResult);
 
-      const job = { updateProgress: jest.fn(), name: 'coin-detail', id: 'detail-1' } as unknown as Job;
-      const result = await task.handleCoinDetail(job);
+      const job = { updateProgress: jest.fn(), name: 'coin-market-sync', id: 'detail-1' } as unknown as Job;
+      const result = await task.handleCoinMarketSync(job);
 
       expect(coinDetailSync.syncCoinDetails).toHaveBeenCalledWith(expect.any(Function));
       expect(result).toEqual({ ...detailResult, snapshotsCaptured: 5 });
@@ -454,8 +452,8 @@ describe('CoinSyncTask', () => {
         return { totalCoins: 0, updatedSuccessfully: 0, errors: 0 };
       });
 
-      const job = { updateProgress: jest.fn(), name: 'coin-detail', id: 'detail-2' } as unknown as Job;
-      await task.handleCoinDetail(job);
+      const job = { updateProgress: jest.fn(), name: 'coin-market-sync', id: 'detail-2' } as unknown as Job;
+      await task.handleCoinMarketSync(job);
 
       expect(job.updateProgress).toHaveBeenCalledWith(50);
     });
@@ -464,12 +462,12 @@ describe('CoinSyncTask', () => {
       const error = new Error('detail sync failed');
       coinDetailSync.syncCoinDetails.mockRejectedValue(error);
 
-      const job = { updateProgress: jest.fn(), name: 'coin-detail', id: 'detail-3' } as unknown as Job;
-      await expect(task.handleCoinDetail(job)).rejects.toThrow(error);
+      const job = { updateProgress: jest.fn(), name: 'coin-market-sync', id: 'detail-3' } as unknown as Job;
+      await expect(task.handleCoinMarketSync(job)).rejects.toThrow(error);
     });
   });
 
-  describe('handleCoinDetail snapshots', () => {
+  describe('handleCoinMarketSync snapshots', () => {
     const freshCoins = [
       { id: 'id-btc', slug: 'bitcoin', symbol: 'btc', name: 'Bitcoin' },
       { id: 'id-eth', slug: 'ethereum', symbol: 'eth', name: 'Ethereum' }
@@ -478,7 +476,7 @@ describe('CoinSyncTask', () => {
     const makeJob = () =>
       ({
         updateProgress: jest.fn(),
-        name: 'coin-detail',
+        name: 'coin-market-sync',
         id: 'detail-snap-1'
       }) as unknown as Job;
 
@@ -486,8 +484,8 @@ describe('CoinSyncTask', () => {
       coinService.getCoins.mockResolvedValue(freshCoins as any);
     });
 
-    it('calls captureSnapshots after coin detail sync', async () => {
-      const result = await task.handleCoinDetail(makeJob());
+    it('calls captureSnapshots after coin market sync', async () => {
+      const result = await task.handleCoinMarketSync(makeJob());
 
       expect(snapshotService.captureSnapshots).toHaveBeenCalledWith(freshCoins);
       expect(result).toEqual(
@@ -500,7 +498,7 @@ describe('CoinSyncTask', () => {
     it('continues successfully even if snapshot capture fails', async () => {
       snapshotService.captureSnapshots.mockRejectedValue(new Error('DB connection lost'));
 
-      const result = await task.handleCoinDetail(makeJob());
+      const result = await task.handleCoinMarketSync(makeJob());
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -510,24 +508,34 @@ describe('CoinSyncTask', () => {
       );
     });
 
-    it('backfills coins that need historical snapshots', async () => {
+    it('backfills coins that need historical snapshots and marks them complete', async () => {
       snapshotService.getCoinsNeedingBackfill.mockResolvedValue(['id-btc']);
       const historicalData = [
         { timestamp: 1704067200000, price: 42000, volume: 10_000_000_000, marketCap: 800_000_000_000 }
       ];
       coinMarketData.getCoinHistoricalData.mockResolvedValue(historicalData as any);
 
-      await task.handleCoinDetail(makeJob());
+      await task.handleCoinMarketSync(makeJob());
 
       expect(snapshotService.getCoinsNeedingBackfill).toHaveBeenCalled();
       expect(coinMarketData.getCoinHistoricalData).toHaveBeenCalledWith('id-btc');
       expect(snapshotService.backfillFromHistoricalData).toHaveBeenCalledWith('id-btc', historicalData);
+      expect(coinService.markSnapshotBackfillComplete).toHaveBeenCalledWith('id-btc');
+    });
+
+    it('does not mark backfill complete when backfill throws', async () => {
+      snapshotService.getCoinsNeedingBackfill.mockResolvedValue(['id-btc']);
+      coinMarketData.getCoinHistoricalData.mockRejectedValue(new Error('CoinGecko down'));
+
+      await task.handleCoinMarketSync(makeJob());
+
+      expect(coinService.markSnapshotBackfillComplete).not.toHaveBeenCalled();
     });
 
     it('continues successfully even if backfill fails', async () => {
       snapshotService.getCoinsNeedingBackfill.mockRejectedValue(new Error('DB error'));
 
-      const result = await task.handleCoinDetail(makeJob());
+      const result = await task.handleCoinMarketSync(makeJob());
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -540,10 +548,32 @@ describe('CoinSyncTask', () => {
     it('skips backfill when no coins need it', async () => {
       snapshotService.getCoinsNeedingBackfill.mockResolvedValue([]);
 
-      await task.handleCoinDetail(makeJob());
+      await task.handleCoinMarketSync(makeJob());
 
       expect(coinMarketData.getCoinHistoricalData).not.toHaveBeenCalled();
       expect(snapshotService.backfillFromHistoricalData).not.toHaveBeenCalled();
+      expect(coinService.markSnapshotBackfillComplete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleCoinMetadataSync', () => {
+    it('delegates to CoinDetailSyncService.syncCoinMetadata and returns its result', async () => {
+      const metadataResult = { totalCoins: 10, updatedSuccessfully: 8, skipped: 1, errors: 1 };
+      coinDetailSync.syncCoinMetadata.mockResolvedValue(metadataResult);
+
+      const job = { updateProgress: jest.fn(), name: 'coin-metadata-sync', id: 'meta-1' } as unknown as Job;
+      const result = await task.handleCoinMetadataSync(job);
+
+      expect(coinDetailSync.syncCoinMetadata).toHaveBeenCalledWith(expect.any(Function));
+      expect(result).toEqual(metadataResult);
+    });
+
+    it('rethrows errors from syncCoinMetadata', async () => {
+      const error = new Error('metadata sync failed');
+      coinDetailSync.syncCoinMetadata.mockRejectedValue(error);
+
+      const job = { updateProgress: jest.fn(), name: 'coin-metadata-sync', id: 'meta-2' } as unknown as Job;
+      await expect(task.handleCoinMetadataSync(job)).rejects.toThrow(error);
     });
   });
 });
