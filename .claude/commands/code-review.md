@@ -1,6 +1,6 @@
 ---
 allowed-tools: Read, Bash, Grep, Glob
-argument-hint: [file-path] | [commit-hash] | --staged | --full
+argument-hint: [file-path] | [commit-hash] | --staged | --full | --plan <path> | --no-plan
 description: Comprehensive code quality review with security, performance, and architecture analysis
 ---
 
@@ -74,6 +74,32 @@ highest-risk files (services > strategies > processors > entities > DTOs > const
 4. **Read neighboring files**: For each file in scope, look at sibling files in the same directory to understand
    established patterns. If every service in a directory uses a particular error handling pattern, that's a convention —
    not an issue.
+
+5. **Read the planning document if one exists** (skip if `--no-plan` was passed). Plans capture intentional design
+   decisions made before implementation — without them, you'll re-litigate trade-offs the author already weighed.
+
+   Discovery order:
+   - If `--plan <path>` was passed in `$ARGUMENTS`, read that file directly.
+   - Otherwise, list the three most recently modified plan files:
+
+     ```bash
+     ls -lt ~/.claude/plans/*.md 2>/dev/null | head -3
+     ```
+
+     For each candidate (most recent first), check whether it references files or modules in the review scope by
+     grepping for path fragments (e.g., `clients/binance-announcement` or `listing-tracker`). The first plan that
+     mentions in-scope files is the one to use. If none match, proceed without a plan.
+
+   When a plan is found, read it in full before analyzing code. Pay special attention to these sections:
+   - **"Out of scope" / "What we're NOT doing"** — items here were deliberately excluded. Never flag them as gaps.
+   - **"Approach" / "Why X" / "Design decisions"** — trade-offs that were already reasoned through. Don't propose
+     reverting them.
+   - **"Test plan"** — describes intended coverage. Real findings are gaps versus the plan; not gaps the plan itself
+     declares acceptable.
+   - **"Verification"** — commands the author intended to run. If they're documented, assume they were run.
+
+   In the final report, state which plan file was used (or that none was found), so the reader can audit your
+   assumptions.
 
 **Key principle**: Assume patterns that are consistent across the codebase are intentional. Only flag something as an
 issue if it deviates from the project's own conventions OR poses a genuine correctness/security/performance risk.
@@ -159,6 +185,7 @@ it through this evaluation before including it in the report:
 | Criteria            | Question to answer                                                                             |
 | ------------------- | ---------------------------------------------------------------------------------------------- |
 | **Intentional?**    | Is this pattern used consistently in the codebase? Was it recently added/changed deliberately? |
+| **Plan-documented** | Does the plan file mark this as out-of-scope, an explicit trade-off, or a "Why X" decision?    |
 | **Correctness**     | Is this actually wrong, or just different from what I'd write?                                 |
 | **Project Context** | Does CLAUDE.md, a rules file, or the project's conventions explain this choice?                |
 | **Impact**          | Would changing this meaningfully improve correctness, security, or performance?                |
@@ -180,6 +207,8 @@ Group validated findings by verdict, not by analysis category. Format:
 
 ```markdown
 ## Code Review: <scope description>
+
+**Plan reference**: `<path to plan file used, or "none found">` <br> **Files in scope**: <count>
 
 ### FIX (<count>) — Issues that should be addressed
 

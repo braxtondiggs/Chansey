@@ -379,6 +379,15 @@ export class Coin {
 
   @Column({ type: 'timestamptz', nullable: true, default: null })
   @ApiProperty({
+    description: 'Timestamp when historical snapshot backfill completed (null = needs backfill)',
+    example: '2026-04-16T00:00:00Z',
+    required: false,
+    type: Date
+  })
+  snapshotBackfillCompletedAt?: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true, default: null })
+  @ApiProperty({
     description: 'Timestamp when the coin was soft-delisted (null if active)',
     example: '2026-03-15T00:00:00Z',
     required: false,

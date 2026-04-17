@@ -14,12 +14,12 @@ import { CoinGeckoClientService } from '../../shared/coingecko-client.service';
 import { LOCK_DEFAULTS, LOCK_KEYS } from '../../shared/distributed-lock.constants';
 import { DistributedLockService } from '../../shared/distributed-lock.service';
 import { toErrorInfo } from '../../shared/error.util';
-import { withRateLimitRetry } from '../../shared/retry.util';
 import { withTimeout } from '../../shared/with-timeout.util';
 import { CoinDailySnapshotService } from '../coin-daily-snapshot.service';
 import { CoinListingEventService } from '../coin-listing-event.service';
 import { CoinMarketDataService } from '../coin-market-data.service';
 import { CoinService } from '../coin.service';
+import { ExchangeTickerFetcherService } from '../ticker-pairs/services/exchange-ticker-fetcher.service';
 
 // BullMQ auto-renews its internal worker lock every `lockDuration / 2` ms, so
 // a short value here gives fast stall detection without affecting long-running
@@ -43,6 +43,7 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
     private readonly coinDetailSync: CoinDetailSyncService,
     private readonly snapshotService: CoinDailySnapshotService,
     private readonly coinMarketData: CoinMarketDataService,
+    private readonly tickerFetcher: ExchangeTickerFetcherService,
     private readonly gecko: CoinGeckoClientService,
     private readonly lockService: DistributedLockService,
     private readonly circuitBreaker: CircuitBreakerService,
@@ -59,8 +60,23 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
 
     if (!this.jobScheduled) {
       await this.scheduleRepeatableJob('coin-sync', CronExpression.EVERY_WEEK);
-      await this.scheduleRepeatableJob('coin-detail', CronExpression.EVERY_DAY_AT_11PM);
+      await this.scheduleRepeatableJob('coin-market-sync', CronExpression.EVERY_DAY_AT_11PM);
+      await this.scheduleRepeatableJob('coin-metadata-sync', '0 2 1 * *');
+      await this.removeLegacyRepeatableJob('coin-detail');
       this.jobScheduled = true;
+    }
+  }
+
+  private async removeLegacyRepeatableJob(name: string): Promise<void> {
+    const repeatedJobs = await this.coinQueue.getRepeatableJobs();
+    const legacy = repeatedJobs.find((job) => job.name === name);
+    if (!legacy) return;
+    try {
+      await this.coinQueue.removeRepeatableByKey(legacy.key);
+      this.logger.log(`Removed legacy repeatable job '${name}' (key=${legacy.key})`);
+    } catch (error: unknown) {
+      const { message } = toErrorInfo(error);
+      this.logger.warn(`Failed to remove legacy repeatable job '${name}': ${message}`);
     }
   }
 
@@ -97,8 +113,7 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
   async process(job: Job) {
     this.logger.log(`Processing job ${job.id} of type ${job.name}`);
 
-    const lockKey = job.name === 'coin-detail' ? LOCK_KEYS.COIN_DETAIL : LOCK_KEYS.COIN_SYNC;
-    const lockTtl = job.name === 'coin-detail' ? LOCK_DEFAULTS.COIN_DETAIL_TTL_MS : LOCK_DEFAULTS.COIN_SYNC_TTL_MS;
+    const { lockKey, lockTtl } = this.resolveLock(job.name);
 
     const lock = await this.lockService.acquire({ key: lockKey, ttlMs: lockTtl });
     if (!lock.acquired) {
@@ -111,11 +126,16 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
 
       // Timeouts must fire before the distributed-lock TTL expires so the
       // finally block can release the lock before another run claims it.
-      // coin-sync TTL 45m → 40m timeout; coin-detail TTL 5h → 4h timeout.
       if (job.name === 'coin-sync') {
         result = await withTimeout(this.handleSyncCoins(job), 40 * 60 * 1000, 'coin-sync');
-      } else if (job.name === 'coin-detail') {
-        result = await withTimeout(this.handleCoinDetail(job), 4 * 60 * 60 * 1000, 'coin-detail');
+      } else if (job.name === 'coin-market-sync' || job.name === 'coin-detail') {
+        // 'coin-detail' retained so in-flight legacy workers after rename don't fail.
+        // 40m timeout is unreachable in normal ops (~25m fresh-install runtime) and
+        // leaves a 5m gap before the 45m lock TTL so the invariant "timeout fires
+        // before lock TTL" still holds for genuinely hung runs.
+        result = await withTimeout(this.handleCoinMarketSync(job), 40 * 60 * 1000, 'coin-market-sync');
+      } else if (job.name === 'coin-metadata-sync') {
+        result = await withTimeout(this.handleCoinMetadataSync(job), 4 * 60 * 60 * 1000, 'coin-metadata-sync');
       } else {
         throw new Error(`Unknown job name: ${job.name}`);
       }
@@ -131,8 +151,21 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
     }
   }
 
+  private resolveLock(jobName: string): { lockKey: string; lockTtl: number } {
+    switch (jobName) {
+      case 'coin-market-sync':
+      case 'coin-detail':
+        return { lockKey: LOCK_KEYS.COIN_MARKET_SYNC, lockTtl: LOCK_DEFAULTS.COIN_MARKET_SYNC_TTL_MS };
+      case 'coin-metadata-sync':
+        return { lockKey: LOCK_KEYS.COIN_METADATA_SYNC, lockTtl: LOCK_DEFAULTS.COIN_METADATA_SYNC_TTL_MS };
+      default:
+        return { lockKey: LOCK_KEYS.COIN_SYNC, lockTtl: LOCK_DEFAULTS.COIN_SYNC_TTL_MS };
+    }
+  }
+
   /**
-   * Helper method to get all coin slugs that are used in ticker pairs on supported exchanges
+   * Helper method to get all coin slugs that are used in ticker pairs on supported exchanges.
+   * Delegates to the shared ticker fetcher so the ticker-pairs-sync job can reuse the result.
    */
   private async getUsedCoinSlugs(supportedExchanges: { slug: string; name: string }[]): Promise<Set<string>> {
     this.logger.log('Checking CoinGecko for coins used in ticker pairs');
@@ -141,49 +174,13 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
     for (const exchange of supportedExchanges) {
       try {
         this.logger.log(`Checking exchange: ${exchange.name} (${exchange.slug}) for ticker pairs`);
+        const tickers = await this.tickerFetcher.fetchAllTickersForExchange(exchange.slug);
 
-        let page = 1;
-        let totalProcessedTickers = 0;
-
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const id = exchange.slug === 'coinbase' ? 'gdax' : exchange.slug.toLowerCase();
-          const retryResult = await withRateLimitRetry(() => this.gecko.client.exchanges.tickers.get(id, { page }), {
-            maxRetries: 2,
-            logger: this.logger,
-            operationName: `tickers(${id}, page=${page})`
-          });
-
-          if (!retryResult.success) {
-            const err = toErrorInfo(retryResult.error);
-            this.logger.error(`Failed to fetch page ${page} tickers for ${exchange.name}: ${err.message}`);
-            if (page === 1) break;
-            await new Promise((r) => setTimeout(r, this.API_RATE_LIMIT_DELAY));
-            page++;
-            continue;
-          }
-
-          const tickers = retryResult.result?.tickers || [];
-
-          if (tickers.length === 0) {
-            this.logger.log(
-              `Completed loading ticker data for ${exchange.name}, total processed: ${totalProcessedTickers}`
-            );
-            break;
-          }
-
-          totalProcessedTickers += tickers.length;
-
-          for (const ticker of tickers) {
-            const baseId = ticker.coin_id?.toLowerCase();
-            const quoteId = ticker.target_coin_id?.toLowerCase();
-
-            if (baseId) usedCoinSlugs.add(baseId);
-            if (quoteId) usedCoinSlugs.add(quoteId);
-          }
-
-          await new Promise((r) => setTimeout(r, this.API_RATE_LIMIT_DELAY));
-          page++;
+        for (const ticker of tickers) {
+          const baseId = ticker.coin_id?.toLowerCase();
+          const quoteId = ticker.target_coin_id?.toLowerCase();
+          if (baseId) usedCoinSlugs.add(baseId);
+          if (quoteId) usedCoinSlugs.add(quoteId);
         }
       } catch (error: unknown) {
         const err = toErrorInfo(error);
@@ -338,14 +335,15 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
   }
 
   /**
-   * Handler for detailed coin information update job.
-   * Delegates to CoinDetailSyncService.
+   * Handler for the daily batched markets sync.
+   * Refreshes market data via /coins/markets and captures daily snapshots.
+   * Runs a bounded historical-snapshot backfill for coins that have never been backfilled.
    */
-  async handleCoinDetail(job: Job) {
+  async handleCoinMarketSync(job: Job) {
     try {
       const detailResult = await this.coinDetailSync.syncCoinDetails((percent) => job.updateProgress(percent));
 
-      // Cooldown after detail sync to let CoinGecko rate limits recover before snapshot/backfill
+      // Cooldown after markets sync to let CoinGecko rate limits recover before snapshot/backfill
       this.logger.log(`Cooling down ${CoinSyncTask.POST_DETAIL_COOLDOWN_MS / 1000}s before snapshot/backfill`);
       await new Promise((resolve) => setTimeout(resolve, CoinSyncTask.POST_DETAIL_COOLDOWN_MS));
 
@@ -386,6 +384,10 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
                   try {
                     const historicalData = await this.coinMarketData.getCoinHistoricalData(coinId);
                     const inserted = await this.snapshotService.backfillFromHistoricalData(coinId, historicalData);
+                    // Mark backfill as complete even when the result set is empty —
+                    // a successful API call with no historical data means CoinGecko
+                    // has nothing to return, so there's no point re-asking tomorrow.
+                    await this.coin.markSnapshotBackfillComplete(coinId);
                     this.logger.debug(`Backfilled ${inserted} snapshots for coin ${coinId}`);
                   } catch (err: unknown) {
                     const { message } = toErrorInfo(err);
@@ -409,6 +411,21 @@ export class CoinSyncTask extends FailSafeWorkerHost implements OnModuleInit {
     } catch (e: unknown) {
       const errInfo = toErrorInfo(e);
       this.logger.error(`Failed to process coin details: ${errInfo.message}`, errInfo.stack);
+      throw e;
+    }
+  }
+
+  /**
+   * Handler for the monthly metadata refresh job.
+   * Delegates to CoinDetailSyncService.syncCoinMetadata() which per-coin fetches
+   * /coins/{id} for coins with stale metadata (>25 days old).
+   */
+  async handleCoinMetadataSync(job: Job) {
+    try {
+      return await this.coinDetailSync.syncCoinMetadata((percent) => job.updateProgress(percent));
+    } catch (e: unknown) {
+      const errInfo = toErrorInfo(e);
+      this.logger.error(`Failed to refresh coin metadata: ${errInfo.message}`, errInfo.stack);
       throw e;
     }
   }

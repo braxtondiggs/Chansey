@@ -288,6 +288,10 @@ export class CoinService {
     await this.coin.update(coinId, { currentPrice: price });
   }
 
+  async markSnapshotBackfillComplete(coinId: string): Promise<void> {
+    await this.coin.update(coinId, { snapshotBackfillCompletedAt: new Date() });
+  }
+
   async clearRank() {
     await this.coin.createQueryBuilder().update().set({ geckoRank: null }).execute();
   }

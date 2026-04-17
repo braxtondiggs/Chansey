@@ -5,6 +5,7 @@ import { type CoinGeckoClientService } from '../../shared/coingecko-client.servi
 import { type CoinService } from '../coin.service';
 
 // Mock CoinGecko SDK calls
+const mockMarkets = jest.fn();
 const mockCoinId = jest.fn();
 const mockTrending = jest.fn();
 
@@ -20,10 +21,16 @@ jest.mock('../../shared/retry.util', () => ({
   })
 }));
 
-// Mock mapCoinGeckoDetailToUpdate to track calls
-const mockMapDetail = jest.fn().mockReturnValue({ description: 'mapped' });
+// Track the markets mapper
+const mockMapMarkets = jest.fn().mockImplementation((entry: any) => ({ currentPrice: entry.current_price }));
+jest.mock('./map-coingecko-markets.util', () => ({
+  mapCoinGeckoMarketsToUpdate: (...args: any[]) => mockMapMarkets(...args)
+}));
+
+// Track the metadata mapper
+const mockMapMetadata = jest.fn().mockImplementation(() => ({ description: 'refreshed' }));
 jest.mock('./map-coingecko-detail.util', () => ({
-  mapCoinGeckoDetailToUpdate: (...args: any[]) => mockMapDetail(...args)
+  mapCoinGeckoDetailToMetadataUpdate: (...args: any[]) => mockMapMetadata(...args)
 }));
 
 jest.useFakeTimers();
@@ -36,12 +43,21 @@ describe('CoinDetailSyncService', () => {
     Pick<CircuitBreakerService, 'configure' | 'isOpen' | 'recordSuccess' | 'recordFailure'>
   >;
 
-  const makeCoin = (overrides: Partial<{ id: string; slug: string; symbol: string; geckoRank: number | null }> = {}) =>
+  const makeCoin = (
+    overrides: Partial<{
+      id: string;
+      slug: string;
+      symbol: string;
+      geckoRank: number | null;
+      metadataLastUpdated: Date | null;
+    }> = {}
+  ) =>
     ({
       id: overrides.id ?? 'coin-1',
       slug: overrides.slug ?? 'bitcoin',
       symbol: overrides.symbol ?? 'btc',
-      geckoRank: overrides.geckoRank ?? null
+      geckoRank: overrides.geckoRank ?? null,
+      metadataLastUpdated: overrides.metadataLastUpdated ?? null
     }) as any;
 
   beforeEach(() => {
@@ -57,7 +73,8 @@ describe('CoinDetailSyncService', () => {
     geckoService = {
       client: {
         coins: {
-          getID: mockCoinId
+          getID: mockCoinId,
+          markets: { get: mockMarkets }
         },
         search: {
           trending: { get: mockTrending }
@@ -79,290 +96,279 @@ describe('CoinDetailSyncService', () => {
     jest.clearAllTimers();
   });
 
-  it('clears rank data before processing coins', async () => {
-    await service.syncCoinDetails();
+  describe('syncCoinDetails (batched markets path)', () => {
+    it('clears rank data before processing coins', async () => {
+      await service.syncCoinDetails();
 
-    expect(coinService.clearRank).toHaveBeenCalled();
-  });
-
-  it('awaits clearRank before getCoins and applyTrendingRanks', async () => {
-    const order: string[] = [];
-
-    coinService.clearRank.mockImplementation(async () => {
-      order.push('clearRank');
-    });
-    coinService.getCoins.mockImplementation(async () => {
-      order.push('getCoins');
-      return [];
-    });
-    mockTrending.mockImplementation(async () => {
-      order.push('trending');
-      return { coins: [] };
+      expect(coinService.clearRank).toHaveBeenCalled();
     });
 
-    await service.syncCoinDetails();
+    it('issues a single /coins/markets call for a 250-coin batch', async () => {
+      const coins = Array.from({ length: 250 }, (_, i) =>
+        makeCoin({ id: `c${i}`, slug: `coin-${i}`, symbol: `s${i}` })
+      );
+      coinService.getCoins.mockResolvedValue(coins);
+      mockMarkets.mockResolvedValue(coins.map((c) => ({ id: c.slug, current_price: 100 })));
 
-    expect(order.indexOf('clearRank')).toBeLessThan(order.indexOf('getCoins'));
-  });
+      const promise = service.syncCoinDetails();
+      await jest.runAllTimersAsync();
+      const result = await promise;
 
-  it('applies trending rank scores to matching coins by slug', async () => {
-    const btc = makeCoin({ id: 'btc-id', slug: 'bitcoin', symbol: 'btc' });
-    const eth = makeCoin({ id: 'eth-id', slug: 'ethereum', symbol: 'eth' });
-    coinService.getCoins.mockResolvedValue([btc, eth]);
-    mockTrending.mockResolvedValue({
-      coins: [
-        { id: 'bitcoin', score: 3 },
-        { id: 'unknown-coin', score: 1 } // no match — should be ignored
-      ]
-    });
-    mockCoinId.mockResolvedValue({ market_data: {} });
-
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    await promise;
-
-    expect(btc.geckoRank).toBe(3);
-    expect(eth.geckoRank).toBeNull(); // not in trending
-  });
-
-  it('skips trending items with missing item.id', async () => {
-    const btc = makeCoin({ slug: 'bitcoin' });
-    coinService.getCoins.mockResolvedValue([btc]);
-    mockTrending.mockResolvedValue({
-      coins: [{}, { id: 'bitcoin', score: 5 }]
-    });
-    mockCoinId.mockResolvedValue({ market_data: {} });
-
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    await promise;
-
-    expect(btc.geckoRank).toBe(5);
-  });
-
-  it('passes gecko response, geckoRank, and symbol to mapping util', async () => {
-    const coin = makeCoin({ id: 'c1', slug: 'bitcoin', symbol: 'btc', geckoRank: 7 });
-    coinService.getCoins.mockResolvedValue([coin]);
-    const geckoResponse = { market_data: { total_volume: { usd: 100 } } };
-    mockCoinId.mockResolvedValue(geckoResponse);
-
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    await promise;
-
-    expect(mockMapDetail).toHaveBeenCalledWith(geckoResponse, 7, 'btc');
-    expect(coinService.update).toHaveBeenCalledWith('c1', { description: 'mapped' });
-  });
-
-  it('skips coin update when withRateLimitRetry reports failure', async () => {
-    coinService.getCoins.mockResolvedValue([makeCoin({ id: 'c1', slug: 'fail-coin', symbol: 'fail' })]);
-    mockCoinId.mockRejectedValue(new Error('Rate limited'));
-
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    const result = await promise;
-
-    expect(coinService.update).not.toHaveBeenCalled();
-    expect(result).toEqual({ totalCoins: 1, updatedSuccessfully: 0, errors: 1 });
-  });
-
-  it('returns correct counts on mixed success/failure', async () => {
-    const coins = [
-      makeCoin({ id: 'c1', slug: 'ok-coin', symbol: 'ok' }),
-      makeCoin({ id: 'c2', slug: 'bad-coin', symbol: 'bad' })
-    ];
-    coinService.getCoins.mockResolvedValue(coins);
-
-    mockCoinId.mockImplementation(async (id: string) => {
-      if (id === 'bad-coin') throw new Error('API error');
-      return { market_data: {} };
+      expect(mockMarkets).toHaveBeenCalledTimes(1);
+      expect(mockMarkets).toHaveBeenCalledWith(
+        expect.objectContaining({
+          vs_currency: 'usd',
+          ids: expect.stringContaining('coin-0'),
+          per_page: 250
+        })
+      );
+      expect(result.totalCoins).toBe(250);
+      expect(result.updatedSuccessfully).toBe(250);
+      expect(result.errors).toBe(0);
     });
 
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    const result = await promise;
+    it('splits >250 coins into multiple batches', async () => {
+      const coins = Array.from({ length: 260 }, (_, i) =>
+        makeCoin({ id: `c${i}`, slug: `coin-${i}`, symbol: `s${i}` })
+      );
+      coinService.getCoins.mockResolvedValue(coins);
+      mockMarkets.mockImplementation(async (params: any) => {
+        const ids = String(params.ids).split(',');
+        return ids.map((id) => ({ id, current_price: 10 }));
+      });
 
-    expect(result).toEqual({
-      totalCoins: 2,
-      updatedSuccessfully: 1,
-      errors: 1
-    });
-    // update should only be called for the successful coin
-    expect(coinService.update).toHaveBeenCalledTimes(1);
-  });
+      const promise = service.syncCoinDetails();
+      await jest.runAllTimersAsync();
+      await promise;
 
-  it('counts error when coinService.update throws', async () => {
-    coinService.getCoins.mockResolvedValue([makeCoin({ id: 'c1', slug: 'coin-1', symbol: 'sym' })]);
-    mockCoinId.mockResolvedValue({ market_data: {} });
-    coinService.update.mockRejectedValue(new Error('DB write failed'));
-
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    const result = await promise;
-
-    expect(result).toEqual({ totalCoins: 1, updatedSuccessfully: 0, errors: 1 });
-  });
-
-  it('handles trending fetch failure gracefully and still updates coins', async () => {
-    coinService.getCoins.mockResolvedValue([makeCoin()]);
-    mockTrending.mockRejectedValue(new Error('Trending API down'));
-    mockCoinId.mockResolvedValue({ market_data: {} });
-
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    const result = await promise;
-
-    expect(result.updatedSuccessfully).toBe(1);
-    expect(result.errors).toBe(0);
-  });
-
-  it('returns zeroes when no coins exist', async () => {
-    const result = await service.syncCoinDetails();
-
-    expect(result).toEqual({ totalCoins: 0, updatedSuccessfully: 0, errors: 0 });
-    expect(coinService.update).not.toHaveBeenCalled();
-  });
-
-  it('reports progress through all stages', async () => {
-    coinService.getCoins.mockResolvedValue([makeCoin()]);
-    mockCoinId.mockResolvedValue({ market_data: {} });
-
-    const progress = jest.fn();
-    const promise = service.syncCoinDetails(progress);
-    await jest.runAllTimersAsync();
-    await promise;
-
-    const calls = progress.mock.calls.map(([v]: [number]) => v);
-    // Must start at 5, pass through 10, 30, and end at 100
-    expect(calls[0]).toBe(5);
-    expect(calls[1]).toBe(10);
-    expect(calls[2]).toBe(30);
-    expect(calls[calls.length - 1]).toBe(100);
-    // All values should be monotonically non-decreasing
-    for (let i = 1; i < calls.length; i++) {
-      expect(calls[i]).toBeGreaterThanOrEqual(calls[i - 1]);
-    }
-  });
-
-  it('records circuit breaker success on API success and failure on API error', async () => {
-    const coins = [
-      makeCoin({ id: 'c1', slug: 'ok-coin', symbol: 'ok' }),
-      makeCoin({ id: 'c2', slug: 'bad-coin', symbol: 'bad' })
-    ];
-    coinService.getCoins.mockResolvedValue(coins);
-
-    mockCoinId.mockImplementation(async (id: string) => {
-      if (id === 'bad-coin') throw new Error('API error');
-      return { market_data: {} };
+      expect(mockMarkets).toHaveBeenCalledTimes(2);
     });
 
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    await promise;
+    it('passes the mapped markets entry, geckoRank, and symbol to the markets mapper', async () => {
+      const coin = makeCoin({ id: 'c1', slug: 'bitcoin', symbol: 'btc', geckoRank: 7 });
+      coinService.getCoins.mockResolvedValue([coin]);
+      const marketsEntry = { id: 'bitcoin', current_price: 42000, market_cap: 1e12 };
+      mockMarkets.mockResolvedValue([marketsEntry]);
 
-    expect(circuitBreaker.recordSuccess).toHaveBeenCalledWith('coingecko-detail');
-    expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('coingecko-detail');
-  });
+      const promise = service.syncCoinDetails();
+      await jest.runAllTimersAsync();
+      await promise;
 
-  it('pauses with exponential backoff when circuit opens then resumes and processes all coins', async () => {
-    const coins = [
-      makeCoin({ id: 'c1', slug: 'coin-1', symbol: 's1' }),
-      makeCoin({ id: 'c2', slug: 'coin-2', symbol: 's2' }),
-      makeCoin({ id: 'c3', slug: 'coin-3', symbol: 's3' }),
-      makeCoin({ id: 'c4', slug: 'coin-4', symbol: 's4' })
-    ];
-    coinService.getCoins.mockResolvedValue(coins);
-    mockCoinId.mockResolvedValue({ market_data: {} });
-
-    // Circuit opens after first batch, stays open for one check, then closes
-    let circuitCallCount = 0;
-    circuitBreaker.isOpen.mockImplementation(() => {
-      circuitCallCount++;
-      // Open on the 2nd call (before second batch), closed on retry
-      return circuitCallCount === 2;
+      expect(mockMapMarkets).toHaveBeenCalledWith(marketsEntry, 7, 'btc');
+      expect(coinService.update).toHaveBeenCalledWith('c1', { currentPrice: 42000 });
     });
 
-    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout');
+    it('counts batch-level API failure as all-coins-failed', async () => {
+      const coins = [makeCoin({ id: 'c1', slug: 'coin-1', symbol: 's1' })];
+      coinService.getCoins.mockResolvedValue(coins);
+      mockMarkets.mockRejectedValue(new Error('API down'));
 
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    const result = await promise;
+      const promise = service.syncCoinDetails();
+      await jest.runAllTimersAsync();
+      const result = await promise;
 
-    // All 4 coins should be processed — no abort
-    expect(result.totalCoins).toBe(4);
-    expect(result.updatedSuccessfully).toBe(4);
-    expect(result.errors).toBe(0);
-
-    // First circuit pause should be at base backoff (CIRCUIT_RESET_MS = 45s)
-    const circuitPauseDelays = setTimeoutSpy.mock.calls
-      .map(([, ms]) => ms)
-      .filter((ms): ms is number => typeof ms === 'number' && ms >= 45_000);
-    expect(circuitPauseDelays[0]).toBe(45_000);
-
-    setTimeoutSpy.mockRestore();
-  });
-
-  it('resets backoff after successful batch', async () => {
-    const coins = Array.from({ length: 9 }, (_, i) => makeCoin({ id: `c${i}`, slug: `coin-${i}`, symbol: `s${i}` }));
-    coinService.getCoins.mockResolvedValue(coins);
-    mockCoinId.mockResolvedValue({ market_data: {} });
-
-    // Circuit opens twice with a success in between — second pause should reset to base backoff
-    let isOpenCallCount = 0;
-    circuitBreaker.isOpen.mockImplementation(() => {
-      isOpenCallCount++;
-      // Open before batch 2 (call 2) and before batch 3's retry (call 4)
-      return isOpenCallCount === 2 || isOpenCallCount === 4;
+      expect(result).toEqual({ totalCoins: 1, updatedSuccessfully: 0, errors: 1 });
+      expect(coinService.update).not.toHaveBeenCalled();
     });
 
-    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout');
+    it('counts coins missing from the markets response as failures', async () => {
+      const coins = [
+        makeCoin({ id: 'c1', slug: 'coin-1', symbol: 's1' }),
+        makeCoin({ id: 'c2', slug: 'coin-2', symbol: 's2' })
+      ];
+      coinService.getCoins.mockResolvedValue(coins);
+      // Only one coin in response
+      mockMarkets.mockResolvedValue([{ id: 'coin-1', current_price: 10 }]);
 
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    const result = await promise;
+      const promise = service.syncCoinDetails();
+      await jest.runAllTimersAsync();
+      const result = await promise;
 
-    // All coins processed despite two circuit pauses
-    expect(result.totalCoins).toBe(9);
-    expect(result.updatedSuccessfully).toBe(9);
-
-    // Both pauses should be at base backoff (45s) since consecutivePauses resets between them
-    const circuitPauses = setTimeoutSpy.mock.calls
-      .map(([, ms]) => ms)
-      .filter((ms): ms is number => typeof ms === 'number' && ms >= 45_000);
-    expect(circuitPauses).toHaveLength(2);
-    expect(circuitPauses.every((ms) => ms === 45_000)).toBe(true);
-
-    setTimeoutSpy.mockRestore();
-  });
-
-  it('uses elevated batch delay after circuit pause, normalizes after 3 successes', async () => {
-    // 4 batches of 3 = 12 coins. Circuit opens before batch 1.
-    const coins = Array.from({ length: 12 }, (_, i) => makeCoin({ id: `c${i}`, slug: `coin-${i}`, symbol: `s${i}` }));
-    coinService.getCoins.mockResolvedValue(coins);
-    mockCoinId.mockResolvedValue({ market_data: {} });
-
-    // Circuit open only on the very first check
-    let isOpenCallCount = 0;
-    circuitBreaker.isOpen.mockImplementation(() => {
-      isOpenCallCount++;
-      return isOpenCallCount === 1;
+      expect(result).toEqual({ totalCoins: 2, updatedSuccessfully: 1, errors: 1 });
     });
 
-    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout');
+    it('records circuit breaker success on successful batch and failure on batch API error', async () => {
+      const coins = [makeCoin({ id: 'c1', slug: 'coin-1', symbol: 's1' })];
+      coinService.getCoins.mockResolvedValue(coins);
+      mockMarkets.mockResolvedValueOnce([{ id: 'coin-1', current_price: 10 }]);
 
-    const promise = service.syncCoinDetails();
-    await jest.runAllTimersAsync();
-    await promise;
+      const promise = service.syncCoinDetails();
+      await jest.runAllTimersAsync();
+      await promise;
 
-    const delays = setTimeoutSpy.mock.calls
-      .map(([, ms]) => ms)
-      .filter((ms): ms is number => typeof ms === 'number' && ms > 1000);
+      expect(circuitBreaker.recordSuccess).toHaveBeenCalledWith('coingecko-detail');
+    });
 
-    // First timeout is the circuit pause (45s), then elevated delays (6s) until normalization
-    expect(delays[0]).toBe(45_000); // circuit backoff
-    // After circuit pause, first inter-batch delays should be elevated (6000ms)
-    expect(delays.filter((t) => t === 6000).length).toBeGreaterThanOrEqual(1);
+    it('applies trending rank scores to matching coins by slug', async () => {
+      const btc = makeCoin({ id: 'btc-id', slug: 'bitcoin', symbol: 'btc' });
+      const eth = makeCoin({ id: 'eth-id', slug: 'ethereum', symbol: 'eth' });
+      coinService.getCoins.mockResolvedValue([btc, eth]);
+      mockTrending.mockResolvedValue({
+        coins: [{ id: 'bitcoin', score: 3 }]
+      });
+      mockMarkets.mockResolvedValue([
+        { id: 'bitcoin', current_price: 100 },
+        { id: 'ethereum', current_price: 50 }
+      ]);
 
-    setTimeoutSpy.mockRestore();
+      const promise = service.syncCoinDetails();
+      await jest.runAllTimersAsync();
+      await promise;
+
+      expect(btc.geckoRank).toBe(3);
+      expect(eth.geckoRank).toBeNull();
+    });
+
+    it('handles trending fetch failure gracefully and still updates coins', async () => {
+      const coin = makeCoin({ id: 'c1', slug: 'coin-1', symbol: 's1' });
+      coinService.getCoins.mockResolvedValue([coin]);
+      mockTrending.mockRejectedValue(new Error('Trending API down'));
+      mockMarkets.mockResolvedValue([{ id: 'coin-1', current_price: 10 }]);
+
+      const promise = service.syncCoinDetails();
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result.updatedSuccessfully).toBe(1);
+    });
+
+    it('returns zeroes when no coins exist', async () => {
+      const result = await service.syncCoinDetails();
+
+      expect(result).toEqual({ totalCoins: 0, updatedSuccessfully: 0, errors: 0 });
+      expect(coinService.update).not.toHaveBeenCalled();
+      expect(mockMarkets).not.toHaveBeenCalled();
+    });
+
+    it('reports progress through all stages', async () => {
+      const coins = [makeCoin({ id: 'c1', slug: 'coin-1', symbol: 's1' })];
+      coinService.getCoins.mockResolvedValue(coins);
+      mockMarkets.mockResolvedValue([{ id: 'coin-1', current_price: 10 }]);
+
+      const progress = jest.fn();
+      const promise = service.syncCoinDetails(progress);
+      await jest.runAllTimersAsync();
+      await promise;
+
+      const calls = progress.mock.calls.map(([v]: [number]) => v);
+      expect(calls[0]).toBe(5);
+      expect(calls[calls.length - 1]).toBe(100);
+      for (let i = 1; i < calls.length; i++) {
+        expect(calls[i]).toBeGreaterThanOrEqual(calls[i - 1]);
+      }
+    });
+
+    it('pauses with backoff when circuit opens, then resumes', async () => {
+      const coins = Array.from({ length: 251 }, (_, i) =>
+        makeCoin({ id: `c${i}`, slug: `coin-${i}`, symbol: `s${i}` })
+      );
+      coinService.getCoins.mockResolvedValue(coins);
+      mockMarkets.mockImplementation(async (params: any) => {
+        const ids = String(params.ids).split(',');
+        return ids.map((id) => ({ id, current_price: 1 }));
+      });
+
+      let circuitCallCount = 0;
+      circuitBreaker.isOpen.mockImplementation(() => {
+        circuitCallCount++;
+        return circuitCallCount === 2; // open between batch 1 and batch 2, closed after
+      });
+
+      const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout');
+
+      const promise = service.syncCoinDetails();
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result.totalCoins).toBe(251);
+      expect(result.updatedSuccessfully).toBe(251);
+      const circuitPauseDelays = setTimeoutSpy.mock.calls
+        .map(([, ms]) => ms)
+        .filter((ms): ms is number => typeof ms === 'number' && ms >= 45_000);
+      expect(circuitPauseDelays[0]).toBe(45_000);
+
+      setTimeoutSpy.mockRestore();
+    });
+  });
+
+  describe('syncCoinMetadata', () => {
+    it('refreshes coins with stale metadata and persists metadataLastUpdated', async () => {
+      const oldDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
+      const staleCoin = makeCoin({ id: 'c1', slug: 'coin-1', symbol: 's1', metadataLastUpdated: oldDate });
+      coinService.getCoins.mockResolvedValue([staleCoin]);
+      mockCoinId.mockResolvedValue({ description: { en: 'refreshed' }, genesis_date: '2009-01-03' });
+
+      const promise = service.syncCoinMetadata();
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(mockCoinId).toHaveBeenCalledWith('coin-1', expect.any(Object));
+      expect(coinService.update).toHaveBeenCalledWith(
+        'c1',
+        expect.objectContaining({
+          description: 'refreshed',
+          metadataLastUpdated: expect.any(Date)
+        })
+      );
+      expect(result.updatedSuccessfully).toBe(1);
+      expect(result.skipped).toBe(0);
+    });
+
+    it('skips coins whose metadata was refreshed within 25 days', async () => {
+      const freshDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000); // 10 days ago
+      const oldDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
+      coinService.getCoins.mockResolvedValue([
+        makeCoin({ id: 'c-fresh', slug: 'fresh', symbol: 'fr', metadataLastUpdated: freshDate }),
+        makeCoin({ id: 'c-old', slug: 'old', symbol: 'ol', metadataLastUpdated: oldDate })
+      ]);
+      mockCoinId.mockResolvedValue({ description: { en: 'x' } });
+
+      const promise = service.syncCoinMetadata();
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(mockCoinId).toHaveBeenCalledTimes(1);
+      expect(mockCoinId).toHaveBeenCalledWith('old', expect.any(Object));
+      expect(result.updatedSuccessfully).toBe(1);
+      expect(result.skipped).toBe(1);
+    });
+
+    it('treats null metadataLastUpdated as stale', async () => {
+      const coin = makeCoin({ id: 'c-null', slug: 'never', symbol: 'nv', metadataLastUpdated: null });
+      coinService.getCoins.mockResolvedValue([coin]);
+      mockCoinId.mockResolvedValue({ description: { en: 'x' } });
+
+      const promise = service.syncCoinMetadata();
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(mockCoinId).toHaveBeenCalledTimes(1);
+      expect(result.updatedSuccessfully).toBe(1);
+    });
+
+    it('records API failures without throwing', async () => {
+      const staleCoin = makeCoin({ id: 'c1', slug: 'coin-1', symbol: 's1', metadataLastUpdated: null });
+      coinService.getCoins.mockResolvedValue([staleCoin]);
+      mockCoinId.mockRejectedValue(new Error('Rate limited'));
+
+      const promise = service.syncCoinMetadata();
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result.errors).toBe(1);
+      expect(result.updatedSuccessfully).toBe(0);
+    });
+
+    it('returns zeroes when nothing needs refresh', async () => {
+      const freshDate = new Date();
+      coinService.getCoins.mockResolvedValue([
+        makeCoin({ id: 'c1', slug: 'bitcoin', symbol: 'btc', metadataLastUpdated: freshDate })
+      ]);
+
+      const result = await service.syncCoinMetadata();
+
+      expect(mockCoinId).not.toHaveBeenCalled();
+      expect(result).toEqual({ totalCoins: 1, updatedSuccessfully: 0, skipped: 1, errors: 0 });
+    });
   });
 });

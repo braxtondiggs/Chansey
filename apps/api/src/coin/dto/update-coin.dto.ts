@@ -111,4 +111,10 @@ export class UpdateCoinDto {
 
   @IsDate()
   geckoLastUpdatedAt?: Date | null;
+
+  @IsDate()
+  metadataLastUpdated?: Date | null;
+
+  @IsDate()
+  snapshotBackfillCompletedAt?: Date | null;
 }

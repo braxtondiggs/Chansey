@@ -1,7 +1,7 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { type Repository } from 'typeorm';
+import { type EntityManager, type Repository } from 'typeorm';
 
 import { CoinDailySnapshot } from './coin-daily-snapshot.entity';
 import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
@@ -25,8 +25,10 @@ describe('CoinDailySnapshotService', () => {
   let service: CoinDailySnapshotService;
   let repo: jest.Mocked<Repository<CoinDailySnapshot>>;
 
-  // Reusable mock query builder
+  // Reusable mock query builder for the repo
   let mockQb: Record<string, jest.Mock>;
+  // Separate query builder used by getCoinsNeedingBackfill() against entity manager
+  let mockBackfillQb: Record<string, jest.Mock>;
 
   beforeEach(async () => {
     mockQb = {
@@ -46,6 +48,19 @@ describe('CoinDailySnapshotService', () => {
       getRawMany: jest.fn().mockResolvedValue([])
     };
 
+    mockBackfillQb = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      from: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([])
+    };
+
+    const manager = {
+      createQueryBuilder: jest.fn().mockReturnValue(mockBackfillQb)
+    } as unknown as EntityManager;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CoinDailySnapshotService,
@@ -54,7 +69,8 @@ describe('CoinDailySnapshotService', () => {
           useValue: {
             createQueryBuilder: jest.fn().mockReturnValue(mockQb),
             count: jest.fn().mockResolvedValue(0),
-            delete: jest.fn().mockResolvedValue({ affected: 0 })
+            delete: jest.fn().mockResolvedValue({ affected: 0 }),
+            manager
           }
         }
       ]
@@ -335,15 +351,29 @@ describe('CoinDailySnapshotService', () => {
   // getCoinsNeedingBackfill()
   // ===========================================================================
   describe('getCoinsNeedingBackfill()', () => {
-    it('returns coins with fewer than minDays snapshots', async () => {
-      mockQb.getRawMany.mockResolvedValueOnce([
-        { coinId: 'coin-1', cnt: '10' },
-        { coinId: 'coin-2', cnt: '45' }
-      ]);
+    it('returns only coins whose snapshotBackfillCompletedAt is null', async () => {
+      // Step 1 (manager): unflagged coins via partial index
+      mockBackfillQb.getRawMany.mockResolvedValueOnce([{ id: 'coin-1' }, { id: 'coin-3' }]);
+      // Step 2 (repo): safety-net count for flagged coins (just coin-2)
+      mockQb.getRawMany.mockResolvedValueOnce([{ coinId: 'coin-2', cnt: '365' }]);
 
       const result = await service.getCoinsNeedingBackfill(['coin-1', 'coin-2', 'coin-3'], 30);
 
-      expect(result).toEqual(['coin-1', 'coin-3']); // coin-3 has 0, coin-1 has 10
+      expect(result).toEqual(['coin-1', 'coin-3']);
+    });
+
+    it('reconsiders a flagged coin when snapshot count is below minDays (safety net)', async () => {
+      // Step 1 (manager): no unflagged coins
+      mockBackfillQb.getRawMany.mockResolvedValueOnce([]);
+      // Step 2 (repo): safety-net count for all flagged coins
+      mockQb.getRawMany.mockResolvedValueOnce([
+        { coinId: 'coin-flagged-but-sparse', cnt: '12' },
+        { coinId: 'coin-flagged-full', cnt: '365' }
+      ]);
+
+      const result = await service.getCoinsNeedingBackfill(['coin-flagged-but-sparse', 'coin-flagged-full'], 30);
+
+      expect(result).toEqual(['coin-flagged-but-sparse']);
     });
 
     it('returns empty array for empty coinIds', async () => {
