@@ -3,7 +3,9 @@ import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swa
 
 import { type UserPipelineStatus } from '@chansey/api-interfaces';
 
+import { ActivePipelineStatusDto } from './dto';
 import { PipelineEtaService } from './services/pipeline-eta.service';
+import { PipelineOrchestratorService } from './services/pipeline-orchestrator.service';
 
 import GetUser from '../authentication/decorator/get-user.decorator';
 import { JwtAuthenticationGuard } from '../authentication/guard/jwt-authentication.guard';
@@ -22,12 +24,22 @@ import { User } from '../users/users.entity';
 @ApiBearerAuth('token')
 @UseGuards(JwtAuthenticationGuard)
 export class UserPipelineController {
-  constructor(private readonly pipelineEtaService: PipelineEtaService) {}
+  constructor(
+    private readonly pipelineEtaService: PipelineEtaService,
+    private readonly orchestratorService: PipelineOrchestratorService
+  ) {}
 
   @Get('status')
   @ApiOperation({ summary: "Get the authenticated user's most recent pipeline status" })
   @ApiOkResponse({ description: 'Pipeline status with ETA range, or null if the user has no active pipeline' })
   async getStatus(@GetUser() user: User): Promise<UserPipelineStatus | null> {
     return this.pipelineEtaService.getStatusForUser(user.id);
+  }
+
+  @Get('active-status')
+  @ApiOperation({ summary: 'Check whether the current user has any active (PENDING/RUNNING/PAUSED) pipeline' })
+  @ApiOkResponse({ description: 'Active pipeline status', type: ActivePipelineStatusDto })
+  async getActiveStatus(@GetUser() user: User): Promise<ActivePipelineStatusDto> {
+    return this.orchestratorService.getActivePipelineStatus(user.id);
   }
 }

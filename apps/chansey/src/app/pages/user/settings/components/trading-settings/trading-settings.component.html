@@ -1,3 +1,6 @@
+<!-- Pipeline impact banner -->
+<app-pipeline-impact-banner />
+
 <!-- Risk Profile -->
 <p-panel
   [toggleable]="true"
@@ -11,7 +14,7 @@
       <span class="font-semibold">Risk Profile</span>
     </span>
   </ng-template>
-  <app-risk-profile-form [showTradingCoins]="true" />
+  <app-risk-profile-form [showTradingCoins]="true" [showPipelineBanner]="false" />
 </p-panel>
 
 <!-- Exchange Integrations -->

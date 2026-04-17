@@ -12,6 +12,7 @@ import { ToggleSwitchModule } from 'primeng/toggleswitch';
 
 import { Coin, Exchange, ExchangeKey } from '@chansey/api-interfaces';
 
+import { PipelineImpactBannerComponent } from '../../../../../shared/components/pipeline-impact-banner/pipeline-impact-banner.component';
 import { RiskProfileFormComponent } from '../../../../../shared/components/risk-profile-form/risk-profile-form.component';
 import { AuthService } from '../../../../../shared/services/auth.service';
 import { ExchangeService } from '../../../../../shared/services/exchange.service';
@@ -32,6 +33,7 @@ import { SaveStatusIndicatorComponent } from '../save-status-indicator/save-stat
     FormsModule,
     MessageModule,
     PanelModule,
+    PipelineImpactBannerComponent,
     ReactiveFormsModule,
     RiskProfileFormComponent,
     SaveStatusIndicatorComponent,

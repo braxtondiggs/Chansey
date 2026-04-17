@@ -206,7 +206,8 @@ export const queryKeys = {
   // --------------------------------------------------------------------------
   pipelines: {
     all: ['pipelines'] as const,
-    status: () => [...queryKeys.pipelines.all, 'status'] as const
+    status: () => [...queryKeys.pipelines.all, 'status'] as const,
+    activeStatus: () => [...queryKeys.pipelines.all, 'active-status'] as const
   },
 
   // --------------------------------------------------------------------------

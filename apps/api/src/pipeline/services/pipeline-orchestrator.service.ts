@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 
 import { PipelineEventHandlerService } from './pipeline-event-handler.service';
 import { PipelineProgressionService } from './pipeline-progression.service';
@@ -78,6 +78,21 @@ export class PipelineOrchestratorService {
     }
 
     return pipeline;
+  }
+
+  /**
+   * Returns the number of active (PENDING, RUNNING, or PAUSED) pipelines for a user.
+   * Used to surface a transparency banner when users change settings mid-pipeline.
+   */
+  async getActivePipelineStatus(userId: string): Promise<{ hasActivePipeline: boolean; activeCount: number }> {
+    const activeCount = await this.pipelineRepository.count({
+      where: {
+        user: { id: userId },
+        status: In([PipelineStatus.PENDING, PipelineStatus.RUNNING, PipelineStatus.PAUSED])
+      }
+    });
+
+    return { hasActivePipeline: activeCount > 0, activeCount };
   }
 
   private buildFilterWhere(filters: PipelineFiltersDto, userId?: string): FindOptionsWhere<Pipeline> {

@@ -9,8 +9,9 @@ import { CoinSelection, CoinSelectionRelations } from './coin-selection.entity';
 import { CreateCoinSelectionDto, UpdateCoinSelectionDto } from './dto';
 import { CoinSelectionHistoricalPriceTask } from './tasks/coin-selection-historical-price.task';
 
+import { ActivePositionGuardService } from '../active-position-guard';
 import { Coin } from '../coin/coin.entity';
-import { CoinSelectionNotFoundException } from '../common/exceptions';
+import { CoinSelectionBlockedException, CoinSelectionNotFoundException } from '../common/exceptions';
 import { OHLCService } from '../ohlc/ohlc.service';
 import { User } from '../users/users.entity';
 
@@ -21,7 +22,8 @@ export class CoinSelectionService {
   constructor(
     @InjectRepository(CoinSelection) private readonly coinSelection: Repository<CoinSelection>,
     private readonly historicalPriceTask: CoinSelectionHistoricalPriceTask,
-    @Inject(forwardRef(() => OHLCService)) private readonly ohlcService: OHLCService
+    @Inject(forwardRef(() => OHLCService)) private readonly ohlcService: OHLCService,
+    private readonly activePositionGuard: ActivePositionGuardService
   ) {}
 
   /**
@@ -160,6 +162,18 @@ export class CoinSelectionService {
   }
 
   async deleteCoinSelectionItem(selectionId: string, userId: string) {
+    const selection = await this.coinSelection.findOne({
+      where: { id: selectionId, user: { id: userId } },
+      relations: ['coin']
+    });
+
+    if (!selection) throw new CoinSelectionNotFoundException(selectionId);
+
+    const activeCoinIds = await this.activePositionGuard.getActivePositionCoinIds(userId);
+    if (activeCoinIds.has(selection.coin.id)) {
+      throw new CoinSelectionBlockedException(selection.coin.symbol.toUpperCase());
+    }
+
     const response = await this.coinSelection.delete({
       id: selectionId,
       user: {
