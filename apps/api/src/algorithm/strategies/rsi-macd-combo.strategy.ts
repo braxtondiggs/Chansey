@@ -71,6 +71,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -85,7 +86,7 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
           this.getPrecomputedSlice(context, coin.id, `rsi_${config.rsiPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateRSI(
-              { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod },
+              { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod, skipCache },
               this
             )
           ).values;
@@ -115,7 +116,8 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
               prices: priceHistory,
               fastPeriod: config.macdFast,
               slowPeriod: config.macdSlow,
-              signalPeriod: config.macdSignal
+              signalPeriod: config.macdSignal,
+              skipCache
             },
             this
           );

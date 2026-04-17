@@ -61,6 +61,7 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -101,7 +102,8 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
               coinId: coin.id,
               prices: priceHistory,
               period: config.period,
-              stdDev: config.stdDev
+              stdDev: config.stdDev,
+              skipCache
             },
             this
           );

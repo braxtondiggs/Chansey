@@ -82,6 +82,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -95,7 +96,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
           this.getPrecomputedSlice(context, coin.id, `rsi_${config.rsiPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateRSI(
-              { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod },
+              { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod, skipCache },
               this
             )
           ).values;
@@ -104,15 +105,19 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
           this.getPrecomputedSlice(context, coin.id, `ema_${config.emaPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateEMA(
-              { coinId: coin.id, prices: priceHistory, period: config.emaPeriod },
+              { coinId: coin.id, prices: priceHistory, period: config.emaPeriod, skipCache },
               this
             )
           ).values;
 
         const atr =
           this.getPrecomputedSlice(context, coin.id, 'atr_14', priceHistory.length) ??
-          (await this.indicatorService.calculateATR({ coinId: coin.id, prices: priceHistory, period: 14 }, this))
-            .values;
+          (
+            await this.indicatorService.calculateATR(
+              { coinId: coin.id, prices: priceHistory, period: 14, skipCache },
+              this
+            )
+          ).values;
 
         const divergence = this.detectDivergence(priceHistory, rsi, atr, config);
 

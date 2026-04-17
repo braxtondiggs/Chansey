@@ -80,6 +80,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
       const eligibleCoins = context.coins.filter((coin) => this.hasEnoughData(context.priceData[coin.id], config));
 
       this.logger.debug(
@@ -96,7 +97,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
 
         const coinStart = Date.now();
 
-        const bands = await this.loadBollingerBands(coin, priceHistory, context, config);
+        const bands = await this.loadBollingerBands(coin, priceHistory, context, config, skipCache);
         if (!bands) continue;
 
         const bbDuration = Date.now() - coinStart;
@@ -207,7 +208,8 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
     coin: { id: string; symbol: string },
     priceHistory: CandleData[],
     context: AlgorithmContext,
-    config: BollingerSqueezeConfig
+    config: BollingerSqueezeConfig,
+    skipCache: boolean
   ): Promise<BollingerBandsData | null> {
     const bbKey = `bb_${config.period}_${config.stdDev}`;
     const preUpper = this.getPrecomputedSlice(context, coin.id, `${bbKey}_upper`, priceHistory.length);
@@ -226,7 +228,7 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
     let bbResult: Awaited<ReturnType<typeof this.indicatorService.calculateBollingerBands>>;
     try {
       const bbPromise = this.indicatorService.calculateBollingerBands(
-        { coinId: coin.id, prices: priceHistory, period: config.period, stdDev: config.stdDev },
+        { coinId: coin.id, prices: priceHistory, period: config.period, stdDev: config.stdDev, skipCache },
         this
       );
 

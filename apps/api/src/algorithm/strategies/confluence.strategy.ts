@@ -85,6 +85,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -95,7 +96,7 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
         }
 
         // Calculate confluence score for this coin
-        const confluenceScore = await this.calculateConfluenceScore(context, coin.id, priceHistory, config, isBacktest);
+        const confluenceScore = await this.calculateConfluenceScore(context, coin.id, priceHistory, config, skipCache);
 
         // Generate trading signal if confluence is met
         const currentPrice = priceHistory[priceHistory.length - 1].avg;

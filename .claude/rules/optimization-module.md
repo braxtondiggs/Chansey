@@ -1,7 +1,7 @@
 ---
 description: Grid search parameter optimization with walk-forward validation
 globs:
-  - "apps/api/src/optimization/**"
+  - 'apps/api/src/optimization/**'
 ---
 
 # Optimization Module
@@ -17,11 +17,11 @@ globs:
 
 ## Config Presets
 
-| Preset | Iterations | Max Combos | Notes |
-|--------|-----------|------------|-------|
-| DEFAULT | 100 | 75 | Standard |
-| FAST | — | 20 | Quick validation |
-| THOROUGH | — | 5000 | Composite objective |
+| Preset   | Iterations | Max Combos | Notes               |
+| -------- | ---------- | ---------- | ------------------- |
+| DEFAULT  | 100        | 75         | Standard            |
+| FAST     | —          | 20         | Quick validation    |
+| THOROUGH | —          | 5000       | Composite objective |
 
 ## GridSearchService
 
@@ -29,11 +29,13 @@ Cartesian product → constraint filtering → random-sample if exceeding `maxCo
 
 ## ParameterSpaceBuilder
 
-Auto-derives from algorithm's `getConfigSchema()`. Excludes: `enabled, riskLevel, cooldownMs, maxTradesPerDay, minSellPercent`.
+Auto-derives from algorithm's `getConfigSchema()`. Excludes:
+`enabled, riskLevel, cooldownMs, maxTradesPerDay, minSellPercent`.
 
 ## Recovery
 
-`OptimizationRecoveryService` (`OnApplicationBootstrap`): auto-resumes RUNNING/PENDING at boot (max 3 retries, 6-hour stale threshold).
+`OptimizationRecoveryService` (`OnApplicationBootstrap`): auto-resumes RUNNING/PENDING at boot (max 3 retries, 6-hour
+stale threshold).
 
 ## Processor
 
@@ -45,7 +47,7 @@ Emits `PIPELINE_EVENTS.OPTIMIZATION_COMPLETED/FAILED` via `EventEmitter2`.
 
 ## BullMQ
 
-Queue: `optimization` (concurrency via `OPTIMIZATION_CONCURRENCY` env, default 5).
+Queue: `optimization` (concurrency via `OPTIMIZATION_CONCURRENCY` env, default 3).
 
 ## Key Constants
 

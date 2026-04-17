@@ -129,7 +129,7 @@ export class BacktestWatchdogService {
         }
 
         const reason = isPending
-          ? `Stuck PENDING for ${Math.round(thresholdMs / 60000)} min — BullMQ job likely lost`
+          ? `Stuck PENDING for ${Math.round(thresholdMs / 60000)} min without being picked up by worker (possible worker crash, job loss, or Redis state reset)`
           : `Stale: no heartbeat progress for ${Math.round(thresholdMs / 60000)} min. ` +
             `Last index: ${backtest.checkpointState?.lastProcessedIndex ?? 'unknown'}`;
 
