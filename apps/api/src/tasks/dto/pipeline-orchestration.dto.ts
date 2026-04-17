@@ -89,6 +89,39 @@ export const PAPER_TRADING_MIN_TRADES: Record<number, number> = {
 };
 
 /**
+ * Insufficient-Signal Early Termination Matrix
+ *
+ * When a paper-trading session is clearly starved of signals, we terminate
+ * it early as COMPLETED (with `stoppedReason = 'insufficient_signals'`) so
+ * that the (user × algorithm) dedup lock is released and the orchestrator
+ * can retry with fresh parameters.
+ *
+ * Evaluated AFTER safety (drawdown/target) but BEFORE the duration cap.
+ *
+ * | Level | Description      | Check After | Min Trades By Then |
+ * |-------|------------------|-------------|--------------------|
+ * | 1     | Conservative     | 7 days      | 3                  |
+ * | 2     | Low-Moderate     | 6 days      | 3                  |
+ * | 3     | Moderate         | 5 days      | 2                  |
+ * | 4     | Moderate-High    | 5 days      | 2                  |
+ * | 5     | Aggressive       | 4 days      | 2                  |
+ */
+export interface InsufficientSignalThreshold {
+  /** Earliest day at which the gate can fire */
+  checkAfterDays: number;
+  /** Minimum trades required by the check-after day to avoid early termination */
+  minTradesByThen: number;
+}
+
+export const INSUFFICIENT_SIGNAL_THRESHOLDS: Record<number, InsufficientSignalThreshold> = {
+  1: { checkAfterDays: 7, minTradesByThen: 3 },
+  2: { checkAfterDays: 6, minTradesByThen: 3 },
+  3: { checkAfterDays: 5, minTradesByThen: 2 },
+  4: { checkAfterDays: 5, minTradesByThen: 2 },
+  5: { checkAfterDays: 4, minTradesByThen: 2 }
+};
+
+/**
  * Optimization Configuration Matrix
  *
  * Maps user risk levels (1-5) to optimization parameters.
@@ -187,6 +220,15 @@ export function getPaperTradingDuration(riskLevel: number): string {
  */
 export function getPaperTradingMinTrades(riskLevel: number): number {
   return PAPER_TRADING_MIN_TRADES[riskLevel] ?? PAPER_TRADING_MIN_TRADES[DEFAULT_RISK_LEVEL];
+}
+
+/**
+ * Get the insufficient-signal early-termination threshold for a given risk level
+ * Falls back to default (level 3) if level is missing/invalid
+ */
+export function getInsufficientSignalThreshold(riskLevel?: number | null): InsufficientSignalThreshold {
+  const level = riskLevel ?? DEFAULT_RISK_LEVEL;
+  return INSUFFICIENT_SIGNAL_THRESHOLDS[level] ?? INSUFFICIENT_SIGNAL_THRESHOLDS[DEFAULT_RISK_LEVEL];
 }
 
 /**

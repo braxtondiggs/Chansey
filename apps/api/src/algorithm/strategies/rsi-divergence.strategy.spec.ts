@@ -502,16 +502,97 @@ describe('RSIDivergenceStrategy', () => {
   });
 
   describe('getConfigSchema', () => {
-    it('should include all new parameters', () => {
+    it('should include all tunable parameters including pivotStrength', () => {
       const schema = strategy.getConfigSchema();
       expect(schema).toHaveProperty('rsiPeriod');
       expect(schema).toHaveProperty('emaPeriod');
       expect(schema).toHaveProperty('lookbackPeriod');
+      expect(schema).toHaveProperty('pivotStrength');
       expect(schema).toHaveProperty('pivotTolerance');
       expect(schema).toHaveProperty('minDivergencePercent');
       expect(schema).toHaveProperty('rsiOversold');
       expect(schema).toHaveProperty('rsiOverbought');
       expect(schema).toHaveProperty('minConfidence');
+    });
+
+    it('exposes pivotStrength with sensible bounds (2-5, default 3)', () => {
+      const schema = strategy.getConfigSchema() as Record<string, { default: number; min: number; max: number }>;
+      expect(schema.pivotStrength.default).toBe(3);
+      expect(schema.pivotStrength.min).toBe(2);
+      expect(schema.pivotStrength.max).toBe(5);
+    });
+  });
+
+  describe('pivotStrength config override', () => {
+    it('getMinDataPoints scales with pivotStrength (2 → 48, 3 → 50, 5 → 54)', () => {
+      expect(strategy.getMinDataPoints({ rsiPeriod: 14, emaPeriod: 8, lookbackPeriod: 30, pivotStrength: 2 })).toBe(48);
+      expect(strategy.getMinDataPoints({ rsiPeriod: 14, emaPeriod: 8, lookbackPeriod: 30, pivotStrength: 3 })).toBe(50);
+      expect(strategy.getMinDataPoints({ rsiPeriod: 14, emaPeriod: 8, lookbackPeriod: 30, pivotStrength: 5 })).toBe(54);
+    });
+
+    it('uses default pivotStrength=3 when unset', () => {
+      expect(strategy.getMinDataPoints({ rsiPeriod: 14, emaPeriod: 8, lookbackPeriod: 30 })).toBe(50);
+    });
+
+    it('wider pivotStrength rejects spike-style pivots that narrower strength accepts', async () => {
+      // Build two pivot lows where only the immediate ±2 bars confirm the low.
+      // Bars at ±3 from each pivot are PUNCHED DOWN to the same level as the
+      // pivot itself — with pivotStrength=3 that ±3 bar breaches the threshold
+      // and the pivot is rejected; with pivotStrength=2 only ±2 are checked and
+      // the pivot survives.
+      const buildPrices = () => {
+        const prices = createFlatPrices(90);
+
+        // Pivot low #1 at index 70 (low=80); bars at ±3 also sit at 80
+        prices[70].low = 80;
+        prices[70].avg = 83;
+        prices[67].low = 80; // ±3 breaches threshold when pivotStrength=3
+        prices[73].low = 80;
+        prices[68].low = 95;
+        prices[69].low = 95;
+        prices[71].low = 95;
+        prices[72].low = 95;
+
+        // Pivot low #2 at index 83 (low=74); bars at ±3 also sit at 74
+        prices[83].low = 74;
+        prices[83].avg = 77;
+        prices[80].low = 74;
+        prices[86].low = 74;
+        prices[81].low = 95;
+        prices[82].low = 95;
+        prices[84].low = 95;
+        prices[85].low = 95;
+
+        return prices;
+      };
+
+      const rsiValues = createMockRSI(90, 50);
+      rsiValues[70] = 22;
+      rsiValues[83] = 30;
+      rsiValues[89] = 32;
+      const emaValues = createMockEMA(90, 100);
+      const atrValues = createMockATR(90, 5);
+
+      // pivotStrength=2 → pivots survive, signal emitted
+      setupIndicatorMocks(rsiValues, emaValues, atrValues);
+      const narrowResult = await strategy.execute({
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: buildPrices() as any },
+        timestamp: new Date(),
+        config: { ...baseConfig, pivotStrength: 2 }
+      });
+      expect(narrowResult.signals).toHaveLength(1);
+      expect(narrowResult.signals[0].type).toBe(SignalType.BUY);
+
+      // pivotStrength=3 → ±3 bars at same low as pivot breach threshold, no pivots, no signal
+      setupIndicatorMocks(rsiValues, emaValues, atrValues);
+      const wideResult = await strategy.execute({
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: buildPrices() as any },
+        timestamp: new Date(),
+        config: { ...baseConfig, pivotStrength: 3 }
+      });
+      expect(wideResult.signals).toHaveLength(0);
     });
   });
 });

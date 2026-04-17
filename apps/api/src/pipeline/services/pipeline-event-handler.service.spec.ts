@@ -78,7 +78,8 @@ describe('PipelineEventHandlerService', () => {
             failPipeline: jest.fn(),
             calculatePipelineScore: jest.fn(),
             evaluateStageProgression: jest.fn(),
-            completePipeline: jest.fn()
+            completePipeline: jest.fn(),
+            markInconclusiveAndComplete: jest.fn()
           }
         }
       ]
@@ -121,6 +122,32 @@ describe('PipelineEventHandlerService', () => {
       expect(progressionService.failPipeline).toHaveBeenCalledWith(
         expect.any(Object),
         expect.stringContaining('Optimization did not meet')
+      );
+      expect(progressionService.advanceToNextStage).not.toHaveBeenCalled();
+    });
+
+    it('passes bestScore to evaluateOptimizationProgression', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline());
+      progressionService.evaluateOptimizationProgression.mockReturnValue({ passed: true, failures: [] });
+
+      await service.handleOptimizationComplete('run-123', 'strategy-123', {}, 80, 10);
+
+      expect(progressionService.evaluateOptimizationProgression).toHaveBeenCalledWith(expect.any(Object), 10, 80);
+    });
+
+    it('fails pipeline when bestScore is negative (absolute-score gate)', async () => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline());
+      progressionService.evaluateOptimizationProgression.mockReturnValue({
+        passed: false,
+        failures: ['Best test score -4.00 < minimum 0.00 — all tested combinations lost money in walk-forward testing']
+      });
+
+      await service.handleOptimizationComplete('run-123', 'strategy-123', { rsi: 14 }, -4, 200);
+
+      expect(progressionService.evaluateOptimizationProgression).toHaveBeenCalledWith(expect.any(Object), 200, -4);
+      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.stringContaining('Best test score')
       );
       expect(progressionService.advanceToNextStage).not.toHaveBeenCalled();
     });
@@ -506,6 +533,61 @@ describe('PipelineEventHandlerService', () => {
           })
         })
       );
+    });
+
+    describe('insufficient_signals early termination', () => {
+      it('routes to markInconclusiveAndComplete (not failPipeline) when stoppedReason=insufficient_signals', async () => {
+        const pipeline = makePipeline({ currentStage: PipelineStage.PAPER_TRADE });
+        pipelineRepository.findOne.mockResolvedValue(pipeline);
+
+        await service.handlePaperTradingComplete(
+          'session-123',
+          'pipeline-123',
+          { ...paperMetrics, totalTrades: 0 },
+          'insufficient_signals'
+        );
+
+        expect(progressionService.markInconclusiveAndComplete).toHaveBeenCalledWith(
+          pipeline,
+          expect.stringContaining('insufficient signals')
+        );
+        expect(progressionService.failPipeline).not.toHaveBeenCalled();
+        expect(progressionService.completePipeline).not.toHaveBeenCalled();
+      });
+
+      it('records paperTrading.status as COMPLETED (not STOPPED) for insufficient_signals', async () => {
+        const pipeline = makePipeline({ currentStage: PipelineStage.PAPER_TRADE });
+        pipelineRepository.findOne.mockResolvedValue(pipeline);
+
+        await service.handlePaperTradingComplete(
+          'session-123',
+          'pipeline-123',
+          { ...paperMetrics, totalTrades: 0 },
+          'insufficient_signals'
+        );
+
+        expect(pipelineRepository.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            stageResults: expect.objectContaining({
+              paperTrading: expect.objectContaining({ status: 'COMPLETED' })
+            })
+          })
+        );
+      });
+
+      it('does not evaluate progression thresholds for insufficient_signals', async () => {
+        const pipeline = makePipeline({ currentStage: PipelineStage.PAPER_TRADE });
+        pipelineRepository.findOne.mockResolvedValue(pipeline);
+
+        await service.handlePaperTradingComplete(
+          'session-123',
+          'pipeline-123',
+          { ...paperMetrics, totalTrades: 0 },
+          'insufficient_signals'
+        );
+
+        expect(progressionService.evaluateStageProgression).not.toHaveBeenCalled();
+      });
     });
   });
 });

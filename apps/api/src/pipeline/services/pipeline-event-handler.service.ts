@@ -70,7 +70,11 @@ export class PipelineEventHandlerService {
 
     await this.pipelineRepository.save(pipeline);
 
-    const { passed, failures } = this.progressionService.evaluateOptimizationProgression(pipeline, improvement);
+    const { passed, failures } = this.progressionService.evaluateOptimizationProgression(
+      pipeline,
+      improvement,
+      bestScore
+    );
 
     if (!passed) {
       await this.progressionService.failPipeline(
@@ -334,7 +338,8 @@ export class PipelineEventHandlerService {
       status:
         stoppedReason === 'duration_reached' ||
         stoppedReason === 'target_reached' ||
-        stoppedReason === 'min_trades_reached'
+        stoppedReason === 'min_trades_reached' ||
+        stoppedReason === 'insufficient_signals'
           ? 'COMPLETED'
           : 'STOPPED',
       sharpeRatio: metrics.sharpeRatio ?? 0,
@@ -357,6 +362,14 @@ export class PipelineEventHandlerService {
     };
 
     await this.pipelineRepository.save(pipeline);
+
+    if (stoppedReason === 'insufficient_signals') {
+      await this.progressionService.markInconclusiveAndComplete(
+        pipeline,
+        `Paper trading terminated early: insufficient signals (${metrics.totalTrades} trades over ${metrics.durationHours.toFixed(1)}h)`
+      );
+      return;
+    }
 
     const thresholds = pipeline.progressionRules.paperTrading;
     const { passed, failures } = this.progressionService.evaluateStageProgression(

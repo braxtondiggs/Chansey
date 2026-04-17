@@ -18,6 +18,7 @@ interface RSIDivergenceConfig {
   rsiPeriod: number;
   emaPeriod: number;
   lookbackPeriod: number;
+  pivotStrength: number;
   pivotTolerance: number;
   minDivergencePercent: number;
   rsiOversold: number;
@@ -41,7 +42,6 @@ interface DivergenceResult {
   score: number;
 }
 
-const PIVOT_STRENGTH = 3;
 const MIN_RSI_DIVERGENCE = 2;
 
 /**
@@ -145,6 +145,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
       rsiPeriod: (config.rsiPeriod as number) ?? 14,
       emaPeriod: (config.emaPeriod as number) ?? 50,
       lookbackPeriod: (config.lookbackPeriod as number) ?? 30,
+      pivotStrength: (config.pivotStrength as number) ?? 3,
       pivotTolerance: (config.pivotTolerance as number) ?? 0.3,
       minDivergencePercent: (config.minDivergencePercent as number) ?? 2,
       rsiOversold: (config.rsiOversold as number) ?? 40,
@@ -154,7 +155,7 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   }
 
   private hasEnoughData(priceHistory: CandleData[] | undefined, config: RSIDivergenceConfig): boolean {
-    const minRequired = Math.max(config.rsiPeriod, config.emaPeriod) + config.lookbackPeriod + PIVOT_STRENGTH * 2;
+    const minRequired = Math.max(config.rsiPeriod, config.emaPeriod) + config.lookbackPeriod + config.pivotStrength * 2;
     return !!priceHistory && priceHistory.length >= minRequired;
   }
 
@@ -167,19 +168,20 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     rsi: number[],
     atr: number[],
     tolerance: number,
+    pivotStrength: number,
     startIndex: number,
     endIndex: number
   ): PivotPoint[] {
     const pivots: PivotPoint[] = [];
 
-    for (let i = startIndex + PIVOT_STRENGTH; i <= endIndex - PIVOT_STRENGTH; i++) {
+    for (let i = startIndex + pivotStrength; i <= endIndex - pivotStrength; i++) {
       if (!Number.isFinite(rsi[i]) || !Number.isFinite(atr[i]) || atr[i] <= 0) continue;
 
       const currentHigh = prices[i].high;
       const threshold = currentHigh - atr[i] * tolerance;
       let isPivot = true;
 
-      for (let j = 1; j <= PIVOT_STRENGTH; j++) {
+      for (let j = 1; j <= pivotStrength; j++) {
         if (prices[i - j].high > threshold || prices[i + j].high > threshold) {
           isPivot = false;
           break;
@@ -203,19 +205,20 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     rsi: number[],
     atr: number[],
     tolerance: number,
+    pivotStrength: number,
     startIndex: number,
     endIndex: number
   ): PivotPoint[] {
     const pivots: PivotPoint[] = [];
 
-    for (let i = startIndex + PIVOT_STRENGTH; i <= endIndex - PIVOT_STRENGTH; i++) {
+    for (let i = startIndex + pivotStrength; i <= endIndex - pivotStrength; i++) {
       if (!Number.isFinite(rsi[i]) || !Number.isFinite(atr[i]) || atr[i] <= 0) continue;
 
       const currentLow = prices[i].low;
       const threshold = currentLow + atr[i] * tolerance;
       let isPivot = true;
 
-      for (let j = 1; j <= PIVOT_STRENGTH; j++) {
+      for (let j = 1; j <= pivotStrength; j++) {
         if (prices[i - j].low < threshold || prices[i + j].low < threshold) {
           isPivot = false;
           break;
@@ -240,11 +243,27 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     config: RSIDivergenceConfig
   ): DivergenceResult | null {
     const currentIndex = prices.length - 1;
-    const lookbackStart = Math.max(0, currentIndex - config.lookbackPeriod - PIVOT_STRENGTH);
+    const lookbackStart = Math.max(0, currentIndex - config.lookbackPeriod - config.pivotStrength);
     const lookbackEnd = currentIndex;
 
-    const pivotHighs = this.findPivotHighs(prices, rsi, atr, config.pivotTolerance, lookbackStart, lookbackEnd);
-    const pivotLows = this.findPivotLows(prices, rsi, atr, config.pivotTolerance, lookbackStart, lookbackEnd);
+    const pivotHighs = this.findPivotHighs(
+      prices,
+      rsi,
+      atr,
+      config.pivotTolerance,
+      config.pivotStrength,
+      lookbackStart,
+      lookbackEnd
+    );
+    const pivotLows = this.findPivotLows(
+      prices,
+      rsi,
+      atr,
+      config.pivotTolerance,
+      config.pivotStrength,
+      lookbackStart,
+      lookbackEnd
+    );
 
     let best: DivergenceResult | null = null;
 
@@ -455,7 +474,8 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
     const rsiPeriod = (config.rsiPeriod as number) ?? 14;
     const emaPeriod = (config.emaPeriod as number) ?? 50;
     const lookbackPeriod = (config.lookbackPeriod as number) ?? 30;
-    return Math.max(rsiPeriod, emaPeriod) + lookbackPeriod + PIVOT_STRENGTH * 2;
+    const pivotStrength = (config.pivotStrength as number) ?? 3;
+    return Math.max(rsiPeriod, emaPeriod) + lookbackPeriod + pivotStrength * 2;
   }
 
   getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
@@ -477,6 +497,13 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
         min: 15,
         max: 60,
         description: 'Lookback period for finding pivots'
+      },
+      pivotStrength: {
+        type: 'number',
+        default: 3,
+        min: 2,
+        max: 5,
+        description: 'Bars on each side required to form a pivot high/low'
       },
       pivotTolerance: {
         type: 'number',

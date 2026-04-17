@@ -44,3 +44,6 @@ duration.
 | 3     | Moderate (default) | 40         | 120        | 25%          |
 | 4     | Moderate-High      | 35         | 90         | 35%          |
 | 5     | Aggressive         | 30         | 60         | 40%          |
+
+Sessions terminate early (as COMPLETED with `stoppedReason=insufficient_signals`) if the risk-band signal check fires:
+Level 1 @ day 7 / <3 trades, Level 2 @ day 6 / <3, Level 3-4 @ day 5 / <2, Level 5 @ day 4 / <2.

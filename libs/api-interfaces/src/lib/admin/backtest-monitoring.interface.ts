@@ -392,6 +392,8 @@ export interface PaperTradingSessionListItemDto {
   duration: string;
   startedAt: string | null;
   createdAt: string;
+  /** Reason the session stopped (e.g. duration_reached, insufficient_signals) */
+  stoppedReason?: string | null;
 }
 
 export interface PaginatedPaperTradingSessionsDto {

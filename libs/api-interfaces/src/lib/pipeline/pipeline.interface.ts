@@ -25,7 +25,13 @@ export enum PipelineStage {
 export enum DeploymentRecommendation {
   DEPLOY = 'DEPLOY',
   NEEDS_REVIEW = 'NEEDS_REVIEW',
-  DO_NOT_DEPLOY = 'DO_NOT_DEPLOY'
+  DO_NOT_DEPLOY = 'DO_NOT_DEPLOY',
+  /**
+   * Neutral outcome when the strategy could not produce enough signals to
+   * satisfy the trade-count gate during paper trading. Not a failure — the
+   * orchestrator is expected to retry with fresh optimization parameters.
+   */
+  INCONCLUSIVE_RETRY = 'INCONCLUSIVE_RETRY'
 }
 
 /**
