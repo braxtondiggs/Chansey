@@ -61,6 +61,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -103,7 +104,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
             this.logger.warn(`Partial BB cache for ${coin.symbol} (${bbKey}), recalculating`);
           }
           bollingerBandsResult = await this.indicatorService.calculateBollingerBands(
-            { coinId: coin.id, prices: priceHistory, period, stdDev: threshold },
+            { coinId: coin.id, prices: priceHistory, period, stdDev: threshold, skipCache },
             this // Pass this strategy as IIndicatorProvider for custom override support
           );
         }

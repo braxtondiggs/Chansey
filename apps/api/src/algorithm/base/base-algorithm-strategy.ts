@@ -243,6 +243,16 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
   }
 
   /**
+   * Determines whether indicator calls should bypass Redis cache.
+   * Skipped for contexts with ~0% hit rate (historical + live-replay backtests).
+   * Kept enabled for optimization (grid search may share indicator params across combos)
+   * and live/paper trading (repeated calls on stable windows benefit from cache).
+   */
+  protected shouldSkipIndicatorCache(context: AlgorithmContext): boolean {
+    return !!(context.metadata?.backtestId || context.metadata?.isLiveReplay);
+  }
+
+  /**
    * Retrieve a precomputed indicator slice matching the current price window.
    * Returns undefined when precomputed data is not available (legacy path).
    */

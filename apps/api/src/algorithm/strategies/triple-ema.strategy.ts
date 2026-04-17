@@ -74,6 +74,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -88,7 +89,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
           this.getPrecomputedSlice(context, coin.id, `ema_${config.fastPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateEMA(
-              { coinId: coin.id, prices: priceHistory, period: config.fastPeriod },
+              { coinId: coin.id, prices: priceHistory, period: config.fastPeriod, skipCache },
               this
             )
           ).values;
@@ -96,7 +97,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
           this.getPrecomputedSlice(context, coin.id, `ema_${config.mediumPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateEMA(
-              { coinId: coin.id, prices: priceHistory, period: config.mediumPeriod },
+              { coinId: coin.id, prices: priceHistory, period: config.mediumPeriod, skipCache },
               this
             )
           ).values;
@@ -104,7 +105,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
           this.getPrecomputedSlice(context, coin.id, `ema_${config.slowPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateEMA(
-              { coinId: coin.id, prices: priceHistory, period: config.slowPeriod },
+              { coinId: coin.id, prices: priceHistory, period: config.slowPeriod, skipCache },
               this
             )
           ).values;

@@ -140,14 +140,14 @@ export class IndicatorService {
    * @returns MACD result with macd, signal, and histogram arrays
    */
   async calculateMACD(options: MACDOptions, provider?: IIndicatorProvider): Promise<MACDResult> {
-    const cacheKey = this.buildCacheKey(IndicatorType.MACD, options.coinId, options.prices, {
-      fastPeriod: options.fastPeriod,
-      slowPeriod: options.slowPeriod,
-      signalPeriod: options.signalPeriod
-    });
+    let cacheKey: string | undefined;
 
-    // Check cache first
     if (!options.skipCache) {
+      cacheKey = this.buildCacheKey(IndicatorType.MACD, options.coinId, options.prices, {
+        fastPeriod: options.fastPeriod,
+        slowPeriod: options.slowPeriod,
+        signalPeriod: options.signalPeriod
+      });
       const cached = await this.getFromCache<MACDResult>(cacheKey);
       if (cached) {
         return { ...cached, fromCache: true };
@@ -186,7 +186,9 @@ export class IndicatorService {
       fromCache: false
     };
 
-    await this.setInCache(cacheKey, result);
+    if (cacheKey) {
+      await this.setInCache(cacheKey, result);
+    }
     return result;
   }
 
@@ -201,13 +203,13 @@ export class IndicatorService {
     options: BollingerBandsOptions,
     provider?: IIndicatorProvider
   ): Promise<BollingerBandsResult> {
-    const cacheKey = this.buildCacheKey(IndicatorType.BOLLINGER_BANDS, options.coinId, options.prices, {
-      period: options.period,
-      stdDev: options.stdDev
-    });
+    let cacheKey: string | undefined;
 
-    // Check cache first
     if (!options.skipCache) {
+      cacheKey = this.buildCacheKey(IndicatorType.BOLLINGER_BANDS, options.coinId, options.prices, {
+        period: options.period,
+        stdDev: options.stdDev
+      });
       const cached = await this.getFromCache<BollingerBandsResult>(cacheKey);
       if (cached) {
         return { ...cached, fromCache: true };
@@ -252,7 +254,9 @@ export class IndicatorService {
       fromCache: false
     };
 
-    await this.setInCache(cacheKey, result);
+    if (cacheKey) {
+      await this.setInCache(cacheKey, result);
+    }
     return result;
   }
 
@@ -264,12 +268,12 @@ export class IndicatorService {
    * @returns ATR result with values array
    */
   async calculateATR(options: ATROptions, provider?: IIndicatorProvider): Promise<ATRResult> {
-    const cacheKey = this.buildCacheKey(IndicatorType.ATR, options.coinId, options.prices, {
-      period: options.period
-    });
+    let cacheKey: string | undefined;
 
-    // Check cache first
     if (!options.skipCache) {
+      cacheKey = this.buildCacheKey(IndicatorType.ATR, options.coinId, options.prices, {
+        period: options.period
+      });
       const cached = await this.getFromCache<ATRResult>(cacheKey);
       if (cached) {
         return { ...cached, fromCache: true };
@@ -297,7 +301,9 @@ export class IndicatorService {
       fromCache: false
     };
 
-    await this.setInCache(cacheKey, result);
+    if (cacheKey) {
+      await this.setInCache(cacheKey, result);
+    }
     return result;
   }
 
@@ -354,12 +360,12 @@ export class IndicatorService {
     calcOptions: { values: number[]; period: number },
     options: PeriodIndicatorOptions
   ): Promise<IndicatorResult> {
-    const cacheKey = this.buildCacheKey(type, options.coinId, options.prices, {
-      period: options.period
-    });
+    let cacheKey: string | undefined;
 
-    // Check cache first
     if (!options.skipCache) {
+      cacheKey = this.buildCacheKey(type, options.coinId, options.prices, {
+        period: options.period
+      });
       const cached = await this.getFromCache<IndicatorResult>(cacheKey);
       if (cached) {
         return { ...cached, fromCache: true };
@@ -376,7 +382,9 @@ export class IndicatorService {
       fromCache: false
     };
 
-    await this.setInCache(cacheKey, result);
+    if (cacheKey) {
+      await this.setInCache(cacheKey, result);
+    }
     return result;
   }
 

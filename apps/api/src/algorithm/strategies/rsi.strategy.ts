@@ -56,6 +56,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -70,7 +71,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
           this.getPrecomputedSlice(context, coin.id, `rsi_${config.period}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateRSI(
-              { coinId: coin.id, prices: priceHistory, period: config.period },
+              { coinId: coin.id, prices: priceHistory, period: config.period, skipCache },
               this
             )
           ).values;

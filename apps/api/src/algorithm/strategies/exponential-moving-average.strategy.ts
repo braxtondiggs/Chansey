@@ -55,6 +55,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -69,7 +70,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
           this.getPrecomputedSlice(context, coin.id, `ema_${fastPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateEMA(
-              { coinId: coin.id, prices: priceHistory, period: fastPeriod },
+              { coinId: coin.id, prices: priceHistory, period: fastPeriod, skipCache },
               this
             )
           ).values;
@@ -77,7 +78,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
           this.getPrecomputedSlice(context, coin.id, `ema_${slowPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateEMA(
-              { coinId: coin.id, prices: priceHistory, period: slowPeriod },
+              { coinId: coin.id, prices: priceHistory, period: slowPeriod, skipCache },
               this
             )
           ).values;

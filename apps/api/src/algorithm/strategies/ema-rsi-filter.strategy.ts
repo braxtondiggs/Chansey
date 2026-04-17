@@ -62,6 +62,7 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -96,19 +97,19 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
             preFastEMA
               ? Promise.resolve({ values: preFastEMA })
               : this.indicatorService.calculateEMA(
-                  { coinId: coin.id, prices: priceHistory, period: config.fastEmaPeriod },
+                  { coinId: coin.id, prices: priceHistory, period: config.fastEmaPeriod, skipCache },
                   this
                 ),
             preSlowEMA
               ? Promise.resolve({ values: preSlowEMA })
               : this.indicatorService.calculateEMA(
-                  { coinId: coin.id, prices: priceHistory, period: config.slowEmaPeriod },
+                  { coinId: coin.id, prices: priceHistory, period: config.slowEmaPeriod, skipCache },
                   this
                 ),
             preRSI
               ? Promise.resolve({ values: preRSI })
               : this.indicatorService.calculateRSI(
-                  { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod },
+                  { coinId: coin.id, prices: priceHistory, period: config.rsiPeriod, skipCache },
                   this
                 )
           ]);

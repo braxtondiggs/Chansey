@@ -59,6 +59,7 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -93,7 +94,8 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
               prices: priceHistory,
               fastPeriod: config.fastPeriod,
               slowPeriod: config.slowPeriod,
-              signalPeriod: config.signalPeriod
+              signalPeriod: config.signalPeriod,
+              skipCache
             },
             this
           );

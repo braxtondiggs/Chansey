@@ -73,6 +73,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       const directions: Direction[] = config.tradeDirection === 'both' ? ['long', 'short'] : [config.tradeDirection];
 
@@ -88,7 +89,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
           this.getPrecomputedSlice(context, coin.id, `atr_${config.atrPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateATR(
-              { coinId: coin.id, prices: priceHistory, period: config.atrPeriod },
+              { coinId: coin.id, prices: priceHistory, period: config.atrPeriod, skipCache },
               this
             )
           ).values;

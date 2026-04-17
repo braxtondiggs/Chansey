@@ -56,6 +56,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         context.metadata?.isOptimization ||
         context.metadata?.isLiveReplay
       );
+      const skipCache = this.shouldSkipIndicatorCache(context);
 
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
@@ -70,7 +71,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
           this.getPrecomputedSlice(context, coin.id, `sma_${fastPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateSMA(
-              { coinId: coin.id, prices: priceHistory, period: fastPeriod },
+              { coinId: coin.id, prices: priceHistory, period: fastPeriod, skipCache },
               this
             )
           ).values;
@@ -78,7 +79,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
           this.getPrecomputedSlice(context, coin.id, `sma_${slowPeriod}`, priceHistory.length) ??
           (
             await this.indicatorService.calculateSMA(
-              { coinId: coin.id, prices: priceHistory, period: slowPeriod },
+              { coinId: coin.id, prices: priceHistory, period: slowPeriod, skipCache },
               this
             )
           ).values;
