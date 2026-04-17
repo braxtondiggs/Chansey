@@ -16,6 +16,7 @@ import { InvalidSymbolException, SlippageExceededException } from '../../common/
 import { ExchangeKeyNotFoundException, UserNotFoundException } from '../../common/exceptions/resource';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { NOTIFICATION_EVENTS } from '../../notification/interfaces/notification-events.interface';
 import { User } from '../../users/users.entity';
 import { slippageLimitsConfig } from '../config/slippage-limits.config';
@@ -37,6 +38,7 @@ describe('TradeExecutionService', () => {
     { provide: getRepositoryToken(AlgorithmActivation), useValue: {} },
     { provide: ExchangeKeyService, useValue: {} },
     { provide: ExchangeManagerService, useValue: {} },
+    { provide: ExchangeSelectionService, useValue: {} },
     { provide: OrderConversionService, useValue: {} },
     { provide: OrderValidationService, useValue: { validateAlgorithmicOrderSize: jest.fn() } },
     { provide: EventEmitter2, useValue: { emit: jest.fn() } },
@@ -160,6 +162,13 @@ describe('TradeExecutionService', () => {
         { provide: getRepositoryToken(AlgorithmActivation), useValue: {} },
         { provide: ExchangeKeyService, useValue: mockExchangeKeyService },
         { provide: ExchangeManagerService, useValue: mockExchangeManagerService },
+        {
+          provide: ExchangeSelectionService,
+          useValue: {
+            selectForBuy: jest.fn().mockResolvedValue({ id: 'exchange-key-id' }),
+            selectForSell: jest.fn().mockResolvedValue({ id: 'exchange-key-id' })
+          }
+        },
         { provide: OrderConversionService, useValue: mockOrderConversionService },
         { provide: OrderValidationService, useValue: mockOrderValidationService },
         { provide: EventEmitter2, useValue: mockEventEmitter },
@@ -249,6 +258,13 @@ describe('TradeExecutionService', () => {
           { provide: getRepositoryToken(AlgorithmActivation), useValue: {} },
           { provide: ExchangeKeyService, useValue: mockExchangeKeyService },
           { provide: ExchangeManagerService, useValue: mockExchangeManagerService },
+          {
+            provide: ExchangeSelectionService,
+            useValue: {
+              selectForBuy: jest.fn().mockResolvedValue({ id: 'exchange-key-id' }),
+              selectForSell: jest.fn().mockResolvedValue({ id: 'exchange-key-id' })
+            }
+          },
           { provide: OrderConversionService, useValue: mockOrderConversionService },
           { provide: OrderValidationService, useValue: mockOrderValidationService },
           { provide: EventEmitter2, useValue: mockEventEmitter },

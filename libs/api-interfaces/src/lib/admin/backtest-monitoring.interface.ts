@@ -457,7 +457,8 @@ export interface PipelineStageCountsDto {
 export enum SignalSource {
   BACKTEST = 'BACKTEST',
   PAPER_TRADING = 'PAPER_TRADING',
-  LIVE_TRADING = 'LIVE_TRADING'
+  LIVE_TRADING = 'LIVE_TRADING',
+  LISTING_TRACKER = 'LISTING_TRACKER'
 }
 
 export enum SignalStatus {

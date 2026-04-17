@@ -4,11 +4,16 @@ import { type PriceSummary } from '../../ohlc/ohlc-candle.entity';
 
 /**
  * Trade signal interface for algorithm-generated signals
+ *
+ * `algorithmActivationId` and `exchangeKeyId` are optional so that event-driven
+ * callers (e.g. listing-tracker) can execute trades without owning an activation
+ * row. When `exchangeKeyId` is missing, `TradeExecutionService` will resolve the
+ * best active key for the user via `ExchangeSelectionService.selectForBuy()`.
  */
 export interface TradeSignal {
-  algorithmActivationId: string;
+  algorithmActivationId?: string | null;
   userId: string;
-  exchangeKeyId: string;
+  exchangeKeyId?: string | null;
   action: 'BUY' | 'SELL';
   symbol: string;
   quantity: number;

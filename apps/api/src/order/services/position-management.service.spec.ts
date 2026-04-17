@@ -1,3 +1,4 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -11,6 +12,7 @@ import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.ser
 import { type User } from '../../users/users.entity';
 import { PositionExit } from '../entities/position-exit.entity';
 import { PositionExitStatus, StopLossType, TrailingActivationType } from '../interfaces/exit-config.interface';
+import { ORDER_EVENTS } from '../interfaces/order-events.interface';
 import { Order, OrderStatus } from '../order.entity';
 
 describe('PositionManagementService', () => {
@@ -71,6 +73,10 @@ describe('PositionManagementService', () => {
     createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner)
   };
 
+  const mockEventEmitter = {
+    emit: jest.fn()
+  };
+
   const mockUser = { id: 'user-123' } as User;
 
   beforeEach(async () => {
@@ -82,7 +88,8 @@ describe('PositionManagementService', () => {
         { provide: ExchangeKeyService, useValue: mockExchangeKeyService },
         { provide: ExitPriceService, useValue: mockExitPriceService },
         { provide: ExitOrderPlacementService, useValue: mockExitOrderPlacementService },
-        { provide: DataSource, useValue: mockDataSource }
+        { provide: DataSource, useValue: mockDataSource },
+        { provide: EventEmitter2, useValue: mockEventEmitter }
       ]
     }).compile();
 
@@ -225,6 +232,7 @@ describe('PositionManagementService', () => {
   describe('handleOcoFill', () => {
     const mockPositionExit = {
       id: 'pe-123',
+      entryOrderId: 'entry-order-123',
       ocoLinked: true,
       stopLossOrderId: 'sl-order-123',
       takeProfitOrderId: 'tp-order-123',
@@ -356,6 +364,50 @@ describe('PositionManagementService', () => {
       await service.handleOcoFill('sl-order-123');
 
       expect(mockExitOrderPlacementService.cancelOrderById).not.toHaveBeenCalled();
+    });
+
+    it('emits POSITION_EXIT_FILLED when stop loss fills', async () => {
+      await service.handleOcoFill('sl-order-123');
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ORDER_EVENTS.POSITION_EXIT_FILLED,
+        expect.objectContaining({
+          positionExitId: 'pe-123',
+          entryOrderId: 'entry-order-123',
+          userId: 'user-123',
+          status: PositionExitStatus.STOP_LOSS_TRIGGERED,
+          exitPrice: 49000,
+          realizedPnL: -1000
+        })
+      );
+    });
+
+    it('emits POSITION_EXIT_FILLED when take profit fills', async () => {
+      mockOrderRepo.findOneBy.mockResolvedValue({
+        id: 'tp-order-123',
+        averagePrice: 51000
+      });
+
+      await service.handleOcoFill('tp-order-123');
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ORDER_EVENTS.POSITION_EXIT_FILLED,
+        expect.objectContaining({
+          status: PositionExitStatus.TAKE_PROFIT_TRIGGERED,
+          exitPrice: 51000
+        })
+      );
+    });
+
+    it('does not emit when OCO is not linked', async () => {
+      mockPositionExitRepo.findOne.mockResolvedValue({
+        ...mockPositionExit,
+        ocoLinked: false
+      });
+
+      await service.handleOcoFill('sl-order-123');
+
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
     });
   });
 
