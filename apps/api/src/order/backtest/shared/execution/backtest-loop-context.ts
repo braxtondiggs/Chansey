@@ -17,6 +17,7 @@ import { type Portfolio } from '../portfolio';
 import { type PriceTrackingContext } from '../price-window';
 import { type SlippageConfig } from '../slippage';
 import { type SignalThrottleConfig, type ThrottleState } from '../throttle';
+import { type TradingSignal } from '../types';
 
 /** Persisted counts across checkpoints for incremental persistence */
 export interface PersistedCounts {
@@ -135,6 +136,13 @@ export class LoopContext {
   lastHeartbeatTime = Date.now();
   consecutivePauseFailures = 0;
   prevCandleMap = new Map<string, OHLCCandle>();
+
+  /**
+   * Strategy signals that passed filtering on bar i and are queued to fill
+   * at bar (i+1)'s open price. Eliminates same-bar close lookahead bias.
+   * Hard stop-loss signals bypass this buffer and execute in-bar.
+   */
+  pendingSignals: TradingSignal[] = [];
 
   // Data references
   backtest: Backtest;

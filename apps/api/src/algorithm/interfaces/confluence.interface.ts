@@ -69,6 +69,11 @@ export interface ConfluenceConfig {
   // Short selling settings (futures only)
   enableShortSignals: boolean; // When true and marketType is 'futures', emit SHORT_ENTRY/SHORT_EXIT signals
 
+  // Opt-in higher-timeframe BUY filter (Phase 1 multi-timeframe).
+  // When true and the daily timeframe feed is present, BUY signals are
+  // suppressed if the daily EMA50 slope is falling. SELL logic is unchanged.
+  enableDailyTrendFilter: boolean;
+
   // Individual indicator configurations
   ema: EMAIndicatorConfig;
   rsi: RSIIndicatorConfig;

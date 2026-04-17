@@ -25,6 +25,7 @@ import { ExitSignalProcessorService, ProcessExitSignalsCallbacks } from '../exit
 import { MetricsCalculatorService } from '../metrics';
 import { Portfolio, PortfolioStateService } from '../portfolio';
 import { PriceTrackingContext, PriceWindowService } from '../price-window';
+import { PriceTimeframe } from '../price-window/price-timeframe';
 import { CompositeRegimeService } from '../regime/composite-regime.service';
 import { DEFAULT_SLIPPAGE_CONFIG } from '../slippage';
 import { SlippageContextService } from '../slippage-context/slippage-context.service';
@@ -158,10 +159,12 @@ export class OptimizationCoreService {
       return EMPTY_RESULT;
     }
 
-    const { pricesByTimestamp, timestamps, immutablePriceData, volumeMap, tradingStartIndex } = precomputed;
+    const { pricesByTimestamp, timestamps, immutablePriceData, volumeMap, tradingStartIndex, aggregatedTimeframes } =
+      precomputed;
 
-    // Create fresh mutable state from cached immutable data
-    const priceCtx = this.priceWindowService.initPriceTrackingFromPrecomputed(immutablePriceData);
+    // Create fresh mutable state from cached immutable data, optionally
+    // reusing pre-aggregated higher-TF summaries for multi-timeframe strategies.
+    const priceCtx = this.priceWindowService.initPriceTrackingFromPrecomputed(immutablePriceData, aggregatedTimeframes);
 
     // Pre-filter coins whose total bar count is below the strategy's minimum requirement
     const {
@@ -361,6 +364,7 @@ export class OptimizationCoreService {
       portfolio = this.portfolioState.updateValues(portfolio, marketData.prices);
 
       const priceData = this.priceWindowService.advancePriceWindows(priceCtx, coins, timestamp);
+      const priceDataByTimeframe = this.priceWindowService.advanceMultiTimeframeWindows(priceCtx, coins, timestamp);
 
       // Skip trading logic during warm-up period
       if (i < tradingStartIndex) {
@@ -395,6 +399,7 @@ export class OptimizationCoreService {
           ? Object.fromEntries([...portfolio.positions.entries()].map(([id, position]) => [id, position.quantity]))
           : {};
 
+      const hasHigherTimeframes = Object.keys(priceDataByTimeframe).length > 0;
       const context = {
         coins,
         priceData,
@@ -409,7 +414,10 @@ export class OptimizationCoreService {
         precomputedIndicators,
         currentTimestampIndex: i,
         compositeRegime: barRegimeResult?.compositeRegime,
-        volatilityRegime: barRegimeResult?.volatilityRegime
+        volatilityRegime: barRegimeResult?.volatilityRegime,
+        ...(hasHigherTimeframes && {
+          priceDataByTimeframe: { [PriceTimeframe.HOURLY]: priceData, ...priceDataByTimeframe }
+        })
       };
 
       let strategySignals: TradingSignal[] = [];

@@ -10,6 +10,23 @@
       "console": "integratedTerminal",
       "restart": true,
       "autoAttachChildProcesses": true
+    },
+    {
+      "type": "node",
+      "request": "attach",
+      "name": "Attach to API",
+      "port": 9229,
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Current Test",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["jest", "--runInBand", "--no-cache", "--testPathPattern", "${fileBasename}"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
     }
   ]
 }

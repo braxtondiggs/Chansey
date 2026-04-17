@@ -3,6 +3,7 @@ export * from './backtest-context-factory.service';
 export * from './backtest-loop-context';
 export * from './backtest-loop-runner.service';
 export * from './backtest-signal-trade.service';
+export * from './bar-checkpoint-coordinator.service';
 export * from './forced-exit.service';
 export * from './trade-executor.helpers';
 export * from './trade-executor.service';

@@ -3,6 +3,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 
 import { ConfluenceStrategy } from './confluence.strategy';
 
+import { PriceTimeframe } from '../../order/backtest/shared/price-window/price-timeframe';
 import { IndicatorService } from '../indicators';
 import { type AlgorithmContext, SignalType } from '../interfaces';
 
@@ -601,6 +602,112 @@ describe('ConfluenceStrategy', () => {
       expect(signal.confidence).toBeLessThanOrEqual(1);
       expect(signal.strength).toBeGreaterThan(0);
       expect(signal.strength).toBeLessThanOrEqual(1);
+    });
+  });
+
+  describe('daily trend filter (opt-in)', () => {
+    // 56 bars of daily data — enough for EMA50 + 5-bar slope lookback.
+    const buildDailySeries = (closes: number[]) =>
+      closes.map((close, i) => ({
+        coin: 'btc',
+        avg: close,
+        close,
+        open: close,
+        high: close + 1,
+        low: close - 1,
+        date: new Date(Date.UTC(2024, 0, 1) + i * 86_400_000)
+      }));
+
+    const mockEmaForBothTimeframes = (
+      dailySlopeIsFalling: boolean,
+      hourlyFast: number,
+      hourlySlow: number,
+      hourlyPrevFast: number,
+      hourlyPrevSlow: number
+    ) => {
+      // 56-bar daily EMA: values[55] = 100 and values[50] higher (falling) or lower (rising).
+      const dailyValues = Array(56).fill(NaN);
+      dailyValues[55] = 100;
+      dailyValues[50] = dailySlopeIsFalling ? 110 : 90;
+      indicatorService.calculateEMA.mockImplementation(async (options) => {
+        if (options.coinId?.endsWith(':daily')) {
+          return { values: dailyValues, validCount: 50, period: 50, fromCache: false };
+        }
+        const period = options.period;
+        const arr = Array(50).fill(NaN);
+        arr[49] = period === 12 ? hourlyFast : hourlySlow;
+        arr[48] = period === 12 ? hourlyPrevFast : hourlyPrevSlow;
+        return { values: arr, validCount: 25, period, fromCache: false };
+      });
+    };
+
+    it('passes BUY through when flag is off (default)', async () => {
+      setupBullishIndicators();
+      const result = await strategy.execute(buildContext({ minConfluence: 3 }));
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+
+    it('passes BUY through when flag is on and daily EMA50 is rising', async () => {
+      // Bullish 1h setup + rising daily EMA.
+      mockEmaForBothTimeframes(false, 105, 100, 99, 100);
+      mockRSI(65);
+      mockMACD(0.002, 0.001);
+      mockATR(1.0, 1.0);
+      mockBollingerBands(0.85);
+
+      const context = buildContext({ minConfluence: 3, enableDailyTrendFilter: true }, {
+        priceDataByTimeframe: {
+          [PriceTimeframe.DAILY]: { btc: buildDailySeries(Array.from({ length: 56 }, (_, i) => 100 + i)) as any }
+        }
+      } as any);
+
+      const result = await strategy.execute(context);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+
+    it('blocks BUY when flag is on and daily EMA50 is falling; SELL still emitted', async () => {
+      // Bullish 1h setup + falling daily EMA — BUY should be blocked.
+      mockEmaForBothTimeframes(true, 105, 100, 99, 100);
+      mockRSI(65);
+      mockMACD(0.002, 0.001);
+      mockATR(1.0, 1.0);
+      mockBollingerBands(0.85);
+
+      const bullishContext = buildContext({ minConfluence: 3, enableDailyTrendFilter: true }, {
+        priceDataByTimeframe: {
+          [PriceTimeframe.DAILY]: { btc: buildDailySeries(Array.from({ length: 56 }, (_, i) => 200 - i)) as any }
+        }
+      } as any);
+
+      const bullishResult = await strategy.execute(bullishContext);
+      expect(bullishResult.signals).toHaveLength(0);
+
+      // Bearish 1h setup + falling daily — SELL should still pass through.
+      mockEmaForBothTimeframes(true, 95, 100, 101, 100);
+      mockRSI(35);
+      mockMACD(-0.002, -0.001);
+      mockATR(1.0, 1.0);
+      mockBollingerBands(0.15);
+      const bearishResult = await strategy.execute(
+        buildContext({ minConfluence: 3, enableDailyTrendFilter: true }, {
+          priceDataByTimeframe: {
+            [PriceTimeframe.DAILY]: { btc: buildDailySeries(Array.from({ length: 56 }, (_, i) => 200 - i)) as any }
+          }
+        } as any)
+      );
+      expect(bearishResult.signals).toHaveLength(1);
+      expect(bearishResult.signals[0].type).toBe(SignalType.SELL);
+    });
+
+    it('falls back to flag-off behavior when daily data is missing (no throw)', async () => {
+      setupBullishIndicators();
+      const context = buildContext({ minConfluence: 3, enableDailyTrendFilter: true });
+      const result = await strategy.execute(context);
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
     });
   });
 });

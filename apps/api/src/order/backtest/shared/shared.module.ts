@@ -1,7 +1,13 @@
 import { forwardRef, Module } from '@nestjs/common';
 
 import { CheckpointService } from './checkpoint';
-import { BacktestBarProcessor, BacktestSignalTradeService, ForcedExitService, TradeExecutorService } from './execution';
+import {
+  BacktestBarProcessor,
+  BacktestSignalTradeService,
+  BarCheckpointCoordinator,
+  ForcedExitService,
+  TradeExecutorService
+} from './execution';
 import { ExitSignalProcessorService } from './exit-signals';
 import { FeeCalculatorService } from './fees';
 import { SignalFilterChainService } from './filters';
@@ -10,7 +16,7 @@ import { MetricsAccumulatorService } from './metrics-accumulator';
 import { OpportunitySellService } from './opportunity-selling';
 import { PortfolioStateService } from './portfolio';
 import { PositionManagerService } from './positions';
-import { PriceWindowService } from './price-window';
+import { MultiTimeframeAggregatorService, PriceWindowService } from './price-window';
 import { CompositeRegimeService } from './regime';
 import { SlippageService } from './slippage';
 import { SlippageContextService } from './slippage-context';
@@ -44,6 +50,7 @@ import { PositionAnalysisService } from '../../services/position-analysis.servic
     SignalFilterChainService,
     PositionAnalysisService,
     PriceWindowService,
+    MultiTimeframeAggregatorService,
     CompositeRegimeService,
     SlippageContextService,
     ExitSignalProcessorService,
@@ -52,6 +59,7 @@ import { PositionAnalysisService } from '../../services/position-analysis.servic
     OpportunitySellService,
     BacktestBarProcessor,
     BacktestSignalTradeService,
+    BarCheckpointCoordinator,
     RegimeGateService,
     VolatilityCalculator,
     SharpeRatioCalculator,
@@ -69,6 +77,7 @@ import { PositionAnalysisService } from '../../services/position-analysis.servic
     SignalFilterChainService,
     PositionAnalysisService,
     PriceWindowService,
+    MultiTimeframeAggregatorService,
     CompositeRegimeService,
     SlippageContextService,
     ExitSignalProcessorService,
@@ -77,6 +86,7 @@ import { PositionAnalysisService } from '../../services/position-analysis.servic
     OpportunitySellService,
     BacktestBarProcessor,
     BacktestSignalTradeService,
+    BarCheckpointCoordinator,
     RegimeGateService,
     VolatilityCalculator,
     SharpeRatioCalculator,

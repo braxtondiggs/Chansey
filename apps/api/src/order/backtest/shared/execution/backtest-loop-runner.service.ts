@@ -92,6 +92,13 @@ export class BacktestLoopRunner {
       }
     | LiveReplayExecuteResult
   > {
+    if (ctx.pendingSignals.length > 0) {
+      this.logger.debug(
+        `Dropping ${ctx.pendingSignals.length} unfilled pending signal(s) at end of backtest — no next bar to execute at`
+      );
+      ctx.pendingSignals = [];
+    }
+
     // Release large data structures
     this.priceWindow.clearPriceData(ctx.pricesByTimestamp, ctx.priceCtx);
 

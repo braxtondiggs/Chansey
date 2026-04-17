@@ -12,6 +12,7 @@ export function getConfluenceConfigWithDefaults(config: Record<string, unknown>)
     minSellConfluence: (config.minSellConfluence as number) ?? minConfluence,
     minConfidence: (config.minConfidence as number) ?? 0.4,
     enableShortSignals: (config.enableShortSignals as boolean) ?? false,
+    enableDailyTrendFilter: (config.enableDailyTrendFilter as boolean) ?? false,
 
     ema: {
       enabled: config.emaEnabled !== false,
@@ -85,6 +86,12 @@ export function getConfluenceConfigSchema(baseSchema: Record<string, unknown>): 
       min: 0,
       max: 1,
       description: 'Minimum confidence required to generate signal'
+    },
+    enableDailyTrendFilter: {
+      type: 'boolean',
+      default: false,
+      description:
+        'Opt-in: when true and daily timeframe data is available, block BUY signals when the daily EMA50 slope is falling. SELL logic unchanged.'
     },
 
     // EMA (Trend) settings

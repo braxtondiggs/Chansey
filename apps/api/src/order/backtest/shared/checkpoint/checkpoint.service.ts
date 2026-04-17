@@ -15,6 +15,7 @@ import { BacktestExitTracker, SerializableExitTrackerState } from '../exits';
 import { MetricsAccumulator } from '../metrics-accumulator';
 import { Portfolio } from '../portfolio';
 import { SerializableThrottleState, ThrottleState } from '../throttle';
+import { TradingSignal } from '../types';
 
 /**
  * Parameters for building an emergency or scheduled checkpoint.
@@ -62,6 +63,7 @@ export interface BuildCheckpointStateOptions {
   grossProfit?: number;
   grossLoss?: number;
   exitTrackerState?: SerializableExitTrackerState;
+  pendingSignals?: TradingSignal[];
 }
 
 /**
@@ -235,7 +237,8 @@ export class CheckpointService {
       },
       checksum,
       ...(opts.serializedThrottleState && { throttleState: opts.serializedThrottleState }),
-      ...(opts.exitTrackerState && { exitTrackerState: opts.exitTrackerState })
+      ...(opts.exitTrackerState && { exitTrackerState: opts.exitTrackerState }),
+      ...(opts.pendingSignals && opts.pendingSignals.length > 0 && { pendingSignals: opts.pendingSignals })
     };
   }
 }

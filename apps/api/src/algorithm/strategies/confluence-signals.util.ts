@@ -8,6 +8,9 @@ import { type ConfluenceConfig, type ConfluenceScore, SignalType, type TradingSi
  * - Bearish confluence emits SHORT_ENTRY instead of SELL
  * - Bullish confluence emits SHORT_EXIT in addition to BUY (to close any open short)
  *
+ * When `blockBuy` is true (e.g. from a daily-trend filter), bullish confluence
+ * is suppressed entirely. Bearish confluence still emits SELL signals.
+ *
  * Returns a single signal or null. When a bullish confluence triggers both BUY
  * and SHORT_EXIT, SHORT_EXIT is returned (closing a short is higher priority);
  * the caller can still generate a BUY on the next evaluation cycle.
@@ -18,9 +21,14 @@ export function generateSignalFromConfluence(
   price: number,
   confluenceScore: ConfluenceScore,
   config: ConfluenceConfig,
-  isFuturesShort = false
+  isFuturesShort = false,
+  blockBuy = false
 ): TradingSignal | null {
   if (confluenceScore.direction === 'hold') {
+    return null;
+  }
+
+  if (blockBuy && confluenceScore.direction === 'buy' && !isFuturesShort) {
     return null;
   }
 
