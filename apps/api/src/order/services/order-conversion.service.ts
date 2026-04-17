@@ -41,7 +41,7 @@ export class OrderConversionService {
     ccxtOrder: ccxt.Order,
     user: User,
     exchange: Exchange,
-    algorithmActivationId: string,
+    algorithmActivationId: string | null | undefined,
     expectedPrice?: number,
     actualSlippageBps?: number,
     futuresSignal?: Pick<TradeSignal, 'marketType' | 'positionSide' | 'leverage'>
@@ -74,7 +74,7 @@ export class OrderConversionService {
       baseCoin: baseCoin && !CoinService.isVirtualCoin(baseCoin) ? baseCoin : undefined,
       quoteCoin: quoteCoin && !CoinService.isVirtualCoin(quoteCoin) ? quoteCoin : undefined,
       exchange,
-      algorithmActivationId,
+      algorithmActivationId: algorithmActivationId ?? undefined,
       timeInForce: ccxtOrder.timeInForce,
       remaining: ccxtOrder.remaining,
       trades: (ccxtOrder.trades ?? []).map((t) => ({
@@ -109,7 +109,7 @@ export class OrderConversionService {
       savedOrder.status,
       OrderTransitionReason.TRADE_EXECUTION,
       {
-        algorithmActivationId,
+        algorithmActivationId: algorithmActivationId ?? undefined,
         expectedPrice,
         actualSlippageBps,
         exchangeOrderId: ccxtOrder.id,

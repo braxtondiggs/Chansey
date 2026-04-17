@@ -104,7 +104,14 @@ const envSchema = z.object({
 
   // Prometheus Metrics
   // Metrics are always exposed at /api/metrics - configure Prometheus to scrape this endpoint
-  PROMETHEUS_METRICS_PATH: z.string().default('/metrics')
+  PROMETHEUS_METRICS_PATH: z.string().default('/metrics'),
+
+  // Listing Tracker (event-driven trading on exchange listing announcements)
+  LISTING_TRACKER_ENABLED: z.string().optional().default('false'),
+  LISTING_TRACKER_POLL_INTERVAL_SECONDS: z.coerce.number().min(10).max(600).default(30),
+  LISTING_SCORE_THRESHOLD: z.coerce.number().min(0).max(100).default(70),
+  LISTING_SCORE_CRON: z.string().default('30 2 * * *'),
+  DEFILLAMA_BASE_URL: z.string().url().default('https://api.llama.fi')
 });
 
 /**

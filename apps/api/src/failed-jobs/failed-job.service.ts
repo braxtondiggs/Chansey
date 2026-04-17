@@ -21,6 +21,7 @@ const SEVERITY_MAP: Record<string, FailedJobSeverity> = {
   'trade-execution': FailedJobSeverity.CRITICAL,
   'order-queue': FailedJobSeverity.CRITICAL,
   'live-trading-cron': FailedJobSeverity.CRITICAL,
+  'listing-trade-execution': FailedJobSeverity.CRITICAL,
   'position-monitor': FailedJobSeverity.HIGH,
   'liquidation-monitor': FailedJobSeverity.HIGH,
   // Failed delivery of risk/drift alerts is operationally serious — without
@@ -56,7 +57,10 @@ const NON_RETRYABLE_QUEUES = new Set([
   'drift-detection-queue',
   'strategy-evaluation-queue',
   'backtest-orchestration',
-  'pipeline-orchestration'
+  'pipeline-orchestration',
+  'listing-announcement-poll',
+  'listing-score',
+  'listing-time-stop'
 ]);
 
 @Injectable()

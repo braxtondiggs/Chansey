@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import * as ccxt from 'ccxt';
@@ -24,6 +25,7 @@ import {
   TrailingActivationType,
   TrailingType
 } from '../interfaces/exit-config.interface';
+import { ORDER_EVENTS, PositionExitFilledPayload } from '../interfaces/order-events.interface';
 import { Order } from '../order.entity';
 
 /**
@@ -44,7 +46,8 @@ export class PositionManagementService {
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly exitPriceService: ExitPriceService,
     private readonly exitOrderPlacementService: ExitOrderPlacementService,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   /**
@@ -384,6 +387,24 @@ export class PositionManagementService {
     }
 
     await this.positionExitRepo.save(positionExit);
+
+    // Downstream modules (e.g. listing-tracker) listen for this to close hedge legs
+    // and update their own position status. Only emit for actual fills — cancelled
+    // / expired / error transitions are handled by their own paths.
+    if (
+      positionExit.status === PositionExitStatus.STOP_LOSS_TRIGGERED ||
+      positionExit.status === PositionExitStatus.TAKE_PROFIT_TRIGGERED ||
+      positionExit.status === PositionExitStatus.TRAILING_TRIGGERED
+    ) {
+      this.eventEmitter.emit(ORDER_EVENTS.POSITION_EXIT_FILLED, {
+        positionExitId: positionExit.id,
+        entryOrderId: positionExit.entryOrderId,
+        userId: positionExit.user.id,
+        status: positionExit.status,
+        exitPrice: positionExit.exitPrice ?? null,
+        realizedPnL: positionExit.realizedPnL ?? null
+      } satisfies PositionExitFilledPayload);
+    }
 
     this.logger.log(
       `OCO fill handled: ${isStopLossFilled ? 'SL' : 'TP'} triggered, cancelled ${isStopLossFilled ? 'TP' : 'SL'}`

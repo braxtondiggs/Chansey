@@ -31,6 +31,7 @@ import { redisConfig, RedisConfig } from './config/redis.config';
 import { ExchangeModule } from './exchange/exchange.module';
 import { FailedJobModule } from './failed-jobs/failed-job.module';
 import { HealthModule } from './health/health.module';
+import { ListingTrackerModule } from './listing-tracker/listing-tracker.module';
 import { MarketRegimeModule } from './market-regime/market-regime.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationModule } from './notification/notification.module';
@@ -129,6 +130,7 @@ import { TradingModule } from './trading/trading.module';
     ExchangeModule,
     FailedJobModule,
     HealthModule,
+    ListingTrackerModule,
     MarketRegimeModule,
     MetricsModule,
     NotificationModule,

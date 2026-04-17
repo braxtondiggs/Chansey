@@ -22,6 +22,7 @@ import {
 } from '../../common/exceptions';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { NOTIFICATION_EVENTS } from '../../notification/interfaces/notification-events.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { withExchangeRetryThrow } from '../../shared/retry.util';
@@ -50,6 +51,7 @@ export class TradeExecutionService {
     private readonly algorithmActivationRepository: Repository<AlgorithmActivation>,
     private readonly exchangeKeyService: ExchangeKeyService,
     private readonly exchangeManagerService: ExchangeManagerService,
+    private readonly exchangeSelectionService: ExchangeSelectionService,
     private readonly orderConversionService: OrderConversionService,
     private readonly orderValidationService: OrderValidationService,
     private readonly eventEmitter: EventEmitter2,
@@ -77,8 +79,9 @@ export class TradeExecutionService {
    * @throws BadRequestException if validation fails
    */
   async executeTradeSignal(signal: TradeSignalWithExit): Promise<Order> {
+    const activationLabel = signal.algorithmActivationId ?? 'none';
     this.logger.log(
-      `Executing trade signal: ${signal.action} ${signal.quantity} ${signal.symbol} for activation ${signal.algorithmActivationId}`
+      `Executing trade signal: ${signal.action} ${signal.quantity} ${signal.symbol} for activation ${activationLabel}`
     );
 
     try {
@@ -108,7 +111,7 @@ export class TradeExecutionService {
         ccxtOrder,
         user,
         exchangeKey.exchange,
-        signal.algorithmActivationId,
+        signal.algorithmActivationId ?? null,
         expectedPrice,
         actualSlippageBps,
         signal.marketType === 'futures' ? signal : undefined
@@ -139,10 +142,7 @@ export class TradeExecutionService {
       return order;
     } catch (error: unknown) {
       const err = toErrorInfo(error);
-      this.logger.error(
-        `Failed to execute trade signal for activation ${signal.algorithmActivationId}: ${err.message}`,
-        err.stack
-      );
+      this.logger.error(`Failed to execute trade signal for activation ${activationLabel}: ${err.message}`, err.stack);
 
       this.eventEmitter.emit(NOTIFICATION_EVENTS.TRADE_ERROR, {
         userId: signal.userId,
@@ -200,11 +200,27 @@ export class TradeExecutionService {
 
   /**
    * Fetch and validate exchange key + user, gate futures if not enabled.
+   *
+   * When `signal.exchangeKeyId` is absent (e.g. event-driven callers that don't
+   * know the target exchange), resolve the best active key via
+   * `ExchangeSelectionService` and mutate `signal.exchangeKeyId` so downstream
+   * steps see a concrete id.
    */
   private async validatePrerequisites(signal: TradeSignalWithExit) {
-    const exchangeKey = await this.exchangeKeyService.findOne(signal.exchangeKeyId, signal.userId);
+    let exchangeKeyId = signal.exchangeKeyId;
+
+    if (!exchangeKeyId) {
+      const selected =
+        signal.action === 'SELL'
+          ? await this.exchangeSelectionService.selectForSell(signal.userId, signal.symbol)
+          : await this.exchangeSelectionService.selectForBuy(signal.userId, signal.symbol);
+      exchangeKeyId = selected.id;
+      signal.exchangeKeyId = exchangeKeyId;
+    }
+
+    const exchangeKey = await this.exchangeKeyService.findOne(exchangeKeyId, signal.userId);
     if (!exchangeKey || !exchangeKey.exchange) {
-      throw new ExchangeKeyNotFoundException(signal.exchangeKeyId);
+      throw new ExchangeKeyNotFoundException(exchangeKeyId);
     }
 
     const user = await this.userRepository.findOneBy({ id: signal.userId });
