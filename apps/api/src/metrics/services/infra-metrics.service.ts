@@ -27,7 +27,11 @@ export class InfraMetricsService {
     @InjectMetric('chansey_price_updates_total')
     private readonly priceUpdatesTotal: Counter<string>,
     @InjectMetric('chansey_price_update_lag_seconds')
-    private readonly priceUpdateLag: Gauge<string>
+    private readonly priceUpdateLag: Gauge<string>,
+
+    // Coin Selection
+    @InjectMetric('chansey_diversity_pruning_fallback_total')
+    private readonly diversityPruningFallbackTotal: Counter<string>
   ) {}
 
   recordHttpRequest(method: string, route: string, statusCode: number, durationMs: number): void {
@@ -62,5 +66,9 @@ export class InfraMetricsService {
 
   setPriceUpdateLag(source: string, lagSeconds: number): void {
     this.priceUpdateLag.set({ source }, lagSeconds);
+  }
+
+  recordDiversityPruningFallback(reason: 'no_ohlc' | 'backfill_after_veto'): void {
+    this.diversityPruningFallbackTotal.inc({ reason });
   }
 }

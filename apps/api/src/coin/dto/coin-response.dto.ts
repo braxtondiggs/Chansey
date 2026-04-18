@@ -98,38 +98,6 @@ export class CoinResponseDto {
   geckoRank?: number;
 
   @ApiProperty({
-    description: 'Developer score of the coin',
-    example: 75.5,
-    required: false,
-    type: Number
-  })
-  developerScore?: number;
-
-  @ApiProperty({
-    description: 'Community score of the coin',
-    example: 80.0,
-    required: false,
-    type: Number
-  })
-  communityScore?: number;
-
-  @ApiProperty({
-    description: 'Liquidity score of the coin',
-    example: 70.0,
-    required: false,
-    type: Number
-  })
-  liquidityScore?: number;
-
-  @ApiProperty({
-    description: 'Public interest score of the coin',
-    example: 85.0,
-    required: false,
-    type: Number
-  })
-  publicInterestScore?: number;
-
-  @ApiProperty({
     description: 'Sentiment up score',
     example: 60.0,
     required: false,

@@ -12,10 +12,6 @@ export interface Coin {
   circulatingSupply?: number;
   maxSupply?: number;
   geckoRank?: number;
-  developerScore?: number;
-  communityScore?: number;
-  liquidityScore?: number;
-  publicInterestScore?: number;
   sentimentUp?: number;
   sentimentDown?: number;
   ath?: number;

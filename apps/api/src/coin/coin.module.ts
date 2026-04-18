@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { CoinDailySnapshot } from './coin-daily-snapshot.entity';
 import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
+import { CoinDiversityService } from './coin-diversity.service';
 import { CoinListingEvent } from './coin-listing-event.entity';
 import { CoinListingEventService } from './coin-listing-event.service';
 import { CoinMarketDataService } from './coin-market-data.service';
@@ -20,8 +21,11 @@ import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 import { TickerPairService } from './ticker-pairs/ticker-pairs.service';
 
 import { CoinSelection } from '../coin-selection/coin-selection.entity';
+import { CorrelationCalculator } from '../common/metrics/correlation.calculator';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { ExchangeModule } from '../exchange/exchange.module';
+import { MetricsModule } from '../metrics/metrics.module';
+import { OHLCModule } from '../ohlc/ohlc.module';
 import { OrderModule } from '../order/order.module';
 import { RiskModule } from '../risk/risk.module';
 import { SharedCacheModule } from '../shared-cache.module';
@@ -40,7 +44,9 @@ import { SharedCacheModule } from '../shared-cache.module';
     TypeOrmModule.forFeature([Coin, CoinDailySnapshot, CoinSelection, TickerPairs, CoinListingEvent]),
     forwardRef(() => ExchangeModule),
     forwardRef(() => ExchangeKeyModule),
+    forwardRef(() => OHLCModule),
     forwardRef(() => OrderModule),
+    MetricsModule,
     RiskModule,
     SharedCacheModule,
     BullModule.registerQueue({ name: 'coin-queue' }),
@@ -50,11 +56,13 @@ import { SharedCacheModule } from '../shared-cache.module';
   providers: [
     CoinService,
     CoinDailySnapshotService,
+    CoinDiversityService,
     CoinListingEventService,
     CoinMarketDataService,
     CoinDetailSyncService,
     CoinSnapshotPruneTask,
     CoinSyncTask,
+    CorrelationCalculator,
     ExchangeTickerFetcherService,
     TickerPairService,
     TickerPairSyncTask

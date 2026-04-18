@@ -153,8 +153,6 @@ export class CrossListingScorerService {
         tvlGrowthPctRaw,
         targetsPresent,
         socialComponents: {
-          communityScore: coin.communityScore ?? null,
-          publicInterestScore: coin.publicInterestScore ?? null,
           sentimentUp: coin.sentimentUp ?? null
         },
         marketRank: coin.marketRank ?? null
@@ -181,22 +179,11 @@ export class CrossListingScorerService {
   }
 
   /**
-   * Composite social signal from CoinGecko fields already on the Coin entity.
-   * Returns null when ALL three component fields are missing — caller
-   * redistributes the social weight to the other components in that case.
+   * Social signal from the one CoinGecko field still populated on the free tier.
+   * Returns null when sentiment is missing so the caller can redistribute weight.
    */
   private socialFromCoinGecko(coin: Coin): number | null {
-    const community = coin.communityScore;
-    const interest = coin.publicInterestScore;
-    const sentiment = coin.sentimentUp;
-    const components: { value: number; weight: number }[] = [];
-    if (community != null) components.push({ value: community, weight: 0.4 });
-    if (interest != null) components.push({ value: interest, weight: 0.3 });
-    if (sentiment != null) components.push({ value: sentiment, weight: 0.3 });
-    if (components.length === 0) return null;
-    const totalWeight = components.reduce((s, c) => s + c.weight, 0);
-    const weighted = components.reduce((s, c) => s + c.value * c.weight, 0);
-    return Math.min(100, Math.max(0, weighted / totalWeight));
+    return coin.sentimentUp ?? null;
   }
 
   private redistributeSocialWeight(): ScoreWeights {

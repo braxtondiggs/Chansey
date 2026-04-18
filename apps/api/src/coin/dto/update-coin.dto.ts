@@ -41,18 +41,6 @@ export class UpdateCoinDto {
   geckoRank?: number | null;
 
   @IsDecimal()
-  developerScore?: number | null;
-
-  @IsDecimal()
-  communityScore?: number | null;
-
-  @IsDecimal()
-  liquidityScore?: number | null;
-
-  @IsDecimal()
-  publicInterestScore?: number | null;
-
-  @IsDecimal()
   sentimentUp?: number | null;
 
   @IsDecimal()

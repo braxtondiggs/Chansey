@@ -48,11 +48,8 @@ export class CoinDetailSyncService {
     this.logger.log('Starting Coin Markets Sync');
     await onProgress?.(5);
 
-    this.logger.log('Clearing previous rank data...');
-    await this.coinService.clearRank();
-    await onProgress?.(10);
-
     const allCoins = await this.coinService.getCoins();
+    await onProgress?.(10);
 
     await this.applyTrendingRanks(allCoins);
     await onProgress?.(30);
@@ -141,6 +138,10 @@ export class CoinDetailSyncService {
   ): Promise<{ totalCoins: number; updatedSuccessfully: number; skipped: number; errors: number }> {
     this.logger.log('Starting Coin Metadata Sync');
     await onProgress?.(5);
+
+    this.logger.log('Clearing previous rank data...');
+    await this.coinService.clearRank();
+    await onProgress?.(8);
 
     const allCoins = await this.coinService.getCoins();
     const cutoff = Date.now() - CoinDetailSyncService.METADATA_MIN_AGE_MS;
