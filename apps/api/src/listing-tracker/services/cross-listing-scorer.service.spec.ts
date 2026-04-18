@@ -30,8 +30,6 @@ function buildCoin(overrides: Partial<Coin> = {}): Coin {
     slug: 'foo',
     marketRank: 200,
     priceChangePercentage7d: 10,
-    communityScore: 50,
-    publicInterestScore: 50,
     sentimentUp: 50,
     ...overrides
   } as Coin;
@@ -116,9 +114,7 @@ describe('CrossListingScorerService', () => {
   it('redistributes social weight when CoinGecko fields are missing', async () => {
     const tickers = [buildTicker('kucoin'), buildTicker('gate'), buildTicker('okx')];
     const { service } = makeService(tickers);
-    const result = await service.scoreCoin(
-      buildCoin({ communityScore: null, publicInterestScore: null, sentimentUp: null } as Partial<Coin>)
-    );
+    const result = await service.scoreCoin(buildCoin({ sentimentUp: null } as Partial<Coin>));
     if (!result) throw new Error('expected result to be non-null');
     const w = result.breakdown.weights;
     expect(w.socialVelocity).toBe(0);
@@ -130,10 +126,9 @@ describe('CrossListingScorerService', () => {
   it('uses CoinGecko social fields when present', async () => {
     const tickers = [buildTicker('kucoin'), buildTicker('gate'), buildTicker('okx')];
     const { service } = makeService(tickers);
-    const result = await service.scoreCoin(buildCoin({ communityScore: 80, publicInterestScore: 60, sentimentUp: 70 }));
+    const result = await service.scoreCoin(buildCoin({ sentimentUp: 70 }));
     if (!result) throw new Error('expected result to be non-null');
-    // Weighted avg: (80*0.4 + 60*0.3 + 70*0.3) / (0.4 + 0.3 + 0.3) = (32 + 18 + 21) / 1 = 71
-    expect(result.breakdown.socialVelocity).toBeCloseTo(71, 5);
+    expect(result.breakdown.socialVelocity).toBeCloseTo(70, 5);
     expect(result.breakdown.socialDataAvailable).toBe(true);
   });
 

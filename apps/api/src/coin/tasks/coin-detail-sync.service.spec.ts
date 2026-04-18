@@ -97,12 +97,6 @@ describe('CoinDetailSyncService', () => {
   });
 
   describe('syncCoinDetails (batched markets path)', () => {
-    it('clears rank data before processing coins', async () => {
-      await service.syncCoinDetails();
-
-      expect(coinService.clearRank).toHaveBeenCalled();
-    });
-
     it('issues a single /coins/markets call for a 250-coin batch', async () => {
       const coins = Array.from({ length: 250 }, (_, i) =>
         makeCoin({ id: `c${i}`, slug: `coin-${i}`, symbol: `s${i}` })
@@ -292,6 +286,12 @@ describe('CoinDetailSyncService', () => {
   });
 
   describe('syncCoinMetadata', () => {
+    it('clears rank data before processing coins', async () => {
+      await service.syncCoinMetadata();
+
+      expect(coinService.clearRank).toHaveBeenCalled();
+    });
+
     it('refreshes coins with stale metadata and persists metadataLastUpdated', async () => {
       const oldDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
       const staleCoin = makeCoin({ id: 'c1', slug: 'coin-1', symbol: 's1', metadataLastUpdated: oldDate });

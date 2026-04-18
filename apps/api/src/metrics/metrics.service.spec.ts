@@ -14,6 +14,7 @@ const DELEGATION_MAP: [string, 'backtest' | 'trading' | 'strategy' | 'infra', st
   ['setActiveConnections', 'infra', 'setActiveConnections', [5]],
   ['recordPriceUpdate', 'infra', 'recordPriceUpdate', ['coingecko', 2]],
   ['setPriceUpdateLag', 'infra', 'setPriceUpdateLag', ['coingecko', 1.5]],
+  ['recordDiversityPruningFallback', 'infra', 'recordDiversityPruningFallback', ['no_ohlc']],
   ['setQueueJobsWaiting', 'infra', 'setQueueJobsWaiting', ['orders', 7]],
   ['setQueueJobsActive', 'infra', 'setQueueJobsActive', ['orders', 3]],
   ['recordQueueJobCompleted', 'infra', 'recordQueueJobCompleted', ['orders']],

@@ -5,10 +5,10 @@ import { type UpdateCoinDto } from '../dto/update-coin.dto';
  * Maps a CoinGecko /coins/markets entry to an UpdateCoinDto.
  * Pure function — no side effects, no DI dependencies.
  *
- * Unlike mapCoinGeckoDetailToUpdate, this only touches fields the markets endpoint
- * returns: price, market cap, volume, supply, ATH/ATL, price-change percentages,
- * and image. Metadata fields (description, genesis, links, scores, sentiment) are
- * intentionally omitted and sourced from the monthly /coins/{id} sync instead.
+ * Only touches fields the markets endpoint returns: price, market cap, volume,
+ * supply, ATH/ATL, price-change percentages, and image. Metadata fields
+ * (description, genesis, links, scores, sentiment) are intentionally omitted
+ * and sourced from the monthly /coins/{id} sync instead.
  */
 export function mapCoinGeckoMarketsToUpdate(
   entry: Record<string, any>,

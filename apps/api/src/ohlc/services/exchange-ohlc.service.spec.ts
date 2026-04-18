@@ -123,4 +123,36 @@ describe('ExchangeOHLCService', () => {
 
     expect(result).toEqual(['BTC/USDT', 'BTC/USD']);
   });
+
+  describe('getAllBaseSymbols', () => {
+    it('returns uppercase bases for USD-equivalent quote markets only', async () => {
+      const client = createClient({
+        markets: {
+          'BTC/USD': { base: 'BTC', quote: 'USD' },
+          'eth/usdt': { base: 'eth', quote: 'USDT' },
+          'SOL/EUR': { base: 'SOL', quote: 'EUR' },
+          'ADA/ZUSD': { base: 'ADA', quote: 'ZUSD' },
+          'LTC/BTC': { base: 'LTC', quote: 'BTC' }
+        }
+      });
+      exchangeManager.getPublicClient.mockResolvedValue(client as any);
+
+      const result = await service.getAllBaseSymbols('binance_us');
+
+      expect(result).toEqual(new Set(['BTC', 'ETH', 'ADA']));
+    });
+
+    it('loads markets when the client has not cached them yet', async () => {
+      const client = createClient();
+      client.loadMarkets.mockImplementation(() => {
+        client.markets = { 'BTC/USD': { base: 'BTC', quote: 'USD' } };
+      });
+      exchangeManager.getPublicClient.mockResolvedValue(client as any);
+
+      const result = await service.getAllBaseSymbols('binance_us');
+
+      expect(client.loadMarkets).toHaveBeenCalled();
+      expect(result).toEqual(new Set(['BTC']));
+    });
+  });
 });

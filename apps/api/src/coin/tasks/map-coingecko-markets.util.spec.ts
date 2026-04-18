@@ -73,10 +73,6 @@ describe('mapCoinGeckoMarketsToUpdate', () => {
 
     expect(result.description).toBeUndefined();
     expect(result.genesis).toBeUndefined();
-    expect(result.developerScore).toBeUndefined();
-    expect(result.communityScore).toBeUndefined();
-    expect(result.liquidityScore).toBeUndefined();
-    expect(result.publicInterestScore).toBeUndefined();
     expect(result.sentimentUp).toBeUndefined();
     expect(result.sentimentDown).toBeUndefined();
   });

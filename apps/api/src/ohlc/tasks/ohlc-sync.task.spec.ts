@@ -48,12 +48,14 @@ describe('OHLCSyncTask', () => {
     exchangeOHLC = {
       fetchOHLC: jest.fn(),
       getExchangePriority: jest.fn().mockReturnValue(['binance_us', 'gdax', 'kraken']),
-      getAvailableSymbols: jest.fn().mockResolvedValue([])
+      getAvailableSymbols: jest.fn().mockResolvedValue([]),
+      getAllBaseSymbols: jest.fn().mockResolvedValue(new Set())
     } as unknown as jest.Mocked<ExchangeOHLCService>;
 
     coinService = {
       updateCurrentPrice: jest.fn(),
-      getPopularCoins: jest.fn().mockResolvedValue([])
+      getPopularCoins: jest.fn().mockResolvedValue([]),
+      getCoinsBySymbols: jest.fn().mockResolvedValue([])
     } as unknown as jest.Mocked<CoinService>;
 
     exchangeService = {
@@ -117,8 +119,8 @@ describe('OHLCSyncTask', () => {
     configService.get.mockReturnValue(undefined);
     symbolMapService.getActiveSymbolMaps.mockResolvedValue([]);
     exchangeService.getExchanges.mockResolvedValue([{ id: 'ex-1', slug: 'binance_us', name: 'Binance US' }] as any);
-    coinService.getPopularCoins.mockResolvedValue([{ id: 'btc', symbol: 'btc' }] as any);
-    // getAvailableSymbols returns a valid pair for BTC on binance_us
+    exchangeOHLC.getAllBaseSymbols.mockResolvedValue(new Set(['BTC']));
+    coinService.getCoinsBySymbols.mockResolvedValue([{ id: 'btc', symbol: 'btc' }] as any);
     exchangeOHLC.getAvailableSymbols.mockResolvedValue(['BTC/USD']);
     jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
 
@@ -133,6 +135,56 @@ describe('OHLCSyncTask', () => {
       priority: 0,
       failureCount: 0
     });
+  });
+
+  it('seedSymbolMaps unions base symbols across exchanges before intersecting with coin table', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'false';
+    configService.get.mockReturnValue(undefined);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([]);
+    exchangeService.getExchanges.mockResolvedValue([
+      { id: 'ex-1', slug: 'binance_us', name: 'Binance US' },
+      { id: 'ex-2', slug: 'gdax', name: 'Coinbase' },
+      { id: 'ex-3', slug: 'kraken', name: 'Kraken' }
+    ] as any);
+    exchangeOHLC.getAllBaseSymbols.mockImplementation(async (slug: string) => {
+      if (slug === 'binance_us') return new Set(['BTC', 'ETH']);
+      if (slug === 'gdax') return new Set(['ETH', 'SOL']);
+      if (slug === 'kraken') return new Set(['ADA']);
+      return new Set();
+    });
+    coinService.getCoinsBySymbols.mockResolvedValue([
+      { id: 'btc', symbol: 'btc' },
+      { id: 'eth', symbol: 'eth' },
+      { id: 'sol', symbol: 'sol' },
+      { id: 'ada', symbol: 'ada' }
+    ] as any);
+    exchangeOHLC.getAvailableSymbols.mockResolvedValue([]);
+    jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
+
+    await task.onModuleInit();
+
+    expect(coinService.getCoinsBySymbols).toHaveBeenCalledWith(new Set(['BTC', 'ETH', 'SOL', 'ADA']));
+    expect(coinService.getPopularCoins).not.toHaveBeenCalled();
+  });
+
+  it('seedSymbolMaps falls back to getPopularCoins when every exchange market load fails', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'false';
+    configService.get.mockReturnValue(undefined);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([]);
+    exchangeService.getExchanges.mockResolvedValue([{ id: 'ex-1', slug: 'binance_us', name: 'Binance US' }] as any);
+    exchangeOHLC.getAllBaseSymbols.mockRejectedValue(new Error('CCXT exploded'));
+    coinService.getPopularCoins.mockResolvedValue([{ id: 'btc', symbol: 'btc' }] as any);
+    exchangeOHLC.getAvailableSymbols.mockResolvedValue(['BTC/USD']);
+    jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
+
+    await task.onModuleInit();
+
+    expect(coinService.getPopularCoins).toHaveBeenCalledWith(50);
+    expect(symbolMapService.upsertSymbolMap).toHaveBeenCalledWith(
+      expect.objectContaining({ coinId: 'btc', exchangeId: 'ex-1', symbol: 'BTC/USD' })
+    );
   });
 
   it('onModuleInit skips seeding when mappings already exist', async () => {
@@ -500,7 +552,8 @@ describe('OHLCSyncTask', () => {
     // First call (seedSymbolMapsIfEmpty check) returns empty, second call (inside seedSymbolMaps) also empty
     symbolMapService.getActiveSymbolMaps.mockResolvedValue([]);
     exchangeService.getExchanges.mockResolvedValue([{ id: 'ex-1', slug: 'binance_us', name: 'Binance US' }] as any);
-    coinService.getPopularCoins.mockResolvedValue([{ id: 'btc', symbol: 'btc' }] as any);
+    exchangeOHLC.getAllBaseSymbols.mockResolvedValue(new Set(['BTC']));
+    coinService.getCoinsBySymbols.mockResolvedValue([{ id: 'btc', symbol: 'btc' }] as any);
     exchangeOHLC.getAvailableSymbols.mockResolvedValue(['BTC/USD']);
     jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
 

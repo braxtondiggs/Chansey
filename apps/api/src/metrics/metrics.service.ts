@@ -92,6 +92,12 @@ export class MetricsService {
     this.infra.setPriceUpdateLag(source, lagSeconds);
   }
 
+  // === Coin Selection ===
+
+  recordDiversityPruningFallback(reason: 'no_ohlc' | 'backfill_after_veto'): void {
+    this.infra.recordDiversityPruningFallback(reason);
+  }
+
   // === Backtest ===
 
   recordBacktestCompleted(strategy: string, status: 'success' | 'failed' | 'cancelled'): void {

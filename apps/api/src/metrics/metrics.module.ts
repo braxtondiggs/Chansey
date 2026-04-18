@@ -76,6 +76,11 @@ const INFRA_METRIC_PROVIDERS = [
     name: 'chansey_price_update_lag_seconds',
     help: 'Lag between price timestamp and receive time',
     labelNames: ['source']
+  }),
+  makeCounterProvider({
+    name: 'chansey_diversity_pruning_fallback_total',
+    help: 'Diversity pruning fell back due to missing OHLC data or excessive correlation vetoes',
+    labelNames: ['reason']
   })
 ];
 

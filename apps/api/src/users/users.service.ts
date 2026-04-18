@@ -196,15 +196,32 @@ export class UsersService {
   }
 
   async updateCoinSelectionByUserRisk(user: User) {
-    const guardedCoinIds = await this.activePositionGuard.getActivePositionCoinIds(user.id);
+    const isCustom = user.coinRisk?.level === CUSTOM_RISK_LEVEL;
 
+    // Non-custom users: require at least one active exchange key. Skip entirely
+    // (no delete) so transient disconnects don't wipe existing AUTOMATIC rows —
+    // per snuggly-riding-rivest.md: "don't delete existing AUTOMATIC rows" when
+    // the user has no keys.
+    let userExchangeIds: string[] = [];
+    if (!isCustom) {
+      const supportedKeys = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
+      userExchangeIds = supportedKeys.filter((k) => k.isActive).map((k) => k.exchangeId);
+      if (userExchangeIds.length === 0) {
+        this.logger.warn(
+          `Skipping automatic coin selection for user ${user.id}: no active exchange keys (existing AUTOMATIC rows preserved)`
+        );
+        return;
+      }
+    }
+
+    const guardedCoinIds = await this.activePositionGuard.getActivePositionCoinIds(user.id);
     await this.coinSelection.bulkDeleteAutomaticSelections(user.id, CoinSelectionSource.RISK_BASED, guardedCoinIds);
 
-    // Custom risk users manage their own trading coins manually
-    if (user.coinRisk?.level === CUSTOM_RISK_LEVEL) return;
+    // Custom risk users manage their own trading coins manually — stop after cleanup.
+    if (isCustom) return;
 
     const coinCount = user.coinRisk?.coinCount ?? DEFAULT_COIN_COUNTS[user.coinRisk?.level ?? DEFAULT_RISK_LEVEL] ?? 10;
-    const newCoins = await this.coin.getCoinsByRiskLevel(user, coinCount);
+    const newCoins = await this.coin.getCoinsByRiskLevel(user, coinCount, userExchangeIds);
     await Promise.all(
       newCoins.map((coin) =>
         this.coinSelection.createCoinSelectionItem(

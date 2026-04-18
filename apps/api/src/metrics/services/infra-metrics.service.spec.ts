@@ -14,7 +14,8 @@ const buildService = () => {
     queueJobsCompletedTotal: createCounterMock(),
     queueJobsFailedTotal: createCounterMock(),
     priceUpdatesTotal: createCounterMock(),
-    priceUpdateLag: createGaugeMock()
+    priceUpdateLag: createGaugeMock(),
+    diversityPruningFallbackTotal: createCounterMock()
   };
 
   const service = new InfraMetricsService(
@@ -26,7 +27,8 @@ const buildService = () => {
     mocks.queueJobsCompletedTotal,
     mocks.queueJobsFailedTotal,
     mocks.priceUpdatesTotal,
-    mocks.priceUpdateLag
+    mocks.priceUpdateLag,
+    mocks.diversityPruningFallbackTotal
   );
 
   return { service, mocks };
@@ -97,5 +99,15 @@ describe('InfraMetricsService', () => {
 
     service.setPriceUpdateLag('coingecko', 5);
     expect(mocks.priceUpdateLag.set).toHaveBeenCalledWith({ source: 'coingecko' }, 5);
+  });
+
+  it('records diversity pruning fallback with the reason label', () => {
+    const { service, mocks } = buildService();
+
+    service.recordDiversityPruningFallback('no_ohlc');
+    expect(mocks.diversityPruningFallbackTotal.inc).toHaveBeenCalledWith({ reason: 'no_ohlc' });
+
+    service.recordDiversityPruningFallback('backfill_after_veto');
+    expect(mocks.diversityPruningFallbackTotal.inc).toHaveBeenCalledWith({ reason: 'backfill_after_veto' });
   });
 });

@@ -133,21 +133,36 @@ export class OHLCSyncTask extends FailSafeWorkerHost implements OnModuleInit {
       // Build a map of exchange slug -> exchange entity for quick lookup
       const exchangeBySlug = new Map(exchanges.map((e) => [e.slug, e]));
 
-      // Pre-load markets for each exchange in priority order
+      // Pre-filter: take the union of base symbols listed across priority exchanges
+      // against USD-equivalent quotes. Avoids iterating every coin against every
+      // exchange when the exchange doesn't list it.
+      const usBaseSymbols = new Set<string>();
+      let anyExchangeLoaded = false;
       for (const slug of exchangePriority) {
         if (!exchangeBySlug.has(slug)) continue;
         try {
-          await this.exchangeOHLC.getAvailableSymbols(slug, 'BTC'); // triggers loadMarkets()
+          const bases = await this.exchangeOHLC.getAllBaseSymbols(slug);
+          for (const base of bases) usBaseSymbols.add(base);
+          anyExchangeLoaded = true;
         } catch (error: unknown) {
           const err = toErrorInfo(error);
           this.logger.warn(`Failed to load markets for ${slug}: ${err.message}`);
         }
       }
 
-      const coins = await this.coinService.getPopularCoins(50);
+      let coins;
+      if (!anyExchangeLoaded || usBaseSymbols.size === 0) {
+        this.logger.warn('Exchange pre-filter unavailable, falling back to getPopularCoins(50)');
+        coins = await this.coinService.getPopularCoins(50);
+      } else {
+        coins = await this.coinService.getCoinsBySymbols(usBaseSymbols);
+        this.logger.log(
+          `Union of US-listed base symbols across ${exchangePriority.length} exchange(s) yielded ${usBaseSymbols.size} symbols, intersected with ${coins.length} coins`
+        );
+      }
 
       if (coins.length === 0) {
-        this.logger.warn('No popular coins found, cannot seed symbol maps');
+        this.logger.warn('No candidate coins found, cannot seed symbol maps');
         return;
       }
 
@@ -199,7 +214,9 @@ export class OHLCSyncTask extends FailSafeWorkerHost implements OnModuleInit {
         }
       }
 
-      this.logger.log(`Seeded ${created} symbol mappings, skipped ${skipped} coins with no valid pairs`);
+      this.logger.log(
+        `Seeded ${created} symbol mappings from ${coins.length} candidate(s), skipped ${skipped} with no valid pairs`
+      );
 
       // Trigger backfill for newly mapped coins (runs in background, non-blocking)
       if (newlyMappedCoinIds.length > 0) {

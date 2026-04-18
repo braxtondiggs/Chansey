@@ -174,6 +174,31 @@ export class ExchangeOHLCService {
   }
 
   /**
+   * Returns the uppercase base-asset symbols for every market on this exchange
+   * that trades against a USD-equivalent quote. Used to pre-filter candidate
+   * coins before attempting per-symbol lookups.
+   */
+  async getAllBaseSymbols(exchangeSlug: string): Promise<Set<string>> {
+    const client = await this.exchangeManager.getPublicClient(exchangeSlug);
+
+    if (!client.markets) {
+      await withExchangeRetryThrow(() => client.loadMarkets(), {
+        logger: this.logger,
+        operationName: `loadMarkets(${exchangeSlug})`
+      });
+    }
+
+    const bases = new Set<string>();
+    for (const symbol of Object.keys(client.markets)) {
+      const market = client.markets[symbol];
+      if (market.base && USD_QUOTE_CURRENCIES.has(market.quote)) {
+        bases.add(market.base.toUpperCase());
+      }
+    }
+    return bases;
+  }
+
+  /**
    * Get available USD trading pairs for a base asset on an exchange
    */
   async getAvailableSymbols(exchangeSlug: string, baseAsset: string): Promise<string[]> {

@@ -114,42 +114,6 @@ export class Coin {
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
   @ApiProperty({
-    description: 'Developer score of the coin',
-    example: 75.5,
-    required: false,
-    type: Number
-  })
-  developerScore?: number | null;
-
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
-  @ApiProperty({
-    description: 'Community score of the coin',
-    example: 80.0,
-    required: false,
-    type: Number
-  })
-  communityScore?: number | null;
-
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
-  @ApiProperty({
-    description: 'Liquidity score of the coin',
-    example: 70.0,
-    required: false,
-    type: Number
-  })
-  liquidityScore?: number | null;
-
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
-  @ApiProperty({
-    description: 'Public interest score of the coin',
-    example: 85.0,
-    required: false,
-    type: Number
-  })
-  publicInterestScore?: number | null;
-
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
-  @ApiProperty({
     description: 'Sentiment up score',
     example: 60.0,
     required: false,
