@@ -62,7 +62,7 @@ describe('StrategyStatusCardComponent', () => {
     fixture.detectChanges();
 
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain("We're retrying with fresh parameters");
+    expect(text).toContain("We're trying again with different settings");
     expect(text).not.toContain("didn't pass the safety review");
     expect(component.etaLabel()).toBe('');
   });
