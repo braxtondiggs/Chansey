@@ -202,6 +202,14 @@ export const queryKeys = {
   },
 
   // --------------------------------------------------------------------------
+  // Pipelines Domain
+  // --------------------------------------------------------------------------
+  pipelines: {
+    all: ['pipelines'] as const,
+    status: () => [...queryKeys.pipelines.all, 'status'] as const
+  },
+
+  // --------------------------------------------------------------------------
   // Notifications Domain
   // --------------------------------------------------------------------------
   notifications: {
@@ -323,4 +331,5 @@ export type ComparisonReportsQueryKeys = (typeof queryKeys)['comparisonReports']
 export type PricesQueryKeys = (typeof queryKeys)['prices'];
 export type TradingQueryKeys = (typeof queryKeys)['trading'];
 export type NotificationsQueryKeys = (typeof queryKeys)['notifications'];
+export type PipelinesQueryKeys = (typeof queryKeys)['pipelines'];
 export type AdminQueryKeys = (typeof queryKeys)['admin'];

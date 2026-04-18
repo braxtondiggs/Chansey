@@ -15,6 +15,9 @@
       <p-step [value]="3"
         ><span class="hidden sm:inline">Opportunity Selling</span><span class="sm:hidden">Selling</span></p-step
       >
+      <p-step [value]="4"
+        ><span class="hidden sm:inline">What happens next</span><span class="sm:hidden">Next</span></p-step
+      >
     </p-step-list>
     <p-step-panels>
       <!-- Step 1: Connect Exchange -->
@@ -152,11 +155,98 @@
                     (onClick)="activateCallback(2)"
                   />
                   <p-button
-                    label="Save & Finish"
-                    icon="pi pi-check"
+                    label="Save & Continue"
+                    icon="pi pi-arrow-right"
+                    iconPos="right"
                     [loading]="updateOpportunitySellingMutation.isPending()"
                     (onClick)="saveOpportunitySelling()"
                   />
+                </div>
+              </div>
+            </p-panel>
+          </div>
+        </ng-template>
+      </p-step-panel>
+
+      <!-- Step 4: What happens next (educational) -->
+      <p-step-panel [value]="4">
+        <ng-template #content let-activateCallback="activateCallback">
+          <div class="px-2 py-4 sm:px-0">
+            <p class="mt-0 mb-6 text-muted-color">
+              Before {{ appName }} starts trading for you, we carefully test every strategy. Here's what happens next:
+            </p>
+
+            <p-panel>
+              <div class="flex flex-col gap-5">
+                <div class="flex items-start gap-3">
+                  <div
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary dark:bg-primary-900/30"
+                  >
+                    <i class="pi pi-cog" aria-hidden="true"></i>
+                  </div>
+                  <div>
+                    <div class="mb-1 font-semibold">We test against history</div>
+                    <div class="text-sm text-muted-color">
+                      We run your strategy against months of past market data to make sure it has an edge. Takes a few
+                      days.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-start gap-3">
+                  <div
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary dark:bg-primary-900/30"
+                  >
+                    <i class="pi pi-chart-line" aria-hidden="true"></i>
+                  </div>
+                  <div>
+                    <div class="mb-1 font-semibold">We practice with pretend money</div>
+                    <div class="text-sm text-muted-color">
+                      Your strategy trades live markets — but with fake money first. Usually 1 to 4 weeks, depending on
+                      how often your strategy trades.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-start gap-3">
+                  <div
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary dark:bg-primary-900/30"
+                  >
+                    <i class="pi pi-shield" aria-hidden="true"></i>
+                  </div>
+                  <div>
+                    <div class="mb-1 font-semibold">We do a final safety review</div>
+                    <div class="text-sm text-muted-color">
+                      If your strategy passes, you go live. If not, we'll tell you and try a different one — no silent
+                      waiting.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-start gap-3">
+                  <div
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary dark:bg-primary-900/30"
+                  >
+                    <i class="pi pi-envelope" aria-hidden="true"></i>
+                  </div>
+                  <div>
+                    <div class="mb-1 font-semibold">We'll email you at each milestone</div>
+                    <div class="text-sm text-muted-color">
+                      You don't need to watch. We'll reach out when something changes — and your dashboard will always
+                      show where you are.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex justify-between pt-2">
+                  <p-button
+                    label="Back"
+                    icon="pi pi-arrow-left"
+                    severity="secondary"
+                    [text]="true"
+                    (onClick)="activateCallback(3)"
+                  />
+                  <p-button label="Got it, let's go!" icon="pi pi-check" (onClick)="completeWizard()" />
                 </div>
               </div>
             </p-panel>

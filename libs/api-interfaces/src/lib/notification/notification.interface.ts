@@ -12,7 +12,12 @@ export enum NotificationEventType {
   STRATEGY_DEPLOYED = 'strategy_deployed',
   STRATEGY_DEMOTED = 'strategy_demoted',
   DAILY_LOSS_LIMIT = 'daily_loss_limit',
-  REGIME_STALE = 'regime_stale'
+  REGIME_STALE = 'regime_stale',
+  PIPELINE_STARTED = 'pipeline_started',
+  PIPELINE_STAGE_COMPLETED = 'pipeline_stage_completed',
+  PIPELINE_COMPLETED = 'pipeline_completed',
+  PIPELINE_REJECTED = 'pipeline_rejected',
+  STRATEGY_LIVE = 'strategy_live'
 }
 
 export type NotificationSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -34,6 +39,11 @@ export interface NotificationEventPreferences {
   [NotificationEventType.STRATEGY_DEMOTED]: boolean;
   [NotificationEventType.DAILY_LOSS_LIMIT]: boolean;
   [NotificationEventType.REGIME_STALE]: boolean;
+  [NotificationEventType.PIPELINE_STARTED]: boolean;
+  [NotificationEventType.PIPELINE_STAGE_COMPLETED]: boolean;
+  [NotificationEventType.PIPELINE_COMPLETED]: boolean;
+  [NotificationEventType.PIPELINE_REJECTED]: boolean;
+  [NotificationEventType.STRATEGY_LIVE]: boolean;
 }
 
 export interface QuietHoursConfig {
@@ -64,7 +74,12 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     [NotificationEventType.STRATEGY_DEPLOYED]: true,
     [NotificationEventType.STRATEGY_DEMOTED]: true,
     [NotificationEventType.DAILY_LOSS_LIMIT]: true,
-    [NotificationEventType.REGIME_STALE]: true
+    [NotificationEventType.REGIME_STALE]: true,
+    [NotificationEventType.PIPELINE_STARTED]: true,
+    [NotificationEventType.PIPELINE_STAGE_COMPLETED]: true,
+    [NotificationEventType.PIPELINE_COMPLETED]: true,
+    [NotificationEventType.PIPELINE_REJECTED]: true,
+    [NotificationEventType.STRATEGY_LIVE]: true
   },
   quietHours: {
     enabled: false,

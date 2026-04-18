@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
@@ -15,9 +16,11 @@ import { Pipeline } from '../entities/pipeline.entity';
 import {
   DEFAULT_PROGRESSION_RULES,
   OptimizationStageResult,
+  PIPELINE_EVENTS,
   PipelineProgressionRules,
   PipelineStage,
-  PipelineStatus
+  PipelineStatus,
+  type PipelineStatusChangeEvent
 } from '../interfaces';
 
 @Injectable()
@@ -32,7 +35,8 @@ export class PipelineOrchestratorService {
     private readonly dataSource: DataSource,
     private readonly stageExecutionService: PipelineStageExecutionService,
     private readonly eventHandlerService: PipelineEventHandlerService,
-    private readonly progressionService: PipelineProgressionService
+    private readonly progressionService: PipelineProgressionService,
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   async createPipeline(dto: CreatePipelineInput, user: User): Promise<Pipeline> {
@@ -180,9 +184,19 @@ export class PipelineOrchestratorService {
       throw new BadRequestException('Pipeline has been cancelled');
     }
 
+    const previousStatus = pipeline.status;
     pipeline.status = PipelineStatus.RUNNING;
     pipeline.startedAt = pipeline.startedAt ?? new Date();
+    pipeline.stageTransitionedAt = pipeline.stageTransitionedAt ?? new Date();
     await this.pipelineRepository.save(pipeline);
+
+    const statusChange: PipelineStatusChangeEvent = {
+      pipelineId: pipeline.id,
+      previousStatus,
+      newStatus: PipelineStatus.RUNNING,
+      timestamp: new Date().toISOString()
+    };
+    this.eventEmitter.emit(PIPELINE_EVENTS.PIPELINE_STATUS_CHANGE, statusChange);
 
     try {
       await this.stageExecutionService.enqueueStageJob(pipeline, pipeline.currentStage, user.id);

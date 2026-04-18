@@ -455,6 +455,20 @@ describe('PipelineProgressionService', () => {
       );
     });
 
+    it('bumps stageTransitionedAt when advancing', async () => {
+      const pipeline = makePipeline({ currentStage: PipelineStage.OPTIMIZE });
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      const before = Date.now();
+      await service.advanceToNextStage(pipeline);
+      const after = Date.now();
+
+      expect(pipeline.stageTransitionedAt).toBeInstanceOf(Date);
+      const ts = (pipeline.stageTransitionedAt as Date).getTime();
+      expect(ts).toBeGreaterThanOrEqual(before);
+      expect(ts).toBeLessThanOrEqual(after);
+    });
+
     it('calls completePipeline when advancing past PAPER_TRADE', async () => {
       const pipeline = makePipeline({ currentStage: PipelineStage.PAPER_TRADE });
       pipelineRepository.save.mockResolvedValue(pipeline);
@@ -527,6 +541,20 @@ describe('PipelineProgressionService', () => {
       expect(pipeline.currentStage).toBe(PipelineStage.COMPLETED);
       expect(eventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_COMPLETED, expect.any(Object));
     });
+
+    it('bumps stageTransitionedAt on completion', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      const before = Date.now();
+      await service.completePipeline(pipeline);
+      const after = Date.now();
+
+      expect(pipeline.stageTransitionedAt).toBeInstanceOf(Date);
+      const ts = (pipeline.stageTransitionedAt as Date).getTime();
+      expect(ts).toBeGreaterThanOrEqual(before);
+      expect(ts).toBeLessThanOrEqual(after);
+    });
   });
 
   describe('markInconclusiveAndComplete', () => {
@@ -573,6 +601,20 @@ describe('PipelineProgressionService', () => {
 
       expect(pipeline.status).not.toBe(PipelineStatus.FAILED);
       expect(eventEmitter.emit).not.toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_FAILED, expect.anything());
+    });
+
+    it('bumps stageTransitionedAt on inconclusive completion', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      const before = Date.now();
+      await service.markInconclusiveAndComplete(pipeline, 'starved');
+      const after = Date.now();
+
+      expect(pipeline.stageTransitionedAt).toBeInstanceOf(Date);
+      const ts = (pipeline.stageTransitionedAt as Date).getTime();
+      expect(ts).toBeGreaterThanOrEqual(before);
+      expect(ts).toBeLessThanOrEqual(after);
     });
   });
 });

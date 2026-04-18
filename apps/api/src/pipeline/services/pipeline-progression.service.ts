@@ -255,6 +255,7 @@ export class PipelineProgressionService {
 
     const previousStage = pipeline.currentStage;
     pipeline.currentStage = nextStage;
+    pipeline.stageTransitionedAt = new Date();
     await this.pipelineRepository.save(pipeline);
 
     this.logger.log(`Pipeline ${pipeline.id} advanced from ${previousStage} to ${nextStage}`);
@@ -285,6 +286,7 @@ export class PipelineProgressionService {
     pipeline.status = PipelineStatus.COMPLETED;
     pipeline.currentStage = PipelineStage.COMPLETED;
     pipeline.completedAt = new Date();
+    pipeline.stageTransitionedAt = new Date();
     pipeline.recommendation = this.generateRecommendation(pipeline.stageResults);
 
     await this.pipelineRepository.save(pipeline);
@@ -336,6 +338,7 @@ export class PipelineProgressionService {
     pipeline.status = PipelineStatus.COMPLETED;
     pipeline.currentStage = PipelineStage.COMPLETED;
     pipeline.completedAt = new Date();
+    pipeline.stageTransitionedAt = new Date();
     pipeline.recommendation = DeploymentRecommendation.INCONCLUSIVE_RETRY;
     pipeline.pipelineScore = null;
     pipeline.scoreGrade = null;

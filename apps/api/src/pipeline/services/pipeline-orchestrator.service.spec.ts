@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -93,6 +94,10 @@ describe('PipelineOrchestratorService', () => {
         {
           provide: PipelineProgressionService,
           useValue: { advanceToNextStage: jest.fn() }
+        },
+        {
+          provide: EventEmitter2,
+          useValue: { emit: jest.fn() }
         }
       ]
     }).compile();
@@ -156,6 +161,30 @@ describe('PipelineOrchestratorService', () => {
         PipelineStage.OPTIMIZE,
         mockUser.id
       );
+    });
+
+    it('initializes stageTransitionedAt on first start', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.findOne.mockResolvedValue(pipeline);
+
+      const before = Date.now();
+      await service.startPipeline('pipeline-123', mockUser);
+      const after = Date.now();
+
+      expect(pipeline.stageTransitionedAt).toBeInstanceOf(Date);
+      const ts = (pipeline.stageTransitionedAt as Date).getTime();
+      expect(ts).toBeGreaterThanOrEqual(before);
+      expect(ts).toBeLessThanOrEqual(after);
+    });
+
+    it('preserves stageTransitionedAt when resuming after pause', async () => {
+      const original = new Date(Date.now() - 10 * 60 * 1000);
+      const pipeline = makePipeline({ status: PipelineStatus.PENDING, stageTransitionedAt: original });
+      pipelineRepository.findOne.mockResolvedValue(pipeline);
+
+      await service.startPipeline('pipeline-123', mockUser);
+
+      expect(pipeline.stageTransitionedAt).toBe(original);
     });
 
     it.each([[PipelineStatus.RUNNING], [PipelineStatus.COMPLETED], [PipelineStatus.CANCELLED]])(
