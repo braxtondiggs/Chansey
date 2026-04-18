@@ -1,13 +1,13 @@
 import { isPlatformBrowser } from '@angular/common';
 import {
   Component,
-  Input,
   OnInit,
   PLATFORM_ID,
   Signal,
   booleanAttribute,
   computed,
   inject,
+  input,
   model,
   DOCUMENT
 } from '@angular/core';
@@ -45,9 +45,9 @@ declare type KeyOfType<T> = keyof T extends infer U ? U : never;
 })
 // eslint-disable-next-line @angular-eslint/component-class-suffix
 export class AppConfigurator implements OnInit {
-  @Input({ transform: booleanAttribute }) simple = false;
+  readonly simple = input(false, { transform: booleanAttribute });
 
-  @Input() location = 'app';
+  readonly location = input('app');
 
   router = inject(Router);
 

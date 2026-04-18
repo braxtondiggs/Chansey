@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { DecimalPipe, NgClass, NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import { ButtonModule } from 'primeng/button';
@@ -17,7 +17,7 @@ export interface GroupedOrder {
 @Component({
   selector: 'app-active-orders',
   standalone: true,
-  imports: [CommonModule, ButtonModule, TooltipModule],
+  imports: [ButtonModule, TooltipModule, DecimalPipe, NgClass, NgTemplateOutlet],
   templateUrl: './active-orders.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   displayName: 'chansey',
   preset: '../../jest.preset.js',
   testPathIgnorePatterns: ['/node_modules/', '<rootDir>/apps/chansey-e2e/'],

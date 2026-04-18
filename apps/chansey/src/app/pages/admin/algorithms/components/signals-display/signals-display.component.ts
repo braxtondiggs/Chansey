@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { Component, input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
@@ -11,20 +10,20 @@ import { TradingSignalType, TradingSignal } from '@chansey/api-interfaces';
 @Component({
   selector: 'app-signals-display',
   standalone: true,
-  imports: [CommonModule, CardModule, TableModule, TagModule, TooltipModule],
+  imports: [CardModule, TableModule, TagModule, TooltipModule],
   template: `
     <p-card>
       <ng-template #header>
         <div class="flex items-center justify-between p-4 pb-0">
           <h3 class="m-0 text-lg font-semibold">Trading Signals</h3>
-          @if (signals && signals.length > 0) {
-            <span class="text-sm text-gray-500">{{ signals.length }} signal(s) generated</span>
+          @if (signals() && signals()!.length > 0) {
+            <span class="text-sm text-gray-500">{{ signals()!.length }} signal(s) generated</span>
           }
         </div>
       </ng-template>
 
-      @if (signals && signals.length > 0) {
-        <p-table [value]="signals" [paginator]="signals.length > 10" [rows]="10" size="small" stripedRows>
+      @if (signals() && signals()!.length > 0) {
+        <p-table [value]="signals()!" [paginator]="signals()!.length > 10" [rows]="10" size="small" stripedRows>
           <ng-template #header>
             <tr>
               <th>Coin</th>
@@ -89,7 +88,7 @@ import { TradingSignalType, TradingSignal } from '@chansey/api-interfaces';
   `
 })
 export class SignalsDisplayComponent {
-  @Input() signals?: TradingSignal[] | null;
+  readonly signals = input<TradingSignal[] | null>();
 
   getSignalSeverity(type: TradingSignalType): 'success' | 'danger' | 'secondary' | 'info' | 'warn' | 'contrast' {
     switch (type) {

@@ -1,5 +1,4 @@
 import { animate, style, transition, trigger } from '@angular/animations';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -27,7 +26,6 @@ import { EXIT_CONFIG_LIMITS } from '../../crypto-trading.constants';
   selector: 'app-exit-config',
   standalone: true,
   imports: [
-    CommonModule,
     ReactiveFormsModule,
     InputGroupModule,
     InputGroupAddonModule,

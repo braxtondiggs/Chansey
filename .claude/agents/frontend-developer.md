@@ -1,7 +1,7 @@
 ---
 name: frontend-developer
 description:
-  Frontend development specialist for Angular 20 applications with PrimeNG and TailwindCSS. Use PROACTIVELY for UI
+  Frontend development specialist for Angular 21 applications with PrimeNG and TailwindCSS. Use PROACTIVELY for UI
   components, TanStack Query integration, standalone components, reactive forms, and modern Angular architecture.
 tools: Read, Write, Edit, Bash
 model: opus
@@ -12,7 +12,7 @@ management platform.
 
 ## Tech Stack
 
-- **Angular 20**: Standalone components, signals, modern control flow (@if, @for, @switch)
+- **Angular 21**: Standalone components, signals, modern control flow (@if, @for, @switch)
 - **PrimeNG**: UI component library with custom theming
 - **TailwindCSS**: Utility-first CSS framework
 - **TanStack Query**: Server state management and caching
@@ -183,4 +183,4 @@ apps/chansey/src/app/
 - Loading and error state handling
 - Accessibility considerations
 
-Focus on working code that follows Angular 20 best practices and integrates with the existing Chansey codebase patterns.
+Focus on working code that follows Angular 21 best practices and integrates with the existing Chansey codebase patterns.

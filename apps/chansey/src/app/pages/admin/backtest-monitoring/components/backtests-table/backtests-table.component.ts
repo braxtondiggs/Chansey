@@ -1,5 +1,5 @@
-import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { DatePipe, DecimalPipe, SlicePipe } from '@angular/common';
+import { Component, input, output } from '@angular/core';
 
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
@@ -14,7 +14,6 @@ import { BacktestStatus, PaginatedBacktestListDto } from '@chansey/api-interface
   selector: 'app-backtests-table',
   standalone: true,
   imports: [
-    CommonModule,
     ButtonModule,
     CardModule,
     DatePipe,
@@ -22,14 +21,15 @@ import { BacktestStatus, PaginatedBacktestListDto } from '@chansey/api-interface
     ProgressBarModule,
     TableModule,
     TagModule,
-    TooltipModule
+    TooltipModule,
+    SlicePipe
   ],
   template: `
     <p-card header="Recent Backtests">
       <p-table
-        [value]="backtests?.data || []"
+        [value]="backtests()?.data || []"
         [rows]="10"
-        [totalRecords]="backtests?.total || 0"
+        [totalRecords]="backtests()?.total || 0"
         [lazy]="true"
         (onLazyLoad)="onLazyLoad($event)"
         [paginator]="true"
@@ -37,7 +37,7 @@ import { BacktestStatus, PaginatedBacktestListDto } from '@chansey/api-interface
         currentPageReportTemplate="{first} to {last} of {totalRecords}"
         styleClass="p-datatable-sm"
       >
-        <ng-template pTemplate="header">
+        <ng-template #header>
           <tr>
             <th>Name</th>
             <th>Algorithm</th>
@@ -47,7 +47,7 @@ import { BacktestStatus, PaginatedBacktestListDto } from '@chansey/api-interface
             <th>Created</th>
           </tr>
         </ng-template>
-        <ng-template pTemplate="body" let-backtest>
+        <ng-template #body let-backtest>
           <tr>
             <td>
               <span [pTooltip]="backtest.description" tooltipPosition="top">
@@ -80,7 +80,7 @@ import { BacktestStatus, PaginatedBacktestListDto } from '@chansey/api-interface
             <td>{{ backtest.createdAt | date: 'short' }}</td>
           </tr>
         </ng-template>
-        <ng-template pTemplate="emptymessage">
+        <ng-template #emptymessage>
           <tr>
             <td colspan="6" class="py-4 text-center text-gray-500">No backtests found</td>
           </tr>
@@ -90,8 +90,8 @@ import { BacktestStatus, PaginatedBacktestListDto } from '@chansey/api-interface
   `
 })
 export class BacktestsTableComponent {
-  @Input() backtests: PaginatedBacktestListDto | undefined;
-  @Output() pageChange = new EventEmitter<number>();
+  readonly backtests = input<PaginatedBacktestListDto>();
+  pageChange = output<number>();
 
   // Expose enum to template
   protected readonly BacktestStatus = BacktestStatus;

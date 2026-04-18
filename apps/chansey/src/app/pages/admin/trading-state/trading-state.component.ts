@@ -1,4 +1,4 @@
-import { CommonModule, DatePipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -24,7 +24,6 @@ import { TradingStateService } from './trading-state.service';
   imports: [
     ButtonModule,
     CardModule,
-    CommonModule,
     ConfirmDialogModule,
     DatePipe,
     DialogModule,

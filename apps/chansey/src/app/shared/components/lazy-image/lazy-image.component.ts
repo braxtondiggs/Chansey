@@ -1,17 +1,17 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectorRef, Component, ElementRef, inject, Input, OnDestroy, OnInit } from '@angular/core';
+import { NgClass } from '@angular/common';
+import { ChangeDetectorRef, Component, ElementRef, inject, input, OnDestroy, OnInit } from '@angular/core';
 
 @Component({
   selector: 'app-lazy-image',
   standalone: true,
-  imports: [CommonModule],
+  imports: [NgClass],
   template: `
     <img
-      [src]="isIntersecting ? src : ''"
-      [alt]="alt"
-      [class]="className"
-      [attr.width]="width || null"
-      [attr.height]="height || null"
+      [src]="isIntersecting ? src() : ''"
+      [alt]="alt()"
+      [class]="className()"
+      [attr.width]="width() || null"
+      [attr.height]="height() || null"
       [ngClass]="{
         'opacity-0': !isLoaded,
         'transition-opacity delay-75 duration-700 ease-out': true
@@ -22,11 +22,11 @@ import { ChangeDetectorRef, Component, ElementRef, inject, Input, OnDestroy, OnI
   `
 })
 export class LazyImageComponent implements OnInit, OnDestroy {
-  @Input() src = '';
-  @Input() alt = '';
-  @Input() className = '';
-  @Input() width: number | undefined;
-  @Input() height: number | undefined;
+  readonly src = input('');
+  readonly alt = input('');
+  readonly className = input('');
+  readonly width = input<number>();
+  readonly height = input<number>();
 
   private readonly el = inject(ElementRef);
   private readonly cdr = inject(ChangeDetectorRef);

@@ -1,5 +1,5 @@
-import { CommonModule, CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
@@ -13,17 +13,7 @@ import { PaginatedUserActivityDto } from '../../live-trade-monitoring.types';
   selector: 'app-user-activity-panel',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    CommonModule,
-    ButtonModule,
-    CardModule,
-    RippleModule,
-    TableModule,
-    TagModule,
-    DecimalPipe,
-    CurrencyPipe,
-    DatePipe
-  ],
+  imports: [ButtonModule, CardModule, RippleModule, TableModule, TagModule, DecimalPipe, CurrencyPipe, DatePipe],
   template: `
     <div class="mt-4">
       <p-card>
@@ -35,12 +25,12 @@ import { PaginatedUserActivityDto } from '../../live-trade-monitoring.types';
         </ng-template>
 
         <p-table
-          [value]="userActivity?.data || []"
+          [value]="userActivity()?.data || []"
           [tableStyle]="{ 'min-width': '100%' }"
           [lazy]="true"
           [paginator]="true"
-          [rows]="userActivity?.limit || 10"
-          [totalRecords]="userActivity?.total || 0"
+          [rows]="userActivity()?.limit || 10"
+          [totalRecords]="userActivity()?.total || 0"
           [showCurrentPageReport]="true"
           currentPageReportTemplate="Showing {first} to {last} of {totalRecords} users"
           [expandedRowKeys]="expandedRows"
@@ -164,8 +154,8 @@ import { PaginatedUserActivityDto } from '../../live-trade-monitoring.types';
   `
 })
 export class UserActivityPanelComponent {
-  @Input() userActivity: PaginatedUserActivityDto | undefined;
-  @Output() pageChange = new EventEmitter<number>();
+  readonly userActivity = input<PaginatedUserActivityDto>();
+  pageChange = output<number>();
 
   expandedRows: Record<string, boolean> = {};
 

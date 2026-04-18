@@ -1,5 +1,5 @@
-import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { DatePipe, NgClass } from '@angular/common';
+import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -25,7 +25,6 @@ import { CategoriesService } from './categories.service';
   imports: [
     ButtonModule,
     CardModule,
-    CommonModule,
     ConfirmDialogModule,
     DialogModule,
     FloatLabelModule,
@@ -36,14 +35,16 @@ import { CategoriesService } from './categories.service';
     InputTextModule,
     ReactiveFormsModule,
     TableModule,
-    ToastModule
+    ToastModule,
+    DatePipe,
+    NgClass
   ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './categories.component.html'
 })
 export class CategoriesComponent {
-  @ViewChild('dt') dt!: Table;
-  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
+  readonly dt = viewChild<Table>('dt');
+  readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   // State signals
   categories = signal<Category[]>([]);
@@ -208,15 +209,16 @@ export class CategoriesComponent {
     // Handle empty search better by using empty string instead of null/undefined
     const safeFilterValue = filterValue?.trim() ?? '';
     this.searchFilter.set(safeFilterValue);
-    this.dt?.filterGlobal(safeFilterValue, 'contains');
+    this.dt()?.filterGlobal(safeFilterValue, 'contains');
   }
 
   clearSearch(): void {
     this.searchFilter.set('');
-    this.dt?.filterGlobal('', 'contains');
+    this.dt()?.filterGlobal('', 'contains');
     // Also clear the input field
-    if (this.searchInput?.nativeElement) {
-      this.searchInput.nativeElement.value = '';
+    const input = this.searchInput();
+    if (input?.nativeElement) {
+      input.nativeElement.value = '';
     }
   }
 

@@ -74,7 +74,7 @@
         ></p-selectbutton>
       </div>
     </div>
-    @if (!simple && location === 'app') {
+    @if (!simple() && location() === 'app') {
     <div class="flex flex-col gap-2">
       <span class="text-lg font-semibold text-muted-color">Card Style</span>
       <p-selectbutton
@@ -86,7 +86,7 @@
         [allowEmpty]="false"
       />
     </div>
-    } @if (!simple && location === 'app') {
+    } @if (!simple() && location() === 'app') {
     <div class="flex flex-col gap-2">
       <span class="text-lg font-semibold text-muted-color">Menu Theme</span>
       <p-selectbutton
@@ -98,7 +98,7 @@
         [allowEmpty]="false"
       />
     </div>
-    } @if (!simple && location === 'app') {
+    } @if (!simple() && location() === 'app') {
     <div>
       <div class="flex flex-col gap-2">
         <span class="text-lg font-semibold text-muted-color">Menu Type</span>

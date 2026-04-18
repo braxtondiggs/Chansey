@@ -1,4 +1,4 @@
-import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -25,7 +25,7 @@ interface StatusPresentation {
 @Component({
   selector: 'app-paper-trading-panel',
   standalone: true,
-  imports: [CommonModule, CardModule, DatePipe, DecimalPipe, ProgressBarModule, TableModule, TagModule, TooltipModule],
+  imports: [CardModule, DatePipe, DecimalPipe, ProgressBarModule, TableModule, TagModule, TooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -124,7 +124,7 @@ interface StatusPresentation {
       <!-- Top Algorithms -->
       <p-card header="Top Algorithms">
         <p-table [value]="analytics()?.topAlgorithms || []" styleClass="p-datatable-sm">
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Algorithm</th>
               <th class="text-right">Sessions</th>
@@ -132,7 +132,7 @@ interface StatusPresentation {
               <th class="text-right">Avg Sharpe</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-item>
+          <ng-template #body let-item>
             <tr>
               <td class="font-medium">{{ item.algorithmName }}</td>
               <td class="text-right">{{ item.sessionCount }}</td>
@@ -144,7 +144,7 @@ interface StatusPresentation {
               <td class="text-right">{{ item.avgSharpe | number: '1.2-2' }}</td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="4" class="py-4 text-center text-gray-500">No paper trading data available</td>
             </tr>
@@ -155,7 +155,7 @@ interface StatusPresentation {
       <!-- By Symbol Breakdown -->
       <p-card header="Volume by Symbol">
         <p-table [value]="analytics()?.orderAnalytics?.bySymbol || []" styleClass="p-datatable-sm">
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Symbol</th>
               <th class="text-right">Orders</th>
@@ -163,7 +163,7 @@ interface StatusPresentation {
               <th class="text-right">P&L</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-item>
+          <ng-template #body let-item>
             <tr>
               <td class="font-medium">{{ item.symbol }}</td>
               <td class="text-right">{{ item.orderCount }}</td>
@@ -175,7 +175,7 @@ interface StatusPresentation {
               </td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="4" class="py-4 text-center text-gray-500">No order data available</td>
             </tr>
@@ -198,7 +198,7 @@ interface StatusPresentation {
           currentPageReportTemplate="{first} to {last} of {totalRecords}"
           styleClass="p-datatable-sm"
         >
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Name</th>
               <th>Algorithm</th>
@@ -208,7 +208,7 @@ interface StatusPresentation {
               <th>Created</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-session>
+          <ng-template #body let-session>
             <tr>
               <td>{{ session.name }}</td>
               <td>{{ session.algorithmName }}</td>
@@ -238,7 +238,7 @@ interface StatusPresentation {
               <td>{{ session.createdAt | date: 'short' }}</td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="6" class="py-4 text-center text-gray-500">No paper trading sessions found</td>
             </tr>

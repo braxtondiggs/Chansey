@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { SelectModule } from 'primeng/select';
@@ -10,12 +9,12 @@ import { PaginatedAlgorithmListDto } from '../../live-trade-monitoring.types';
   selector: 'app-algorithm-selector',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, FormsModule, SelectModule],
+  imports: [FormsModule, SelectModule],
   template: `
     <div class="flex items-center gap-4">
       <label class="font-medium">Select Algorithm:</label>
       <p-select
-        [ngModel]="selectedAlgorithmId"
+        [ngModel]="selectedAlgorithmId()"
         [options]="algorithmOptions"
         optionLabel="label"
         optionValue="value"
@@ -30,16 +29,17 @@ import { PaginatedAlgorithmListDto } from '../../live-trade-monitoring.types';
   `
 })
 export class AlgorithmSelectorComponent {
-  @Input() algorithms: PaginatedAlgorithmListDto | undefined;
-  @Input() selectedAlgorithmId: string | null = null;
-  @Output() selectionChange = new EventEmitter<string | null>();
+  readonly algorithms = input<PaginatedAlgorithmListDto>();
+  readonly selectedAlgorithmId = input<string | null>(null);
+  selectionChange = output<string | null>();
 
   get algorithmOptions(): { label: string; value: string }[] {
-    if (!this.algorithms?.data) return [];
+    const data = this.algorithms()?.data;
+    if (!data) return [];
 
     // Create unique algorithm options (dedupe by algorithmId)
     const uniqueAlgorithms = new Map<string, string>();
-    for (const activation of this.algorithms.data) {
+    for (const activation of data) {
       if (!uniqueAlgorithms.has(activation.algorithmId)) {
         uniqueAlgorithms.set(activation.algorithmId, activation.algorithmName);
       }

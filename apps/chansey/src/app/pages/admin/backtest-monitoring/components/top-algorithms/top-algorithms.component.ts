@@ -1,5 +1,5 @@
-import { CommonModule, DecimalPipe } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
+import { Component, input } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
@@ -10,11 +10,11 @@ import { TopAlgorithmDto } from '@chansey/api-interfaces';
 @Component({
   selector: 'app-top-algorithms',
   standalone: true,
-  imports: [CommonModule, CardModule, DecimalPipe, TableModule, TagModule],
+  imports: [CardModule, DecimalPipe, TableModule, TagModule],
   template: `
     <p-card header="Top Performing Algorithms">
-      <p-table [value]="algorithms" styleClass="p-datatable-sm">
-        <ng-template pTemplate="header">
+      <p-table [value]="algorithms()" styleClass="p-datatable-sm">
+        <ng-template #header>
           <tr>
             <th style="width: 40px">#</th>
             <th>Algorithm</th>
@@ -23,7 +23,7 @@ import { TopAlgorithmDto } from '@chansey/api-interfaces';
             <th class="text-right">Backtests</th>
           </tr>
         </ng-template>
-        <ng-template pTemplate="body" let-algo let-rowIndex="rowIndex">
+        <ng-template #body let-algo let-rowIndex="rowIndex">
           <tr>
             <td>
               <p-tag [severity]="getRankSeverity(rowIndex)" [value]="(rowIndex + 1).toString()" [rounded]="true" />
@@ -42,7 +42,7 @@ import { TopAlgorithmDto } from '@chansey/api-interfaces';
             <td class="text-right text-gray-500">{{ algo.backtestCount }}</td>
           </tr>
         </ng-template>
-        <ng-template pTemplate="emptymessage">
+        <ng-template #emptymessage>
           <tr>
             <td colspan="5" class="py-4 text-center text-gray-500">
               No algorithm data available (minimum 3 backtests required)
@@ -54,7 +54,7 @@ import { TopAlgorithmDto } from '@chansey/api-interfaces';
   `
 })
 export class TopAlgorithmsComponent {
-  @Input() algorithms: TopAlgorithmDto[] = [];
+  readonly algorithms = input<TopAlgorithmDto[]>([]);
 
   getRankSeverity(index: number): 'success' | 'warn' | 'info' | 'secondary' {
     if (index === 0) return 'success';

@@ -1,4 +1,4 @@
-import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { CardModule } from 'primeng/card';
@@ -13,7 +13,7 @@ import { BacktestOverviewDto, BacktestStatus, PaginatedLiveReplayRunsDto, Replay
 @Component({
   selector: 'app-live-replay-panel',
   standalone: true,
-  imports: [CommonModule, CardModule, DatePipe, DecimalPipe, ProgressBarModule, TableModule, TagModule, TooltipModule],
+  imports: [CardModule, DatePipe, DecimalPipe, ProgressBarModule, TableModule, TagModule, TooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -92,7 +92,7 @@ import { BacktestOverviewDto, BacktestStatus, PaginatedLiveReplayRunsDto, Replay
           currentPageReportTemplate="{first} to {last} of {totalRecords}"
           styleClass="p-datatable-sm"
         >
-          <ng-template pTemplate="header">
+          <ng-template #header>
             <tr>
               <th>Name</th>
               <th>Algorithm</th>
@@ -104,7 +104,7 @@ import { BacktestOverviewDto, BacktestStatus, PaginatedLiveReplayRunsDto, Replay
               <th>Created</th>
             </tr>
           </ng-template>
-          <ng-template pTemplate="body" let-run>
+          <ng-template #body let-run>
             <tr>
               <td>{{ run.name }}</td>
               <td>{{ run.algorithmName }}</td>
@@ -145,7 +145,7 @@ import { BacktestOverviewDto, BacktestStatus, PaginatedLiveReplayRunsDto, Replay
               <td>{{ run.createdAt | date: 'short' }}</td>
             </tr>
           </ng-template>
-          <ng-template pTemplate="emptymessage">
+          <ng-template #emptymessage>
             <tr>
               <td colspan="8" class="py-4 text-center text-gray-500">No live replay runs found</td>
             </tr>

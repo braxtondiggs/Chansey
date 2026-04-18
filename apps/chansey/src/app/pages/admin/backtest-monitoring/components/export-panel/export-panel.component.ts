@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ButtonModule } from 'primeng/button';
@@ -18,7 +17,7 @@ interface ExportRequest {
 @Component({
   selector: 'app-export-panel',
   standalone: true,
-  imports: [CommonModule, FormsModule, ButtonModule, CardModule, InputTextModule, SelectButtonModule],
+  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, SelectButtonModule],
   template: `
     <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
       <!-- Export Backtests -->
@@ -39,7 +38,8 @@ interface ExportRequest {
         </div>
 
         @if (
-          filters && (filters.startDate || filters.endDate || filters.status || filters.type || filters.algorithmId)
+          filters() &&
+          (filters()!.startDate || filters()!.endDate || filters()!.status || filters()!.type || filters()!.algorithmId)
         ) {
           <div class="mt-3 text-sm text-gray-400">
             <i class="pi pi-filter mr-1"></i>
@@ -158,8 +158,8 @@ interface ExportRequest {
   `
 })
 export class ExportPanelComponent {
-  @Input() filters: BacktestFiltersDto | undefined;
-  @Output() exportRequest = new EventEmitter<ExportRequest>();
+  readonly filters = input<BacktestFiltersDto>();
+  exportRequest = output<ExportRequest>();
 
   formatOptions = [
     { label: 'CSV', value: ExportFormat.CSV },

@@ -147,13 +147,18 @@
   "plugins": [
     {
       "plugin": "@nx/eslint/plugin",
-      "options": { "targetName": "lint" }
+      "options": {
+        "targetName": "lint"
+      }
     },
     {
       "plugin": "@nx/jest/plugin",
-      "options": { "targetName": "test" }
+      "options": {
+        "targetName": "test"
+      }
     }
   ],
   "defaultBase": "master",
-  "nxCloudId": "67169e854c1cf0f07e274815"
+  "nxCloudId": "67169e854c1cf0f07e274815",
+  "analytics": true
 }

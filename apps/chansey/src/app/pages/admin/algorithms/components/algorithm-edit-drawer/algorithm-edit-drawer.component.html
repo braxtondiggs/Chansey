@@ -1,11 +1,4 @@
-<p-drawer
-  [visible]="visible"
-  (visibleChange)="onVisibleChange($event)"
-  [position]="'right'"
-  [style]="{ width: '32rem' }"
-  [header]="drawerTitle"
-  [modal]="true"
->
+<p-drawer [(visible)]="visible" [position]="'right'" [style]="{ width: '32rem' }" [header]="drawerTitle" [modal]="true">
   <form [formGroup]="algorithmForm" (ngSubmit)="saveAlgorithm()" class="flex h-full flex-col">
     <div class="flex-1 space-y-6 overflow-y-auto">
       <!-- Basic Info Section -->
@@ -63,7 +56,7 @@
             <p-select
               id="strategyId"
               formControlName="strategyId"
-              [options]="strategies"
+              [options]="strategies()"
               optionLabel="name"
               optionValue="id"
               [showClear]="true"
@@ -189,7 +182,7 @@
     <p-divider></p-divider>
     <div class="flex justify-end gap-2 pt-4">
       <p-button label="Cancel" icon="pi pi-times" severity="secondary" [outlined]="true" (onClick)="hideDrawer()" />
-      <p-button label="Save" icon="pi pi-check" (onClick)="saveAlgorithm()" [loading]="isLoading" />
+      <p-button label="Save" icon="pi pi-check" (onClick)="saveAlgorithm()" [loading]="isLoading()" />
     </div>
   </form>
 </p-drawer>

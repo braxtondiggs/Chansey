@@ -1,5 +1,5 @@
-import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, computed, inject, signal, viewChild } from '@angular/core';
+import { AsyncPipe, NgClass } from '@angular/common';
+import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { funEmoji } from '@dicebear/collection';
@@ -30,11 +30,12 @@ import { PwaService } from '../shared/services/pwa.service';
     BadgeModule,
     RouterModule,
     StyleClassModule,
-    CommonModule,
     ButtonModule,
     RippleModule,
     TooltipModule,
-    TimeAgoPipe
+    TimeAgoPipe,
+    NgClass,
+    AsyncPipe
   ],
   templateUrl: './app.topbar.html'
 })
@@ -102,7 +103,7 @@ export class AppTopBar {
     }
   });
 
-  @ViewChild('menubutton') menuButton!: ElementRef;
+  readonly menuButton = viewChild.required<ElementRef>('menubutton');
   profileDropdown = viewChild<ElementRef>('profileDropdown');
 
   logout() {

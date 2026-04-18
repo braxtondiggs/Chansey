@@ -17,13 +17,13 @@
         optionValue="value"
         appendTo="body"
       >
-        <ng-template pTemplate="selectedItem" let-option>
+        <ng-template #selectedItem let-option>
           <div class="flex items-center gap-2">
             <i [class]="option.icon" class="text-sm"></i>
             <span>{{ option.label }}</span>
           </div>
         </ng-template>
-        <ng-template pTemplate="item" let-option>
+        <ng-template #item let-option>
           <div class="flex items-center gap-2">
             <i [class]="option.icon" class="text-sm"></i>
             <div>

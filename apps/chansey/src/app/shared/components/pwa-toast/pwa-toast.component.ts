@@ -14,7 +14,7 @@ import { PwaService } from '../../services/pwa.service';
   providers: [MessageService],
   template: `
     <p-toast position="top-right" key="pwa-updates">
-      <ng-template let-message pTemplate="message">
+      <ng-template let-message #message>
         <div class="flex w-full flex-col gap-3">
           <div class="flex items-center gap-2">
             <i [class]="message.icon" class="text-xl"></i>

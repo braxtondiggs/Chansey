@@ -29,11 +29,11 @@
 
 ## Active Technologies
 
-- TypeScript (Nx monorepo targeting Angular 17+/NestJS 10+) + Angular with PrimeNG (frontend), NestJS with TypeORM,
+- TypeScript (Nx 22 monorepo targeting Angular 21/NestJS 11) + Angular with PrimeNG 21 (frontend), NestJS with TypeORM,
   BullMQ, Redis, Nx task runners, shared `api-interfaces` library (001-algo-backtest)
 - PostgreSQL (primary), Redis (caching/queues) (001-algo-backtest)
 
 ## Recent Changes
 
-- 001-algo-backtest: Added TypeScript (Nx monorepo targeting Angular 17+/NestJS 10+) + Angular with PrimeNG (frontend),
+- 001-algo-backtest: Added TypeScript (Nx 22 monorepo targeting Angular 21/NestJS 11) + Angular with PrimeNG 21 (frontend),
   NestJS with TypeORM, BullMQ, Redis, Nx task runners, shared `api-interfaces` library

@@ -62,8 +62,8 @@ OPTIMIZE → HISTORICAL → LIVE_REPLAY → PAPER_TRADING → COMPLETED
 
 | Technology     | Purpose                        |
 | -------------- | ------------------------------ |
-| Angular 20     | Standalone components, signals |
-| PrimeNG 20     | UI component library           |
+| Angular 21     | Standalone components, signals |
+| PrimeNG 21     | UI component library           |
 | TailwindCSS 4  | Utility-first styling          |
 | TanStack Query | Server state management        |
 | Chart.js       | Data visualization             |

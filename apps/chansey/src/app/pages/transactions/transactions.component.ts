@@ -2,11 +2,11 @@ import { DatePipe, DecimalPipe, NgClass, UpperCasePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
-  ViewChild,
   ViewEncapsulation,
   computed,
   inject,
-  signal
+  signal,
+  viewChild
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -73,7 +73,7 @@ import { getSideSeverity, getStatusSeverity } from '../../shared/utils/order-sev
   `
 })
 export class TransactionsComponent {
-  @ViewChild('dt') dt!: Table;
+  readonly dt = viewChild.required<Table>('dt');
 
   // Services
   private readonly transactionsService = inject(TransactionsService);
@@ -156,13 +156,13 @@ export class TransactionsComponent {
   applyGlobalFilter(event: Event): void {
     const filterValue = (event.target as HTMLInputElement).value;
     this.searchText.set(filterValue);
-    this.dt?.filterGlobal(filterValue, 'contains');
+    this.dt()?.filterGlobal(filterValue, 'contains');
   }
 
   // Clear only search text filter
   clearSearchFilter(): void {
     this.searchText.set('');
-    this.dt?.filterGlobal('', 'contains');
+    this.dt()?.filterGlobal('', 'contains');
   }
 
   getStatusSeverity = getStatusSeverity;
@@ -193,23 +193,23 @@ export class TransactionsComponent {
 
     // Apply status filter
     if (statuses.length) {
-      this.dt.filter(statuses, 'status', 'in');
+      this.dt().filter(statuses, 'status', 'in');
     } else {
-      this.dt.filter(null, 'status', 'in');
+      this.dt().filter(null, 'status', 'in');
     }
 
     // Apply side filter
     if (sides.length) {
-      this.dt.filter(sides, 'side', 'in');
+      this.dt().filter(sides, 'side', 'in');
     } else {
-      this.dt.filter(null, 'side', 'in');
+      this.dt().filter(null, 'side', 'in');
     }
 
     // Apply type filter
     if (types.length) {
-      this.dt.filter(types, 'type', 'in');
+      this.dt().filter(types, 'type', 'in');
     } else {
-      this.dt.filter(null, 'type', 'in');
+      this.dt().filter(null, 'type', 'in');
     }
   }
 
@@ -221,6 +221,6 @@ export class TransactionsComponent {
       types: [],
       dateRange: null
     });
-    this.dt.clear();
+    this.dt().clear();
   }
 }

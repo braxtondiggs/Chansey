@@ -1,4 +1,4 @@
-import { Component, ElementRef, ViewChild, computed, inject } from '@angular/core';
+import { Component, ElementRef, computed, inject, viewChild } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { APP_NAME } from '@chansey/api-interfaces';
@@ -38,7 +38,7 @@ export class AppSidebar {
   isHorizontal = computed(() => this.layoutService.isHorizontal());
   timeout: ReturnType<typeof setTimeout> | null = null;
 
-  @ViewChild('menuContainer') menuContainer!: ElementRef;
+  readonly menuContainer = viewChild.required<ElementRef>('menuContainer');
 
   onMouseEnter() {
     if (!this.layoutService.layoutState().anchored) {

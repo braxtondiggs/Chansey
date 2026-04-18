@@ -149,7 +149,7 @@
       [sortField]="'transactTime'"
       [sortOrder]="-1"
     >
-      <ng-template pTemplate="header">
+      <ng-template #header>
         <tr>
           <th style="min-width: 120px">Trading Pair</th>
           <th style="min-width: 120px">Type</th>
@@ -164,7 +164,7 @@
           <th pSortableColumn="status" style="min-width: 130px">Status <p-sortIcon field="status" /></th>
         </tr>
       </ng-template>
-      <ng-template pTemplate="loadingbody">
+      <ng-template #loadingbody>
         <tr>
           <td>
             <div class="flex items-center gap-3">
@@ -203,7 +203,7 @@
           <td><p-skeleton width="80px" height="2rem" borderRadius="16px" /></td>
         </tr>
       </ng-template>
-      <ng-template pTemplate="body" let-transaction>
+      <ng-template #body let-transaction>
         <tr>
           <td>
             <a
@@ -310,7 +310,7 @@
           </td>
         </tr>
       </ng-template>
-      <ng-template pTemplate="emptymessage">
+      <ng-template #emptymessage>
         <tr>
           <td colspan="9" class="p-4">
             @if (!isLoading()) {
@@ -324,7 +324,7 @@
           </td>
         </tr>
       </ng-template>
-      <ng-template pTemplate="paginatorleft">
+      <ng-template #paginatorleft>
         @if (transactions().length > 0) {
           <div class="text-gray-500">Total Records: {{ transactions().length }}</div>
         }

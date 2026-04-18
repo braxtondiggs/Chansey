@@ -6,5 +6,9 @@
     {
       "path": "./tsconfig.lib.json"
     }
-  ]
+  ],
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler"
+  }
 }

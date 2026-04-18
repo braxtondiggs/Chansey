@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -25,7 +25,7 @@ export class AccountSettingsComponent {
   private destroyRef = inject(DestroyRef);
   private logoutMutation = this.authService.useLogoutMutation();
 
-  @ViewChild('profileInfo') profileInfo!: ProfileInfoComponent;
+  readonly profileInfo = viewChild.required<ProfileInfoComponent>('profileInfo');
 
   private readonly userQuery = this.authService.useUser();
   readonly updateProfileMutation = this.settingsService.useUpdateProfileMutation();
@@ -37,7 +37,7 @@ export class AccountSettingsComponent {
   messages = signal<AuthMessage[]>([]);
 
   onSubmitProfile(updatedFields: Partial<IUserProfileUpdate>): void {
-    const isEmailChanged = this.profileInfo?.isEmailChanged() ?? false;
+    const isEmailChanged = this.profileInfo()?.isEmailChanged() ?? false;
 
     if (isEmailChanged) {
       this.confirmationService.confirm({
@@ -59,7 +59,7 @@ export class AccountSettingsComponent {
           summary: 'Profile Updated',
           detail: 'Your profile information has been updated successfully'
         });
-        this.profileInfo?.markAsPristine();
+        this.profileInfo()?.markAsPristine();
 
         if (isEmailChanged) {
           this.messages.set([

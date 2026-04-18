@@ -19,7 +19,7 @@
       [loading]="exchangeQuery.isPending()"
       appendTo="body"
     >
-      <ng-template pTemplate="selectedItem" let-option>
+      <ng-template #selectedItem let-option>
         @if (option) {
           <div class="flex items-center gap-2.5">
             <p-avatar [image]="option.image" shape="circle" size="normal" />
@@ -34,7 +34,7 @@
           </div>
         }
       </ng-template>
-      <ng-template pTemplate="item" let-option>
+      <ng-template #item let-option>
         <div class="flex w-full items-center justify-between py-1.5">
           <div class="flex items-center gap-2.5">
             <p-avatar [image]="option.image" shape="circle" size="normal" />
@@ -110,14 +110,14 @@
       [disabled]="!selectedExchangeId() || isExchangeDisconnected()"
       appendTo="body"
     >
-      <ng-template pTemplate="selectedItem" let-option>
+      <ng-template #selectedItem let-option>
         @if (option) {
           <div class="flex items-center gap-2">
             <span class="font-semibold uppercase">{{ option.label }}</span>
           </div>
         }
       </ng-template>
-      <ng-template pTemplate="item" let-option>
+      <ng-template #item let-option>
         <div class="flex w-full items-center justify-between py-1">
           <span class="font-semibold uppercase">{{ option.label }}</span>
           <div class="text-right">

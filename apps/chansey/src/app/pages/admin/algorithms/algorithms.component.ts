@@ -1,4 +1,4 @@
-import { Component, ViewChild, ElementRef, computed, effect, inject, signal, OnInit } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, signal, OnInit, viewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -46,9 +46,9 @@ import { AlgorithmEditDrawerComponent } from './components/algorithm-edit-drawer
   templateUrl: './algorithms.component.html'
 })
 export class AlgorithmsComponent implements OnInit {
-  @ViewChild('dt') dt!: Table;
-  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
-  @ViewChild('editDrawer') editDrawer!: AlgorithmEditDrawerComponent;
+  readonly dt = viewChild.required<Table>('dt');
+  readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
+  readonly editDrawer = viewChild.required<AlgorithmEditDrawerComponent>('editDrawer');
 
   // State signals
   algorithms = signal<Algorithm[]>([]);
@@ -139,12 +139,12 @@ export class AlgorithmsComponent implements OnInit {
 
   openNewAlgorithmDrawer(): void {
     this.editingAlgorithm.set(null);
-    this.editDrawer.openForCreate();
+    this.editDrawer().openForCreate();
   }
 
   openEditAlgorithmDrawer(algorithm: Algorithm): void {
     this.editingAlgorithm.set(algorithm);
-    this.editDrawer.openForEdit(algorithm);
+    this.editDrawer().openForEdit(algorithm);
   }
 
   onDrawerSave(event: AlgorithmDrawerSaveEvent): void {
@@ -154,7 +154,7 @@ export class AlgorithmsComponent implements OnInit {
       this.updateAlgorithmMutation.mutate(updateData, {
         onSuccess: () => {
           this.showSuccessMessage('Algorithm updated successfully');
-          this.editDrawer.hideDrawer();
+          this.editDrawer().hideDrawer();
         },
         onError: (error) => {
           this.showErrorMessage(error.message || 'Failed to update algorithm');
@@ -166,7 +166,7 @@ export class AlgorithmsComponent implements OnInit {
       this.createAlgorithmMutation.mutate(createData, {
         onSuccess: () => {
           this.showSuccessMessage('Algorithm created successfully');
-          this.editDrawer.hideDrawer();
+          this.editDrawer().hideDrawer();
         },
         onError: (error) => {
           this.showErrorMessage(error.message || 'Failed to create algorithm');
@@ -223,7 +223,7 @@ export class AlgorithmsComponent implements OnInit {
   applyGlobalFilter(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     this.searchFilter.set(value);
-    this.dt.filterGlobal(value, 'contains');
+    this.dt().filterGlobal(value, 'contains');
   }
 
   getStatusSeverity(status: AlgorithmStatus | boolean): 'success' | 'secondary' | 'warn' | 'danger' {

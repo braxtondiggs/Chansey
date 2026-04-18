@@ -1,5 +1,5 @@
-import { CommonModule } from '@angular/common';
-import { Component, computed, ElementRef, inject, OnDestroy, Renderer2, ViewChild } from '@angular/core';
+import { NgClass } from '@angular/common';
+import { Component, computed, ElementRef, inject, OnDestroy, Renderer2, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
 
@@ -19,7 +19,6 @@ import { LayoutService } from '../shared/services/layout.service';
   selector: 'app-layout',
   standalone: true,
   imports: [
-    CommonModule,
     AppTopBar,
     AppSidebar,
     RouterModule,
@@ -27,7 +26,8 @@ import { LayoutService } from '../shared/services/layout.service';
     AppBreadcrumb,
     AppFooter,
     AppSearch,
-    AppRightMenu
+    AppRightMenu,
+    NgClass
   ],
   template: `<div class="layout-wrapper" [ngClass]="containerClass()">
     <app-sidebar></app-sidebar>
@@ -54,11 +54,11 @@ export class AppLayout implements OnDestroy {
 
   menuScrollListener: (() => void) | null = null;
 
-  @ViewChild(AppSidebar) appSidebar!: AppSidebar;
+  readonly appSidebar = viewChild.required(AppSidebar);
 
-  @ViewChild(AppTopBar) appTopBar!: AppTopBar;
+  readonly appTopBar = viewChild.required(AppTopBar);
 
-  @ViewChild('contentWrapper') contentWrapper!: ElementRef<HTMLElement>;
+  readonly contentWrapper = viewChild.required<ElementRef<HTMLElement>>('contentWrapper');
 
   public layoutService: LayoutService = inject(LayoutService);
   private readonly renderer: Renderer2 = inject(Renderer2);
@@ -77,11 +77,15 @@ export class AppLayout implements OnDestroy {
         (this.layoutService.isHorizontal() || this.layoutService.isSlim() || this.layoutService.isCompact()) &&
         !this.menuScrollListener
       ) {
-        this.menuScrollListener = this.renderer.listen(this.appSidebar.menuContainer.nativeElement, 'scroll', () => {
-          if (this.layoutService.isDesktop()) {
-            this.hideMenu();
+        this.menuScrollListener = this.renderer.listen(
+          this.appSidebar().menuContainer().nativeElement,
+          'scroll',
+          () => {
+            if (this.layoutService.isDesktop()) {
+              this.hideMenu();
+            }
           }
-        });
+        );
       }
       if (this.layoutService.layoutState().staticMenuMobileActive) {
         this.blockBodyScroll();
@@ -95,7 +99,7 @@ export class AppLayout implements OnDestroy {
       )
       .subscribe(() => {
         this.hideMenu();
-        this.contentWrapper?.nativeElement.scrollTo(0, 0);
+        this.contentWrapper().nativeElement.scrollTo(0, 0);
       });
   }
 

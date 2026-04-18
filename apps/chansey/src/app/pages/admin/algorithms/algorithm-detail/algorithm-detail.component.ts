@@ -1,5 +1,5 @@
-import { CommonModule, Location } from '@angular/common';
-import { Component, computed, inject, signal, ViewChild } from '@angular/core';
+import { Location } from '@angular/common';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 
@@ -35,7 +35,6 @@ import { AlgorithmDetailQueries } from '../services/algorithm-detail.queries';
   selector: 'app-algorithm-detail',
   standalone: true,
   imports: [
-    CommonModule,
     ButtonModule,
     CardModule,
     SkeletonModule,
@@ -61,8 +60,8 @@ export class AlgorithmDetailComponent {
   private messageService = inject(MessageService);
   private confirmationService = inject(ConfirmationService);
 
-  @ViewChild(ExecutionPanelComponent) executionPanel?: ExecutionPanelComponent;
-  @ViewChild('editDrawer') editDrawer!: AlgorithmEditDrawerComponent;
+  readonly executionPanel = viewChild<ExecutionPanelComponent>(ExecutionPanelComponent);
+  readonly editDrawer = viewChild.required<AlgorithmEditDrawerComponent>('editDrawer');
 
   // Extract ID from route reactively using toSignal
   private routeParams = toSignal(this.route.paramMap.pipe(map((params) => params.get('id') || '')));
@@ -134,7 +133,7 @@ export class AlgorithmDetailComponent {
         summary: 'Cannot Execute',
         detail: 'Algorithm must have a linked strategy to execute.'
       });
-      this.executionPanel?.setExecuting(false);
+      this.executionPanel()?.setExecuting(false);
       return;
     }
 
@@ -170,7 +169,7 @@ export class AlgorithmDetailComponent {
         detail: error instanceof Error ? error.message : 'An error occurred during execution'
       });
     } finally {
-      this.executionPanel?.setExecuting(false);
+      this.executionPanel()?.setExecuting(false);
     }
   }
 
@@ -179,7 +178,7 @@ export class AlgorithmDetailComponent {
    */
   onEdit(): void {
     if (this.algorithm) {
-      this.editDrawer.openForEdit(this.algorithm);
+      this.editDrawer().openForEdit(this.algorithm);
     }
   }
 
@@ -196,7 +195,7 @@ export class AlgorithmDetailComponent {
             summary: 'Success',
             detail: 'Algorithm updated successfully'
           });
-          this.editDrawer.hideDrawer();
+          this.editDrawer().hideDrawer();
           this.queries.invalidateAlgorithmQueries(this.algorithmId());
         },
         onError: (error) => {

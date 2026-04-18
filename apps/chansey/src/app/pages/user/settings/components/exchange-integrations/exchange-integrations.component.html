@@ -94,7 +94,10 @@
         <p-tabpanels class="pb-0!">
           @for (exchange of exchangeList; track exchange.id) {
             <p-tabpanel [value]="exchange.slug">
-              <ng-container *ngTemplateOutlet="exchangeKeyFormTpl; context: { $implicit: exchange }"></ng-container>
+              <ng-container
+                [ngTemplateOutlet]="exchangeKeyFormTpl"
+                [ngTemplateOutletContext]="{ $implicit: exchange }"
+              ></ng-container>
             </p-tabpanel>
           }
         </p-tabpanels>
@@ -111,7 +114,10 @@
             }
           </div>
         </ng-template>
-        <ng-container *ngTemplateOutlet="exchangeKeyFormTpl; context: { $implicit: exchange }"></ng-container>
+        <ng-container
+          [ngTemplateOutlet]="exchangeKeyFormTpl"
+          [ngTemplateOutletContext]="{ $implicit: exchange }"
+        ></ng-container>
       </p-fieldset>
     } @else {
       <p class="text-center text-gray-500 italic">No exchange integrations are currently available.</p>

@@ -63,7 +63,7 @@
         <th style="width: 10rem">Actions</th>
       </tr>
     </ng-template>
-    <ng-template pTemplate="body" let-category>
+    <ng-template #body let-category>
       <tr>
         <td style="width: 3rem" class="category-checkbox-cell">
           <p-tableCheckbox [value]="category" />
@@ -98,7 +98,7 @@
         </td>
       </tr>
     </ng-template>
-    <ng-template pTemplate="emptymessage">
+    <ng-template #emptymessage>
       <tr>
         <td colspan="6" class="p-4 text-center">
           @if (categoriesQuery.error()) {
@@ -116,7 +116,7 @@
                   Try adjusting your search terms or
                   <button
                     type="button"
-                    class="text-primary-500 hover:text-primary-600 underline"
+                    class="text-primary-500 underline hover:text-primary-600"
                     (click)="clearSearch()"
                   >
                     clear the search

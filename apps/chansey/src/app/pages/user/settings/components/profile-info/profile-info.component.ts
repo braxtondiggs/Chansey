@@ -7,7 +7,7 @@ import {
   input,
   output,
   signal,
-  ViewChild
+  viewChild
 } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -61,7 +61,7 @@ export class ProfileInfoComponent {
   private fb = inject(FormBuilder);
   private messageService = inject(MessageService);
 
-  @ViewChild('fileUpload') fileUpload!: FileUpload;
+  readonly fileUpload = viewChild.required<FileUpload>('fileUpload');
 
   user = input<IUser>();
   isUpdating = input(false);
@@ -146,8 +146,8 @@ export class ProfileInfoComponent {
     if (event.currentFiles && event.currentFiles.length > 0) {
       this.selectedImageFile.set(event.currentFiles[0]);
       this.showImageCropper.set(true);
-      if (this.fileUpload) {
-        this.fileUpload.clear();
+      if (this.fileUpload()) {
+        this.fileUpload().clear();
       }
     }
   }
@@ -179,8 +179,8 @@ export class ProfileInfoComponent {
   }
 
   openFileUpload(): void {
-    if (this.fileUpload) {
-      this.fileUpload.basicFileInput?.nativeElement.click();
+    if (this.fileUpload()) {
+      this.fileUpload().basicFileInput?.nativeElement.click();
     }
   }
 }

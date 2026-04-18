@@ -1,4 +1,4 @@
-import { Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
+import { Component, effect, inject, input, model, output, signal } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ButtonModule } from 'primeng/button';
@@ -39,21 +39,21 @@ import {
 export class AlgorithmEditDrawerComponent {
   private fb = inject(FormBuilder);
 
-  @Input() set visible(value: boolean) {
-    this._visible.set(value);
+  constructor() {
+    effect(() => {
+      if (!this.visible()) {
+        this.submitted.set(false);
+        this.selectedStrategy.set(null);
+      }
+    });
   }
-  get visible(): boolean {
-    return this._visible();
-  }
 
-  @Input() algorithm: Algorithm | null = null;
-  @Input() strategies: AlgorithmStrategy[] = [];
-  @Input() isLoading = false;
+  readonly visible = model(false);
+  readonly algorithm = input<Algorithm | null>(null);
+  readonly strategies = input<AlgorithmStrategy[]>([]);
+  readonly isLoading = input(false);
 
-  @Output() visibleChange = new EventEmitter<boolean>();
-  @Output() save = new EventEmitter<AlgorithmDrawerSaveEvent>();
-
-  private _visible = signal<boolean>(false);
+  readonly save = output<AlgorithmDrawerSaveEvent>();
   submitted = signal<boolean>(false);
   selectedStrategy = signal<AlgorithmStrategy | null>(null);
 
@@ -88,7 +88,7 @@ export class AlgorithmEditDrawerComponent {
   ];
 
   get isNew(): boolean {
-    return !this.algorithm;
+    return !this.algorithm();
   }
 
   get drawerTitle(): string {
@@ -107,46 +107,34 @@ export class AlgorithmEditDrawerComponent {
     });
     this.submitted.set(false);
     this.selectedStrategy.set(null);
-    this._visible.set(true);
-    this.visibleChange.emit(true);
+    this.visible.set(true);
   }
 
-  openForEdit(algorithm: Algorithm | AlgorithmDetailResponse): void {
-    const strategy = this.strategies.find((s) => s.className === algorithm.service);
+  openForEdit(algo: Algorithm | AlgorithmDetailResponse): void {
+    const strategy = this.strategies().find((s) => s.className === algo.service);
     this.selectedStrategy.set(strategy || null);
 
     this.algorithmForm.patchValue({
-      name: algorithm.name,
-      description: algorithm.description || '',
+      name: algo.name,
+      description: algo.description || '',
       strategyId: strategy?.id || null,
-      category: algorithm.category || AlgorithmCategory.TECHNICAL,
-      status: algorithm.status || AlgorithmStatus.INACTIVE,
-      evaluate: algorithm.evaluate,
-      cron: algorithm.cron,
-      version: algorithm.version || '',
-      author: algorithm.author || ''
+      category: algo.category || AlgorithmCategory.TECHNICAL,
+      status: algo.status || AlgorithmStatus.INACTIVE,
+      evaluate: algo.evaluate,
+      cron: algo.cron,
+      version: algo.version || '',
+      author: algo.author || ''
     });
 
     this.submitted.set(false);
-    this._visible.set(true);
-    this.visibleChange.emit(true);
+    this.visible.set(true);
   }
 
   hideDrawer(): void {
-    this._visible.set(false);
-    this.visibleChange.emit(false);
+    this.visible.set(false);
     this.submitted.set(false);
     this.selectedStrategy.set(null);
     this.algorithmForm.reset();
-  }
-
-  onVisibleChange(visible: boolean): void {
-    this._visible.set(visible);
-    this.visibleChange.emit(visible);
-    if (!visible) {
-      this.submitted.set(false);
-      this.selectedStrategy.set(null);
-    }
   }
 
   onStrategyChange(strategyId: string | null): void {
@@ -154,7 +142,7 @@ export class AlgorithmEditDrawerComponent {
       this.selectedStrategy.set(null);
       return;
     }
-    const strategy = this.strategies.find((s) => s.id === strategyId);
+    const strategy = this.strategies().find((s) => s.id === strategyId);
     this.selectedStrategy.set(strategy || null);
   }
 
@@ -166,7 +154,7 @@ export class AlgorithmEditDrawerComponent {
     }
 
     const formData = this.algorithmForm.value;
-    const selectedStrategy = this.strategies.find((s) => s.id === formData.strategyId);
+    const selectedStrategy = this.strategies().find((s) => s.id === formData.strategyId);
 
     const algorithmData = {
       ...formData,
@@ -174,7 +162,7 @@ export class AlgorithmEditDrawerComponent {
     };
 
     this.save.emit({
-      id: this.algorithm?.id || null,
+      id: this.algorithm()?.id || null,
       data: algorithmData
     });
   }

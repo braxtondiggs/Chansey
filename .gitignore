@@ -67,3 +67,4 @@ Thumbs.db
 !.codex/prompts/*
 
 .nx/polygraph
+.claude/worktrees

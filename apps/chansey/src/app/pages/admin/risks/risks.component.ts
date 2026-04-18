@@ -1,5 +1,5 @@
-import { CommonModule } from '@angular/common';
-import { Component, ViewChild, ElementRef, computed, effect, inject, signal } from '@angular/core';
+import { DatePipe, NgClass, NgStyle } from '@angular/common';
+import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -27,7 +27,6 @@ import { RisksService } from './risks.service';
   imports: [
     ButtonModule,
     CardModule,
-    CommonModule,
     ConfirmDialogModule,
     DialogModule,
     FloatLabelModule,
@@ -40,14 +39,17 @@ import { RisksService } from './risks.service';
     ReactiveFormsModule,
     TableModule,
     TextareaModule,
-    ToastModule
+    ToastModule,
+    DatePipe,
+    NgClass,
+    NgStyle
   ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './risks.component.html'
 })
 export class RisksComponent {
-  @ViewChild('dt') dt: Table | undefined;
-  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement> | undefined;
+  readonly dt = viewChild<Table>('dt');
+  readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   // State signals
   risks = signal<Risk[]>([]);
@@ -220,15 +222,16 @@ export class RisksComponent {
   applyGlobalFilter(event: Event): void {
     const filterValue = (event.target as HTMLInputElement).value?.trim() || '';
     this.searchFilter.set(filterValue);
-    this.dt?.filterGlobal(filterValue, 'contains');
+    this.dt()?.filterGlobal(filterValue, 'contains');
   }
 
   clearSearch(): void {
     this.searchFilter.set('');
-    if (this.searchInput?.nativeElement) {
-      this.searchInput.nativeElement.value = '';
+    const input = this.searchInput();
+    if (input?.nativeElement) {
+      input.nativeElement.value = '';
     }
-    this.dt?.filterGlobal('', 'contains');
+    this.dt()?.filterGlobal('', 'contains');
   }
 
   deleteSelectedRisks(): void {
