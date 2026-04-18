@@ -9,11 +9,13 @@ import { PipelineEventListener } from './listeners/pipeline-event.listener';
 import { pipelineConfig } from './pipeline.config';
 import { PipelineController } from './pipeline.controller';
 import { PipelineProcessor } from './processors/pipeline.processor';
+import { PipelineEtaService } from './services/pipeline-eta.service';
 import { PipelineEventHandlerService } from './services/pipeline-event-handler.service';
 import { PipelineOrchestratorService } from './services/pipeline-orchestrator.service';
 import { PipelineProgressionService } from './services/pipeline-progression.service';
 import { PipelineReportService } from './services/pipeline-report.service';
 import { PipelineStageExecutionService } from './services/pipeline-stage-execution.service';
+import { UserPipelineController } from './user-pipeline.controller';
 
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuthenticationModule } from '../authentication/authentication.module';
@@ -22,6 +24,7 @@ import { ExchangeSelectionModule } from '../exchange/exchange-selection/exchange
 import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { OptimizationModule } from '../optimization/optimization.module';
 import { OrderModule } from '../order/order.module';
+import { PaperTradingSession } from '../order/paper-trading/entities/paper-trading-session.entity';
 import { PaperTradingModule } from '../order/paper-trading/paper-trading.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
@@ -31,7 +34,7 @@ const PIPELINE_CONFIG = pipelineConfig();
 @Module({
   imports: [
     ConfigModule.forFeature(pipelineConfig),
-    TypeOrmModule.forFeature([Pipeline, StrategyConfig]),
+    TypeOrmModule.forFeature([Pipeline, StrategyConfig, PaperTradingSession]),
     BullModule.registerQueue({ name: PIPELINE_CONFIG.queue }),
     EventEmitterModule.forRoot(),
     forwardRef(() => AlgorithmModule),
@@ -44,7 +47,7 @@ const PIPELINE_CONFIG = pipelineConfig();
     forwardRef(() => CoinSelectionModule),
     ExchangeSelectionModule
   ],
-  controllers: [PipelineController],
+  controllers: [PipelineController, UserPipelineController],
   providers: [
     PipelineOrchestratorService,
     PipelineStageExecutionService,
@@ -52,8 +55,9 @@ const PIPELINE_CONFIG = pipelineConfig();
     PipelineEventHandlerService,
     PipelineProcessor,
     PipelineEventListener,
-    PipelineReportService
+    PipelineReportService,
+    PipelineEtaService
   ],
-  exports: [PipelineOrchestratorService]
+  exports: [PipelineOrchestratorService, PipelineEtaService]
 })
 export class PipelineModule {}

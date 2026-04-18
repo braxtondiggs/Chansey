@@ -152,7 +152,12 @@ export class AppTopBar {
       daily_summary: 'pi pi-calendar',
       strategy_deployed: 'pi pi-check-circle',
       strategy_demoted: 'pi pi-arrow-down',
-      daily_loss_limit: 'pi pi-exclamation-circle'
+      daily_loss_limit: 'pi pi-exclamation-circle',
+      pipeline_started: 'pi pi-play-circle',
+      pipeline_stage_completed: 'pi pi-forward',
+      pipeline_completed: 'pi pi-verified',
+      pipeline_rejected: 'pi pi-times-circle',
+      strategy_live: 'pi pi-bolt'
     };
     return icons[eventType] || 'pi pi-bell';
   }

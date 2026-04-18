@@ -181,6 +181,10 @@ export class Pipeline {
   startedAt?: Date;
 
   @Column({ type: 'timestamptz', nullable: true })
+  @ApiProperty({ description: 'When the pipeline last transitioned stages', required: false })
+  stageTransitionedAt?: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
   @ApiProperty({ description: 'When the pipeline completed', required: false })
   completedAt?: Date;
 

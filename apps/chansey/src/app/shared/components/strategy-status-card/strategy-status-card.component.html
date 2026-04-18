@@ -1,0 +1,145 @@
+@if (showCard()) {
+  @let data = status();
+  @if (data) {
+    <p-card>
+      <ng-template #header>
+        <div class="flex flex-wrap items-start justify-between gap-3 p-4 pb-0">
+          <div>
+            <h3 class="mt-0 mb-1 text-lg font-semibold">Your strategy</h3>
+            <p class="mt-0 text-sm text-muted-color">
+              {{ data.strategyName }}
+            </p>
+          </div>
+          @if (!data.wasRejected && !data.isRetrying && !data.isStalled) {
+            <span class="rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary dark:bg-primary-900/30">
+              {{ currentStageDisplay()?.label }}
+            </span>
+          }
+        </div>
+      </ng-template>
+
+      @if (data.wasRejected) {
+        <p-message severity="error" [closable]="false" class="mb-3 block">
+          <div class="flex items-start gap-2 p-2">
+            <i class="pi pi-exclamation-circle" aria-hidden="true"></i>
+            <div>
+              <div class="mb-1 font-semibold">Your strategy didn't pass the safety review</div>
+              <div class="text-sm">
+                We'll try a different one on your next cycle. No action needed from you.
+                @if (data.rejectionReason) {
+                  <div class="mt-2 text-xs opacity-80">{{ data.rejectionReason }}</div>
+                }
+              </div>
+            </div>
+          </div>
+        </p-message>
+      } @else if (data.isRetrying) {
+        <p-message severity="warn" [closable]="false" class="mb-3 block">
+          <div class="flex items-start gap-2 p-2">
+            <i class="pi pi-refresh" aria-hidden="true"></i>
+            <div>
+              <div class="mb-1 font-semibold">We're retrying with fresh parameters</div>
+              <div class="text-sm">
+                The strategy couldn't find enough opportunities — a new attempt will start automatically on the next
+                cycle. No action needed from you.
+                @if (data.retryReason) {
+                  <div class="mt-2 text-xs opacity-80">{{ data.retryReason }}</div>
+                }
+              </div>
+            </div>
+          </div>
+        </p-message>
+      } @else {
+        @if (data.isStalled) {
+          <p-message severity="warn" [closable]="false" class="mb-3 block">
+            <div class="flex items-start gap-2 p-2">
+              <i class="pi pi-clock" aria-hidden="true"></i>
+              <span class="text-sm"> Taking longer than expected — our team has been notified. </span>
+            </div>
+          </p-message>
+        }
+
+        <p class="mt-0 mb-4 text-sm text-muted-color">
+          {{ currentStageDisplay()?.description }}
+        </p>
+
+        <!-- 5-dot progress -->
+        <div
+          class="mb-4 flex items-center gap-2"
+          role="progressbar"
+          [attr.aria-valuenow]="data.stageIndex"
+          [attr.aria-valuemin]="0"
+          [attr.aria-valuemax]="data.totalStages - 1"
+          [attr.aria-valuetext]="currentStageDisplay()?.label"
+          aria-label="Pipeline progress"
+        >
+          @for (stage of stages; track stage.stage; let i = $index) {
+            <div
+              class="h-2.5 flex-1 rounded-full transition-colors"
+              [class.bg-primary]="isStageComplete(i) || isStageCurrent(i)"
+              [class.bg-surface-200]="!isStageComplete(i) && !isStageCurrent(i)"
+              [class.dark:bg-surface-700]="!isStageComplete(i) && !isStageCurrent(i)"
+              [class.animate-pulse]="isStageCurrent(i)"
+              [attr.aria-label]="stage.label"
+            ></div>
+          }
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="text-sm font-medium">
+            {{ etaLabel() }}
+          </div>
+          @if (data.currentStageProgress) {
+            <div class="text-xs text-muted-color">
+              {{ data.currentStageProgress.tradesCompleted }} of
+              {{ data.currentStageProgress.tradesRequired }} simulated trades completed
+            </div>
+          }
+        </div>
+
+        <div class="mt-2">
+          <p-button
+            label="Learn more"
+            [text]="true"
+            size="small"
+            icon="pi pi-info-circle"
+            styleClass="p-0 text-xs"
+            (onClick)="openLearnMore()"
+          />
+        </div>
+      }
+    </p-card>
+
+    @let learnMore = currentLearnMore();
+    @if (learnMore) {
+      <p-dialog
+        [(visible)]="dialogVisible"
+        [modal]="true"
+        [draggable]="false"
+        [resizable]="false"
+        [dismissableMask]="true"
+        [style]="{ width: '32rem', maxWidth: '95vw' }"
+        [header]="learnMore.title"
+      >
+        <div class="flex flex-col gap-5 p-2">
+          @for (bullet of learnMore.bullets; track bullet.title) {
+            <div class="flex items-start gap-3">
+              <div
+                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary dark:bg-primary-900/30"
+              >
+                <i [class]="bullet.icon" aria-hidden="true"></i>
+              </div>
+              <div>
+                <div class="mb-1 font-semibold">{{ bullet.title }}</div>
+                <div class="text-sm text-muted-color">{{ bullet.body }}</div>
+              </div>
+            </div>
+          }
+        </div>
+        <ng-template pTemplate="footer">
+          <p-button label="Got it" (onClick)="closeLearnMore()" />
+        </ng-template>
+      </p-dialog>
+    }
+  }
+}

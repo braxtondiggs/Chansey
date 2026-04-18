@@ -6,6 +6,7 @@ import { ExchangeBalanceComponent } from '../../shared/components/exchange-balan
 import { ExchangeStatusAlertComponent } from '../../shared/components/exchange-status-alert/exchange-status-alert.component';
 import { GettingStartedComponent } from '../../shared/components/getting-started/getting-started.component';
 import { RecentTransactionsComponent } from '../../shared/components/recent-transactions/recent-transactions.component';
+import { StrategyStatusCardComponent } from '../../shared/components/strategy-status-card/strategy-status-card.component';
 import { UserAssetsComponent } from '../../shared/components/user-assets/user-assets.component';
 import { AuthService } from '../../shared/services/auth.service';
 import { LayoutService } from '../../shared/services/layout.service';
@@ -17,6 +18,7 @@ import { LayoutService } from '../../shared/services/layout.service';
     ExchangeBalanceComponent,
     ExchangeStatusAlertComponent,
     GettingStartedComponent,
+    StrategyStatusCardComponent,
     UserAssetsComponent,
     RecentTransactionsComponent
   ],

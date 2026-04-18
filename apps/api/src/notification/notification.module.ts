@@ -9,6 +9,7 @@ import { PushNotificationService } from './channels/push-notification.service';
 import { SmsNotificationService } from './channels/sms-notification.service';
 import { Notification } from './entities/notification.entity';
 import { PushSubscription } from './entities/push-subscription.entity';
+import { PipelineNotificationListener } from './listeners/pipeline-notification.listener';
 import { NOTIFICATION_REDIS, notificationRedisProvider } from './notification-redis.provider';
 import { NotificationController } from './notification.controller';
 import { NotificationListener } from './notification.listener';
@@ -16,12 +17,13 @@ import { NotificationProcessor } from './notification.processor';
 import { NotificationService } from './notification.service';
 
 import { EmailModule } from '../email/email.module';
+import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { toErrorInfo } from '../shared/error.util';
 import { User } from '../users/users.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, PushSubscription, Notification]),
+    TypeOrmModule.forFeature([User, PushSubscription, Notification, Pipeline]),
     BullModule.registerQueue({ name: 'notification' }),
     EmailModule
   ],
@@ -31,6 +33,7 @@ import { User } from '../users/users.entity';
     NotificationService,
     NotificationProcessor,
     NotificationListener,
+    PipelineNotificationListener,
     EmailNotificationService,
     PushNotificationService,
     SmsNotificationService

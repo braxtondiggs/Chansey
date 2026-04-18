@@ -20,7 +20,12 @@ const DEFAULT_PREFS: NotificationPreferences = {
     strategy_deployed: true,
     strategy_demoted: true,
     daily_loss_limit: true,
-    regime_stale: true
+    regime_stale: true,
+    pipeline_started: true,
+    pipeline_stage_completed: true,
+    pipeline_completed: true,
+    pipeline_rejected: true,
+    strategy_live: true
   },
   quietHours: { enabled: false, startHourUtc: 22, endHourUtc: 7 }
 };

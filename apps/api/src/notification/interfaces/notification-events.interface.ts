@@ -1,4 +1,4 @@
-import { type NotificationEventType, type NotificationSeverity } from '@chansey/api-interfaces';
+import { type NotificationEventType, type NotificationSeverity, type PipelineStage } from '@chansey/api-interfaces';
 
 /**
  * Event name constants for EventEmitter2
@@ -13,7 +13,12 @@ export const NOTIFICATION_EVENTS = {
   STRATEGY_DEPLOYED: 'notification.strategy-deployed',
   STRATEGY_DEMOTED: 'notification.strategy-demoted',
   DAILY_LOSS_LIMIT: 'notification.daily-loss-limit',
-  REGIME_STALE: 'notification.regime-stale'
+  REGIME_STALE: 'notification.regime-stale',
+  PIPELINE_STARTED: 'notification.pipeline-started',
+  PIPELINE_STAGE_COMPLETED: 'notification.pipeline-stage-completed',
+  PIPELINE_COMPLETED: 'notification.pipeline-completed',
+  PIPELINE_REJECTED: 'notification.pipeline-rejected',
+  STRATEGY_LIVE: 'notification.strategy-live'
 } as const;
 
 /**
@@ -90,6 +95,34 @@ export interface RegimeStaleNotification {
   cachedRegime: string;
 }
 
+export interface PipelineStartedNotification extends BaseNotificationPayload {
+  pipelineId: string;
+  strategyName: string;
+}
+
+export interface PipelineStageCompletedNotification extends BaseNotificationPayload {
+  pipelineId: string;
+  strategyName: string;
+  completedStage: PipelineStage;
+  nextStage?: PipelineStage;
+}
+
+export interface PipelineCompletedNotification extends BaseNotificationPayload {
+  pipelineId: string;
+  strategyName: string;
+}
+
+export interface PipelineRejectedNotification extends BaseNotificationPayload {
+  pipelineId: string;
+  strategyName: string;
+  reason: string;
+}
+
+export interface StrategyLiveNotification extends BaseNotificationPayload {
+  strategyName: string;
+  deploymentId: string;
+}
+
 export type NotificationPayload =
   | TradeExecutedNotification
   | TradeErrorNotification
@@ -100,7 +133,12 @@ export type NotificationPayload =
   | StrategyDeployedNotification
   | StrategyDemotedNotification
   | DailyLossLimitNotification
-  | RegimeStaleNotification;
+  | RegimeStaleNotification
+  | PipelineStartedNotification
+  | PipelineStageCompletedNotification
+  | PipelineCompletedNotification
+  | PipelineRejectedNotification
+  | StrategyLiveNotification;
 
 /**
  * BullMQ job data for the notification queue

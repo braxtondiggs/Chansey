@@ -191,7 +191,7 @@ export class GettingStartedComponent {
           summary: 'Saved',
           detail: 'Opportunity selling configuration saved'
         });
-        this.completed.emit();
+        this.activeStep.set(4);
       },
       onError: (error: Error) => {
         this.messageService.add({
@@ -201,5 +201,9 @@ export class GettingStartedComponent {
         });
       }
     });
+  }
+
+  completeWizard(): void {
+    this.completed.emit();
   }
 }
