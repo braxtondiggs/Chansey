@@ -25,10 +25,10 @@ export const databaseConfig = registerAs(
     retryDelay: 90000,
     uuidExtension: 'pgcrypto',
     extra: {
-      max: parseInt(process.env.PG_POOL_MAX || '20', 10),
+      max: parseInt(process.env.PG_POOL_MAX || '40', 10),
       idleTimeoutMillis: parseInt(process.env.PG_POOL_IDLE_TIMEOUT_MS || '30000', 10),
-      connectionTimeoutMillis: 10000,
-      statement_timeout: 60000,
+      connectionTimeoutMillis: 30000,
+      statement_timeout: 300000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 30000,
       allowExitOnIdle: false
