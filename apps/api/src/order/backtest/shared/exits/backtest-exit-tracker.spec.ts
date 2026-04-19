@@ -483,6 +483,152 @@ describe('BacktestExitTracker', () => {
     });
   });
 
+  describe('re-entry cooldown', () => {
+    it('canEnter returns true when no cooldown is active', () => {
+      const tracker = new BacktestExitTracker(makeConfig());
+      expect(tracker.canEnter('btc', 10)).toBe(true);
+    });
+
+    it('stop-loss exit registers a cooldown that blocks re-entry for N bars', () => {
+      const config = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: 5,
+        exitCooldownBars: 10
+      });
+      const tracker = new BacktestExitTracker(config);
+      tracker.onBuy('btc', 100, 1);
+
+      // Bar 50: stop-loss triggers
+      const signals = tracker.checkExits(
+        makePriceMap({ btc: 94 }),
+        makePriceMap({ btc: 94 }),
+        makePriceMap({ btc: 100 }),
+        50
+      );
+      expect(signals).toHaveLength(1);
+      expect(signals[0].exitType).toBe('STOP_LOSS');
+
+      // Cooldown blocks re-entry for bars 50..59
+      expect(tracker.canEnter('btc', 50)).toBe(false);
+      expect(tracker.canEnter('btc', 55)).toBe(false);
+      expect(tracker.canEnter('btc', 59)).toBe(false);
+
+      // Bar 60: cooldown has expired (50 + 10)
+      expect(tracker.canEnter('btc', 60)).toBe(true);
+    });
+
+    it('take-profit exit does NOT register a cooldown', () => {
+      const config = makeConfig({
+        enableStopLoss: false,
+        enableTakeProfit: true,
+        takeProfitType: TakeProfitType.PERCENTAGE,
+        takeProfitValue: 10,
+        exitCooldownBars: 10
+      });
+      const tracker = new BacktestExitTracker(config);
+      tracker.onBuy('btc', 100, 1);
+
+      tracker.checkExits(makePriceMap({ btc: 112 }), makePriceMap({ btc: 105 }), makePriceMap({ btc: 112 }), 50);
+
+      expect(tracker.canEnter('btc', 51)).toBe(true);
+    });
+
+    it('trailing stop exit registers a cooldown', () => {
+      const config = makeConfig({
+        enableStopLoss: false,
+        enableTrailingStop: true,
+        trailingType: TrailingType.PERCENTAGE,
+        trailingValue: 5,
+        trailingActivation: TrailingActivationType.IMMEDIATE,
+        exitCooldownBars: 5
+      });
+      const tracker = new BacktestExitTracker(config);
+      tracker.onBuy('btc', 100, 1);
+
+      // Ratchet up, then trigger trailing stop
+      tracker.checkExits(makePriceMap({ btc: 110 }), makePriceMap({ btc: 105 }), makePriceMap({ btc: 110 }), 10);
+      const signals = tracker.checkExits(
+        makePriceMap({ btc: 104 }),
+        makePriceMap({ btc: 103 }),
+        makePriceMap({ btc: 110 }),
+        20
+      );
+      expect(signals).toHaveLength(1);
+      expect(signals[0].exitType).toBe('TRAILING_STOP');
+
+      expect(tracker.canEnter('btc', 20)).toBe(false);
+      expect(tracker.canEnter('btc', 24)).toBe(false);
+      expect(tracker.canEnter('btc', 25)).toBe(true);
+    });
+
+    it('exitCooldownBars of 0 disables cooldown', () => {
+      const config = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: 5,
+        exitCooldownBars: 0
+      });
+      const tracker = new BacktestExitTracker(config);
+      tracker.onBuy('btc', 100, 1);
+
+      tracker.checkExits(makePriceMap({ btc: 94 }), makePriceMap({ btc: 94 }), makePriceMap({ btc: 100 }), 10);
+
+      expect(tracker.canEnter('btc', 10)).toBe(true);
+    });
+
+    it('cooldown is not registered when currentBar is undefined', () => {
+      const config = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: 5,
+        exitCooldownBars: 10
+      });
+      const tracker = new BacktestExitTracker(config);
+      tracker.onBuy('btc', 100, 1);
+
+      // No currentBar passed — cooldown should not be set
+      tracker.checkExits(makePriceMap({ btc: 94 }), makePriceMap({ btc: 94 }), makePriceMap({ btc: 100 }));
+
+      expect(tracker.canEnter('btc', 5)).toBe(true);
+    });
+
+    it('per-position override cooldown takes precedence over tracker config', () => {
+      const config = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: 5,
+        exitCooldownBars: 10
+      });
+      const tracker = new BacktestExitTracker(config);
+      // Position-specific cooldown of 3 bars
+      tracker.onBuy('btc', 100, 1, undefined, { exitCooldownBars: 3 });
+
+      tracker.checkExits(makePriceMap({ btc: 94 }), makePriceMap({ btc: 94 }), makePriceMap({ btc: 100 }), 100);
+
+      expect(tracker.canEnter('btc', 102)).toBe(false);
+      expect(tracker.canEnter('btc', 103)).toBe(true);
+    });
+
+    it('serialize/deserialize round-trips cooldown state', () => {
+      const config = makeConfig({
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: 5,
+        exitCooldownBars: 10
+      });
+      const tracker = new BacktestExitTracker(config);
+      tracker.onBuy('btc', 100, 1);
+
+      tracker.checkExits(makePriceMap({ btc: 94 }), makePriceMap({ btc: 94 }), makePriceMap({ btc: 100 }), 50);
+
+      const restored = BacktestExitTracker.deserialize(tracker.serialize(), config);
+
+      expect(restored.canEnter('btc', 55)).toBe(false);
+      expect(restored.canEnter('btc', 60)).toBe(true);
+    });
+  });
+
   describe('serialize / deserialize', () => {
     it('round-trips correctly and restored tracker produces correct signals', () => {
       const config = makeConfig({

@@ -47,6 +47,8 @@ export interface ProcessExitSignalsOptions {
   coinMap?: Map<string, Coin>;
   quoteCoin?: Coin;
   prevCandleMap?: Map<string, OHLCCandle>;
+  /** Current bar index, passed so the tracker can record re-entry cooldowns. */
+  currentBar?: number;
 }
 
 /**
@@ -112,7 +114,7 @@ export class ExitSignalProcessorService {
     const priceMap = new Map(currentPrices.map((c) => [c.coinId, c]));
     const lowPrices = new Map(currentPrices.map((c) => [c.coinId, c.low]));
     const highPrices = new Map(currentPrices.map((c) => [c.coinId, c.high]));
-    const exitSignals = exitTracker.checkExits(marketData.prices, lowPrices, highPrices);
+    const exitSignals = exitTracker.checkExits(marketData.prices, lowPrices, highPrices, opts.currentBar);
 
     const fullFidelity = !!(opts.signals && opts.simulatedFills && opts.backtest);
 

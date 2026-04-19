@@ -116,6 +116,15 @@ export interface ExitConfig {
   // ─── OCO Configuration ─────────────────────────────────────────────────────
   /** Link stop loss and take profit as OCO (one-cancels-other) */
   useOco: boolean;
+
+  // ─── Re-entry Cooldown ─────────────────────────────────────────────────────
+  /**
+   * Bars to suppress new BUY signals for a coin after its position exits via
+   * stop-loss or trailing stop. Prevents rapid re-entry churn where strategies
+   * keep buying a coin that just stopped out.
+   * Default: 10 bars (~10 hours on 1h data).
+   */
+  exitCooldownBars?: number;
 }
 
 /**
@@ -125,7 +134,7 @@ export const DEFAULT_EXIT_CONFIG: ExitConfig = {
   // Stop Loss defaults
   enableStopLoss: false,
   stopLossType: StopLossType.PERCENTAGE,
-  stopLossValue: 2.0, // 2% default stop loss
+  stopLossValue: 3.5, // 3.5% default — wide enough to survive crypto hourly swings (2-5%)
 
   // Take Profit defaults
   enableTakeProfit: false,
@@ -143,7 +152,10 @@ export const DEFAULT_EXIT_CONFIG: ExitConfig = {
   trailingActivation: TrailingActivationType.IMMEDIATE,
 
   // OCO defaults
-  useOco: true
+  useOco: true,
+
+  // Re-entry cooldown: 10 bars = ~10h on 1h data
+  exitCooldownBars: 10
 };
 
 /**
