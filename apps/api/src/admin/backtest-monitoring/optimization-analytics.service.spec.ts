@@ -87,24 +87,23 @@ describe('OptimizationAnalyticsService', () => {
     });
 
     it('parses consolidated aggregate row into the status-count enum map', async () => {
-      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
-        [`status_${OptimizationStatus.COMPLETED}`]: '5',
-        [`status_${OptimizationStatus.RUNNING}`]: '2',
-        total_runs: '7',
-        recent_24h: '1',
-        recent_7d: '3',
-        recent_30d: '7',
-        avg_improvement: '1.25',
-        avg_best_score: '0.82',
-        avg_combinations_tested: '100',
-        result_summary: JSON.stringify({
-          avgTrainScore: 0.6,
-          avgTestScore: 0.55,
-          avgDegradation: 0.08,
-          avgConsistency: 0.7,
-          overfittingRate: 0.1
+      (mockQueryBuilder.getRawOne as jest.Mock)
+        .mockResolvedValueOnce({
+          [`status_${OptimizationStatus.COMPLETED}`]: '5',
+          [`status_${OptimizationStatus.RUNNING}`]: '2',
+          total_runs: '7',
+          avg_improvement: '1.25',
+          avg_best_score: '0.82',
+          avg_combinations_tested: '100',
+          result_summary: JSON.stringify({
+            avgTrainScore: 0.6,
+            avgTestScore: 0.55,
+            avgDegradation: 0.08,
+            avgConsistency: 0.7,
+            overfittingRate: 0.1
+          })
         })
-      });
+        .mockResolvedValueOnce({ last24h: '1', last7d: '3', last30d: '7' });
 
       const result = await service.getOptimizationAnalytics({});
 

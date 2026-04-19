@@ -180,6 +180,7 @@ describe('monitoring-shared.util', () => {
       const qb = {
         select: jest.fn().mockReturnThis(),
         addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
         setParameters: jest.fn().mockReturnThis(),
         getRawOne: jest.fn().mockResolvedValue({ last24h: '1', last7d: '5', last30d: '10' })
       };
@@ -194,6 +195,7 @@ describe('monitoring-shared.util', () => {
       const qb = {
         select: jest.fn().mockReturnThis(),
         addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
         setParameters: jest.fn().mockReturnThis(),
         getRawOne: jest.fn().mockResolvedValue(undefined)
       };

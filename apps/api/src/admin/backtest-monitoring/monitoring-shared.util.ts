@@ -122,10 +122,11 @@ export async function countRecentActivity(repo: Repository<ObjectLiteral>): Prom
 
   const row = await repo
     .createQueryBuilder('r')
-    .select('COUNT(*) FILTER (WHERE r."createdAt" >= :d1)', 'last24h')
-    .addSelect('COUNT(*) FILTER (WHERE r."createdAt" >= :d7)', 'last7d')
-    .addSelect('COUNT(*) FILTER (WHERE r."createdAt" >= :d30)', 'last30d')
-    .setParameters({ d1: yesterday, d7: lastWeek, d30: lastMonth })
+    .select('COUNT(*) FILTER (WHERE r."createdAt" >= :d1 AND r."createdAt" <= :now)', 'last24h')
+    .addSelect('COUNT(*) FILTER (WHERE r."createdAt" >= :d7 AND r."createdAt" <= :now)', 'last7d')
+    .addSelect('COUNT(*) FILTER (WHERE r."createdAt" >= :d30 AND r."createdAt" <= :now)', 'last30d')
+    .where('r."createdAt" >= :d30 AND r."createdAt" <= :now')
+    .setParameters({ d1: yesterday, d7: lastWeek, d30: lastMonth, now })
     .getRawOne<{ last24h: string; last7d: string; last30d: string }>();
 
   return {

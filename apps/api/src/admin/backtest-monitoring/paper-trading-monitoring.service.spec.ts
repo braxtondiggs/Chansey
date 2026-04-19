@@ -105,22 +105,21 @@ describe('PaperTradingMonitoringService', () => {
     });
 
     it('maps status counts, avg metrics, order and signal analytics from raw rows', async () => {
-      // Consolidated session aggregate — one getRawOne call
-      (sessionQb.getRawOne as jest.Mock).mockResolvedValueOnce({
-        [`status_${PaperTradingStatus.COMPLETED}`]: '3',
-        [`status_${PaperTradingStatus.ACTIVE}`]: '2',
-        total_sessions: '5',
-        recent_24h: '1',
-        recent_7d: '4',
-        recent_30d: '5',
-        avg_sharpe: '1.25',
-        avg_return: '8.4',
-        avg_drawdown: null,
-        avg_win_rate: '0.65',
-        top_algorithms: JSON.stringify([
-          { algorithmId: 'algo-1', algorithmName: 'Alpha', sessionCount: 5, avgReturn: 12.5, avgSharpe: 1.8 }
-        ])
-      });
+      // Consolidated session aggregate (1st getRawOne) + countRecentActivity (2nd getRawOne)
+      (sessionQb.getRawOne as jest.Mock)
+        .mockResolvedValueOnce({
+          [`status_${PaperTradingStatus.COMPLETED}`]: '3',
+          [`status_${PaperTradingStatus.ACTIVE}`]: '2',
+          total_sessions: '5',
+          avg_sharpe: '1.25',
+          avg_return: '8.4',
+          avg_drawdown: null,
+          avg_win_rate: '0.65',
+          top_algorithms: JSON.stringify([
+            { algorithmId: 'algo-1', algorithmName: 'Alpha', sessionCount: 5, avgReturn: 12.5, avgSharpe: 1.8 }
+          ])
+        })
+        .mockResolvedValueOnce({ last24h: '1', last7d: '4', last30d: '5' });
 
       (orderQb.getRawOne as jest.Mock).mockResolvedValueOnce({
         totalOrders: '10',

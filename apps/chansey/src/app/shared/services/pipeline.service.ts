@@ -1,12 +1,7 @@
 import { Injectable } from '@angular/core';
 
-import { UserPipelineStatus } from '@chansey/api-interfaces';
+import { ActivePipelineStatus, UserPipelineStatus } from '@chansey/api-interfaces';
 import { STANDARD_POLICY, queryKeys, useAuthQuery } from '@chansey/shared';
-
-export interface ActivePipelineStatus {
-  hasActivePipeline: boolean;
-  activeCount: number;
-}
 
 /**
  * Frontend service for user-facing pipeline queries.

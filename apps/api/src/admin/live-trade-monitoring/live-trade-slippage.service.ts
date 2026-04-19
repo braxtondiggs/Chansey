@@ -112,12 +112,13 @@ export class LiveTradeSlippageService {
       GROUP BY source
     `;
 
-    // Run through QueryBuilder raw query so TypeORM resolves the named parameters.
+    // Manually convert `:name` placeholders to `$N` positional values for manager.query.
     const paramNames = Object.keys(params);
     let sqlWithPositional = sql;
     const positionalValues: unknown[] = [];
     for (const name of paramNames) {
-      sqlWithPositional = sqlWithPositional.split(`:${name}`).join(`$${positionalValues.length + 1}`);
+      const regex = new RegExp(`:${name}\\b`, 'g');
+      sqlWithPositional = sqlWithPositional.replace(regex, `$${positionalValues.length + 1}`);
       positionalValues.push(params[name]);
     }
 

@@ -3,14 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository, SelectQueryBuilder } from 'typeorm';
 
-import { RecentActivityDto } from './dto/overview.dto';
 import {
   PaginatedPaperTradingSessionsDto,
   PaperTradingFiltersDto,
   PaperTradingMonitoringDto,
   PaperTradingSessionListItemDto
 } from './dto/paper-trading-analytics.dto';
-import { calculatePaperTradingProgress } from './monitoring-shared.util';
+import { calculatePaperTradingProgress, countRecentActivity } from './monitoring-shared.util';
 
 import {
   PaperTradingOrder,
@@ -47,16 +46,17 @@ export class PaperTradingMonitoringService {
   async getPaperTradingMonitoring(filters: PaperTradingFiltersDto): Promise<PaperTradingMonitoringDto> {
     const dateRange = this.getPtDateRange(filters);
 
-    const [sessionAggregate, orderAnalytics, signalAnalytics] = await Promise.all([
+    const [sessionAggregate, orderAnalytics, signalAnalytics, recentActivity] = await Promise.all([
       this.getPtSessionAggregate(filters, dateRange),
       this.getPtOrderAnalytics(filters, dateRange),
-      this.getPtSignalAnalytics(filters, dateRange)
+      this.getPtSignalAnalytics(filters, dateRange),
+      countRecentActivity(this.paperSessionRepo)
     ]);
 
     return {
       statusCounts: sessionAggregate.statusCounts,
       totalSessions: sessionAggregate.totalSessions,
-      recentActivity: sessionAggregate.recentActivity,
+      recentActivity,
       avgMetrics: sessionAggregate.avgMetrics,
       topAlgorithms: sessionAggregate.topAlgorithms,
       orderAnalytics,
@@ -130,9 +130,11 @@ export class PaperTradingMonitoringService {
   }
 
   /**
-   * Fan-in of statusCounts + totalSessions + recentActivity + avgMetrics + topAlgorithms
-   * into a single query using conditional aggregates and a scalar subquery for top
-   * algorithms (GROUP BY + ORDER BY + LIMIT, can't be a plain FILTER clause).
+   * Fan-in of statusCounts + totalSessions + avgMetrics + topAlgorithms into a single
+   * query using conditional aggregates and a scalar subquery for top algorithms
+   * (GROUP BY + ORDER BY + LIMIT, can't be a plain FILTER clause). `recentActivity`
+   * is fetched separately via `countRecentActivity` because it must be relative to
+   * NOW, not the dashboard's dateRange / algorithmId filters.
    */
   private async getPtSessionAggregate(
     filters: PaperTradingFiltersDto,
@@ -140,15 +142,9 @@ export class PaperTradingMonitoringService {
   ): Promise<{
     statusCounts: Record<PaperTradingStatus, number>;
     totalSessions: number;
-    recentActivity: RecentActivityDto;
     avgMetrics: { sharpeRatio: number; totalReturn: number; maxDrawdown: number; winRate: number };
     topAlgorithms: PaperTradingMonitoringDto['topAlgorithms'];
   }> {
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
     const qb = this.paperSessionRepo.createQueryBuilder('s');
 
     // Status values for FILTER conditionals
@@ -157,9 +153,6 @@ export class PaperTradingMonitoringService {
     }
     qb.setParameter('ptCompleted', PaperTradingStatus.COMPLETED);
     qb.setParameter('ptActive', PaperTradingStatus.ACTIVE);
-    qb.setParameter('ptRecent24h', yesterday);
-    qb.setParameter('ptRecent7d', lastWeek);
-    qb.setParameter('ptRecent30d', lastMonth);
 
     const statusFilter = filters.status ? ' AND s.status = :totalStatusFilter' : '';
     if (filters.status) qb.setParameter('totalStatusFilter', filters.status);
@@ -196,10 +189,6 @@ export class PaperTradingMonitoringService {
     }
     // Total sessions (all filters)
     selects.push([statusFilter ? `COUNT(*) FILTER (WHERE 1=1 ${statusFilter})` : 'COUNT(*)', 'total_sessions']);
-    // Recent activity
-    selects.push([`COUNT(*) FILTER (WHERE s."createdAt" >= :ptRecent24h)`, 'recent_24h']);
-    selects.push([`COUNT(*) FILTER (WHERE s."createdAt" >= :ptRecent7d)`, 'recent_7d']);
-    selects.push([`COUNT(*) FILTER (WHERE s."createdAt" >= :ptRecent30d)`, 'recent_30d']);
     // Avg metrics (COMPLETED or ACTIVE)
     const metricsFilter = `s.status IN (:ptCompleted, :ptActive)`;
     selects.push([`AVG(s.sharpeRatio) FILTER (WHERE ${metricsFilter})`, 'avg_sharpe']);
@@ -236,11 +225,6 @@ export class PaperTradingMonitoringService {
     return {
       statusCounts,
       totalSessions: parseInt(row.total_sessions ?? '0', 10) || 0,
-      recentActivity: {
-        last24h: parseInt(row.recent_24h ?? '0', 10) || 0,
-        last7d: parseInt(row.recent_7d ?? '0', 10) || 0,
-        last30d: parseInt(row.recent_30d ?? '0', 10) || 0
-      },
       avgMetrics: {
         sharpeRatio: parseFloat(row.avg_sharpe ?? '0') || 0,
         totalReturn: parseFloat(row.avg_return ?? '0') || 0,

@@ -9,7 +9,7 @@ import {
   OptimizationRunListItemDto,
   PaginatedOptimizationRunsDto
 } from './dto/optimization-analytics.dto';
-import { RecentActivityDto } from './dto/overview.dto';
+import { countRecentActivity } from './monitoring-shared.util';
 
 import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
 import { OptimizationRun, OptimizationStatus } from '../../optimization/entities/optimization-run.entity';
@@ -31,15 +31,16 @@ export class OptimizationAnalyticsService {
   async getOptimizationAnalytics(filters: OptimizationFiltersDto): Promise<OptimizationAnalyticsDto> {
     const dateRange = this.getOptDateRange(filters);
 
-    const [aggregate, topStrategies] = await Promise.all([
+    const [aggregate, topStrategies, recentActivity] = await Promise.all([
       this.getOptAggregate(filters, dateRange),
-      this.getOptTopStrategies(filters, dateRange)
+      this.getOptTopStrategies(filters, dateRange),
+      countRecentActivity(this.optimizationRunRepo)
     ]);
 
     return {
       statusCounts: aggregate.statusCounts,
       totalRuns: aggregate.totalRuns,
-      recentActivity: aggregate.recentActivity,
+      recentActivity,
       avgImprovement: aggregate.avgImprovement,
       avgBestScore: aggregate.avgBestScore,
       avgCombinationsTested: aggregate.avgCombinationsTested,
@@ -122,10 +123,11 @@ export class OptimizationAnalyticsService {
   }
 
   /**
-   * Fan-in of statusCounts + totalRuns + recentActivity + avgMetrics + resultSummary into
-   * a single SQL round trip using conditional aggregates and a scalar subquery for the
-   * optimization_results summary. Reduces dashboard pool footprint from 5 connections → 1
-   * on this path.
+   * Fan-in of statusCounts + totalRuns + avgMetrics + resultSummary into a single SQL
+   * round trip using conditional aggregates and a scalar subquery for the
+   * optimization_results summary. `recentActivity` is fetched separately via
+   * `countRecentActivity` because it must be relative to NOW, not the dashboard's
+   * dateRange filter.
    */
   private async getOptAggregate(
     filters: OptimizationFiltersDto,
@@ -133,17 +135,11 @@ export class OptimizationAnalyticsService {
   ): Promise<{
     statusCounts: Record<OptimizationStatus, number>;
     totalRuns: number;
-    recentActivity: RecentActivityDto;
     avgImprovement: number;
     avgBestScore: number;
     avgCombinationsTested: number;
     resultSummary: OptimizationAnalyticsDto['resultSummary'];
   }> {
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
     const statusFilter = filters.status ? ' AND r.status = :totalStatusFilter' : '';
 
     // Scalar subquery selects aggregates over optimization_results scoped to COMPLETED runs
@@ -165,9 +161,6 @@ export class OptimizationAnalyticsService {
 
     const qb = this.optimizationRunRepo.createQueryBuilder('r');
     qb.setParameter('completedStatus', OptimizationStatus.COMPLETED);
-    qb.setParameter('recent24h', yesterday);
-    qb.setParameter('recent7d', lastWeek);
-    qb.setParameter('recent30d', lastMonth);
     if (filters.status) qb.setParameter('totalStatusFilter', filters.status);
 
     const selects: Array<[string, string]> = [];
@@ -179,10 +172,6 @@ export class OptimizationAnalyticsService {
     }
     // Total runs (status filter applied)
     selects.push([statusFilter ? `COUNT(*) FILTER (WHERE 1=1 ${statusFilter})` : 'COUNT(*)', 'total_runs']);
-    // Recent activity
-    selects.push([`COUNT(*) FILTER (WHERE r."createdAt" >= :recent24h)`, 'recent_24h']);
-    selects.push([`COUNT(*) FILTER (WHERE r."createdAt" >= :recent7d)`, 'recent_7d']);
-    selects.push([`COUNT(*) FILTER (WHERE r."createdAt" >= :recent30d)`, 'recent_30d']);
     // Avg metrics (COMPLETED only)
     selects.push([`AVG(r.improvement) FILTER (WHERE r.status = :completedStatus)`, 'avg_improvement']);
     selects.push([`AVG(r."bestScore") FILTER (WHERE r.status = :completedStatus)`, 'avg_best_score']);
@@ -215,11 +204,6 @@ export class OptimizationAnalyticsService {
     return {
       statusCounts,
       totalRuns: parseInt(row.total_runs ?? '0', 10) || 0,
-      recentActivity: {
-        last24h: parseInt(row.recent_24h ?? '0', 10) || 0,
-        last7d: parseInt(row.recent_7d ?? '0', 10) || 0,
-        last30d: parseInt(row.recent_30d ?? '0', 10) || 0
-      },
       avgImprovement: parseFloat(row.avg_improvement ?? '0') || 0,
       avgBestScore: parseFloat(row.avg_best_score ?? '0') || 0,
       avgCombinationsTested: parseFloat(row.avg_combinations_tested ?? '0') || 0,
