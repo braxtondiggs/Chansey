@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import {
   ExitConfig,
   StopLossType,
@@ -596,6 +597,15 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
         description: 'Upper bound for ATR-scaled take-profit percentage'
       }
     };
+  }
+
+  // Prevent the optimizer from picking inverted bounds (e.g. takeProfitMin=10, takeProfitMax=6)
+  // which would silently collapse the ATR-scaled clamp to a constant and disable the dynamic exit.
+  override getParameterConstraints(): ParameterConstraint[] {
+    return [
+      { type: 'less_than', param1: 'stopLossMin', param2: 'stopLossMax' },
+      { type: 'less_than', param1: 'takeProfitMin', param2: 'takeProfitMax' }
+    ];
   }
 
   canExecute(context: AlgorithmContext): boolean {

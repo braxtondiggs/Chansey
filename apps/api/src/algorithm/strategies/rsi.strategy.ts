@@ -91,11 +91,16 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         }
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        signalsGenerated: signals.length
-      });
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        {
+          algorithm: this.name,
+          version: this.version,
+          signalsGenerated: signals.length
+        },
+        this.buildExitConfig(config)
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`RSI strategy execution failed: ${err.message}`, err.stack);
