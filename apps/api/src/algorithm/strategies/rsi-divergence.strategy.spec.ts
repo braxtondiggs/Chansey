@@ -442,11 +442,12 @@ describe('RSIDivergenceStrategy', () => {
       expect(result.signals).toHaveLength(1);
       const exitConfig = result.signals[0].exitConfig ?? {};
       expect(exitConfig.enableStopLoss).toBe(true);
+      // Default bounds (schema defaults): stopLoss 2–15, takeProfit 3–20
       expect(exitConfig.stopLossValue).toBeGreaterThanOrEqual(2);
-      expect(exitConfig.stopLossValue).toBeLessThanOrEqual(6);
+      expect(exitConfig.stopLossValue).toBeLessThanOrEqual(15);
       expect(exitConfig.enableTakeProfit).toBe(true);
       expect(exitConfig.takeProfitValue).toBeGreaterThanOrEqual(3);
-      expect(exitConfig.takeProfitValue).toBeLessThanOrEqual(10);
+      expect(exitConfig.takeProfitValue).toBeLessThanOrEqual(20);
       expect(exitConfig.enableTrailingStop).toBe(true);
       expect(exitConfig.trailingActivationValue).toBe(1.5);
       expect(exitConfig.useOco).toBe(true);

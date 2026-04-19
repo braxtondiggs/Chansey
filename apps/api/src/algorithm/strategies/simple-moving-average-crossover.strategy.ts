@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -51,6 +52,18 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
       const slowPeriod = (context.config.slowPeriod as number) ?? 50;
       const minConfidence = (context.config.minConfidence as number) ?? 0.4;
       const minSeparation = (context.config.minSeparation as number) ?? 0.005;
+      const stopLossPercent = (context.config.stopLossPercent as number) ?? 3.5;
+      const takeProfitPercent = (context.config.takeProfitPercent as number) ?? 6;
+      const exitConfig: Partial<ExitConfig> = {
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: stopLossPercent,
+        enableTakeProfit: true,
+        takeProfitType: TakeProfitType.PERCENTAGE,
+        takeProfitValue: takeProfitPercent,
+        enableTrailingStop: false,
+        useOco: true
+      };
       const isBacktest = !!(
         context.metadata?.backtestId ||
         context.metadata?.isOptimization ||
@@ -91,7 +104,8 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
           priceHistory,
           fastSMA,
           slowSMA,
-          minSeparation
+          minSeparation,
+          exitConfig
         );
 
         if (signal && signal.confidence >= minConfidence) {
@@ -103,12 +117,17 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         }
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        fastPeriod,
-        slowPeriod
-      });
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        {
+          algorithm: this.name,
+          version: this.version,
+          fastPeriod,
+          slowPeriod
+        },
+        exitConfig
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`SMA Crossover algorithm execution failed: ${err.message}`, err.stack);
@@ -125,7 +144,8 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
     prices: CandleData[],
     fastSMA: number[],
     slowSMA: number[],
-    minSeparation: number
+    minSeparation: number,
+    exitConfig: Partial<ExitConfig>
   ): TradingSignal | null {
     const currentIndex = prices.length - 1;
     const previousIndex = currentIndex - 1;
@@ -171,7 +191,8 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
           slowSMA: currentSlow,
           crossoverType: 'golden',
           separation
-        }
+        },
+        exitConfig
       };
     }
 
@@ -272,6 +293,27 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         min: 0,
         max: 0.05,
         description: 'Min |fast-slow|/slow to recognize a cross. Filters noise.'
+      },
+      stopLossPercent: {
+        type: 'number',
+        default: 3.5,
+        min: 1.5,
+        max: 15,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 6,
+        min: 2,
+        max: 20,
+        description: 'Take-profit distance as percentage of entry price'
+      },
+      maxHoldBars: {
+        type: 'number',
+        default: 100,
+        min: 50,
+        max: 300,
+        description: 'Maximum bars to hold a position before forcing exit'
       }
     };
   }

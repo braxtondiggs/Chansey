@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -15,6 +16,8 @@ interface MACDConfig {
   useHistogramConfirmation: boolean;
   minHistogramStrength: number;
   minConfidence: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
 }
 
 /**
@@ -116,11 +119,16 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
         }
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        signalsGenerated: signals.length
-      });
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        {
+          algorithm: this.name,
+          version: this.version,
+          signalsGenerated: signals.length
+        },
+        this.buildExitConfig(config)
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`MACD strategy execution failed: ${err.message}`, err.stack);
@@ -138,7 +146,22 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
       signalPeriod: (config.signalPeriod as number) ?? 9,
       useHistogramConfirmation: (config.useHistogramConfirmation as boolean) ?? true,
       minHistogramStrength: (config.minHistogramStrength as number) ?? 0.0001,
-      minConfidence: (config.minConfidence as number) ?? 0.6
+      minConfidence: (config.minConfidence as number) ?? 0.6,
+      stopLossPercent: (config.stopLossPercent as number) ?? 3.5,
+      takeProfitPercent: (config.takeProfitPercent as number) ?? 6
+    };
+  }
+
+  private buildExitConfig(config: MACDConfig): Partial<ExitConfig> {
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: config.stopLossPercent,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: config.takeProfitPercent,
+      enableTrailingStop: false,
+      useOco: true
     };
   }
 
@@ -378,7 +401,21 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
         max: 0.01,
         description: 'Minimum histogram value'
       },
-      minConfidence: { type: 'number', default: 0.6, min: 0, max: 1, description: 'Minimum confidence required' }
+      minConfidence: { type: 'number', default: 0.6, min: 0, max: 1, description: 'Minimum confidence required' },
+      stopLossPercent: {
+        type: 'number',
+        default: 3.5,
+        min: 1,
+        max: 12,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 6,
+        min: 2,
+        max: 20,
+        description: 'Take-profit distance as percentage of entry price'
+      }
     };
   }
 

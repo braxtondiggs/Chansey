@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -50,6 +51,18 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
       const fastPeriod = (context.config.fastPeriod as number) || 8;
       const slowPeriod = (context.config.slowPeriod as number) || 50;
       const crossoverLookback = Math.max(1, Math.min(10, (context.config.crossoverLookback as number) || 5));
+      const stopLossPercent = (context.config.stopLossPercent as number) ?? 3.5;
+      const takeProfitPercent = (context.config.takeProfitPercent as number) ?? 6;
+      const exitConfig: Partial<ExitConfig> = {
+        enableStopLoss: true,
+        stopLossType: StopLossType.PERCENTAGE,
+        stopLossValue: stopLossPercent,
+        enableTakeProfit: true,
+        takeProfitType: TakeProfitType.PERCENTAGE,
+        takeProfitValue: takeProfitPercent,
+        enableTrailingStop: false,
+        useOco: true
+      };
       const isBacktest = !!(
         context.metadata?.backtestId ||
         context.metadata?.isOptimization ||
@@ -95,11 +108,16 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
         }
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        signalsGenerated: signals.length
-      });
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        {
+          algorithm: this.name,
+          version: this.version,
+          signalsGenerated: signals.length
+        },
+        exitConfig
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`EMA algorithm execution failed: ${err.message}`, err.stack);
@@ -288,8 +306,20 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
         description: 'Number of bars to scan for crossover events'
       },
       minConfidence: { type: 'number', default: 0.4, min: 0, max: 1 },
-      enableStopLoss: { type: 'boolean', default: false },
-      stopLossPercentage: { type: 'number', default: 0.05, min: 0.01, max: 0.2 }
+      stopLossPercent: {
+        type: 'number',
+        default: 3.5,
+        min: 1,
+        max: 15,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 6,
+        min: 2,
+        max: 20,
+        description: 'Take-profit distance as percentage of entry price'
+      }
     };
   }
 

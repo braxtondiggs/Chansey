@@ -2,6 +2,16 @@ import { type ExitConfig, StopLossType, TakeProfitType } from '../../order/inter
 import { type ConfluenceConfig, type ConfluenceScore, SignalType, type TradingSignal } from '../interfaces';
 
 /**
+ * Optional schema-driven exit overrides. When provided, they bypass the
+ * dynamic ATR/percentage calculation and expose stop-loss and take-profit as
+ * optimizer-tunable parameters.
+ */
+export interface ConfluenceExitOverrides {
+  stopLossPercent?: number;
+  takeProfitPercent?: number;
+}
+
+/**
  * Generate trading signal from confluence score.
  *
  * When `isFuturesShort` is true (enableShortSignals + futures marketType):
@@ -22,7 +32,8 @@ export function generateSignalFromConfluence(
   confluenceScore: ConfluenceScore,
   config: ConfluenceConfig,
   isFuturesShort = false,
-  blockBuy = false
+  blockBuy = false,
+  exitOverrides?: ConfluenceExitOverrides
 ): TradingSignal | null {
   if (confluenceScore.direction === 'hold') {
     return null;
@@ -91,7 +102,7 @@ export function generateSignalFromConfluence(
     confidence,
     reason,
     metadata,
-    exitConfig: buildExitConfig(confluenceScore, currentAtr)
+    exitConfig: buildExitConfig(confluenceScore, currentAtr, exitOverrides)
   };
 }
 
@@ -99,12 +110,34 @@ export function generateSignalFromConfluence(
  * Build strategy-specific exit configuration scaled by confluence score.
  * Higher confluence → tighter stops and wider take-profit (more confident trade).
  *
+ * When `exitOverrides.stopLossPercent` / `takeProfitPercent` are provided, they
+ * short-circuit the dynamic calculation and expose the values as optimizer-
+ * tunable parameters driven directly by the strategy's config schema.
+ *
  * When ATR is available, uses ATR-based stop loss (1.5x-2.5x ATR multiplier)
  * to adapt to actual market volatility instead of fixed percentages.
  * When ATR is unavailable, falls back to wider percentage stops (5-8%)
  * to avoid triggering on normal crypto volatility.
  */
-export function buildExitConfig(confluenceScore: ConfluenceScore, currentAtr?: number): Partial<ExitConfig> {
+export function buildExitConfig(
+  confluenceScore: ConfluenceScore,
+  currentAtr?: number,
+  exitOverrides?: ConfluenceExitOverrides
+): Partial<ExitConfig> {
+  // Schema-driven override path: exposes SL/TP directly to the optimizer
+  if (exitOverrides?.stopLossPercent != null && exitOverrides.takeProfitPercent != null) {
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: exitOverrides.stopLossPercent,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: exitOverrides.takeProfitPercent,
+      enableTrailingStop: false,
+      useOco: true
+    };
+  }
+
   const ratio = confluenceScore.totalEnabled > 0 ? confluenceScore.confluenceCount / confluenceScore.totalEnabled : 0.5;
 
   // Take profit: 1.5:1 to 3:1 risk-reward scaled by confluence

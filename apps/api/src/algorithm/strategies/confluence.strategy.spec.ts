@@ -592,6 +592,34 @@ describe('ConfluenceStrategy', () => {
       expect(exitConfig.takeProfitValue).toBeGreaterThan(0);
     });
 
+    it('schema stopLossPercent/takeProfitPercent override the dynamic ATR/% logic', async () => {
+      setupBullishIndicators();
+
+      const result = await strategy.execute(
+        buildContext({
+          minConfluence: 3,
+          stopLossPercent: 4.5,
+          takeProfitPercent: 11
+        })
+      );
+
+      expect(result.signals).toHaveLength(1);
+      const exitConfig = result.signals[0].exitConfig as Record<string, unknown>;
+      expect(exitConfig.stopLossValue).toBe(4.5);
+      expect(exitConfig.takeProfitValue).toBe(11);
+      expect(exitConfig.stopLossType).toBe('percentage');
+    });
+
+    it('exposes stopLossPercent, takeProfitPercent, maxHoldBars in schema', () => {
+      const schema = strategy.getConfigSchema() as Record<string, { default: number; min?: number; max?: number }>;
+      expect(schema.stopLossPercent).toBeDefined();
+      expect(schema.stopLossPercent.default).toBe(3.5);
+      expect(schema.stopLossPercent.max).toBe(15);
+      expect(schema.takeProfitPercent).toBeDefined();
+      expect(schema.takeProfitPercent.default).toBe(6);
+      expect(schema.maxHoldBars).toBeDefined();
+    });
+
     it('should set confidence and strength between 0 and 1', async () => {
       setupBullishIndicators();
 

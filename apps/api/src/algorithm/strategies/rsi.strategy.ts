@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -12,6 +13,9 @@ interface RSIConfig {
   oversoldThreshold: number;
   overboughtThreshold: number;
   minConfidence: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
+  maxHoldBars: number;
 }
 
 /**
@@ -108,7 +112,27 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
       period: (config.period as number) ?? 14,
       oversoldThreshold: (config.oversoldThreshold as number) ?? 25,
       overboughtThreshold: (config.overboughtThreshold as number) ?? 75,
-      minConfidence: (config.minConfidence as number) ?? 0.5
+      minConfidence: (config.minConfidence as number) ?? 0.5,
+      stopLossPercent: (config.stopLossPercent as number) ?? 3.5,
+      takeProfitPercent: (config.takeProfitPercent as number) ?? 6,
+      maxHoldBars: (config.maxHoldBars as number) ?? 100
+    };
+  }
+
+  /**
+   * Build exit configuration from schema parameters so the optimizer can tune
+   * stop-loss, take-profit, and hold-time directly.
+   */
+  private buildExitConfig(config: RSIConfig): Partial<ExitConfig> {
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: config.stopLossPercent,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: config.takeProfitPercent,
+      enableTrailingStop: false,
+      useOco: true
     };
   }
 
@@ -158,7 +182,8 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
           previousRSI,
           threshold: config.oversoldThreshold,
           condition: 'oversold'
-        }
+        },
+        exitConfig: this.buildExitConfig(config)
       };
     }
 
@@ -277,6 +302,27 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         min: 0,
         max: 1,
         description: 'Minimum confidence required to generate signal'
+      },
+      stopLossPercent: {
+        type: 'number',
+        default: 3.5,
+        min: 1.5,
+        max: 15,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 6,
+        min: 2,
+        max: 20,
+        description: 'Take-profit distance as percentage of entry price'
+      },
+      maxHoldBars: {
+        type: 'number',
+        default: 100,
+        min: 50,
+        max: 300,
+        description: 'Maximum bars to hold a position before forcing exit'
       }
     };
   }

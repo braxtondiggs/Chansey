@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -16,6 +17,8 @@ interface TripleEMAConfig {
   signalOnPartialCross: boolean;
   minConfidence: number;
   minSpread: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
 }
 
 type EMAAlignment = 'bullish' | 'bearish' | 'neutral';
@@ -122,11 +125,16 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         }
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        signalsGenerated: signals.length
-      });
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        {
+          algorithm: this.name,
+          version: this.version,
+          signalsGenerated: signals.length
+        },
+        this.buildExitConfig(config)
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Triple EMA strategy execution failed: ${err.message}`, err.stack);
@@ -145,7 +153,22 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       requireFullAlignment: (config.requireFullAlignment as boolean) ?? false,
       signalOnPartialCross: (config.signalOnPartialCross as boolean) ?? true,
       minConfidence: (config.minConfidence as number) ?? 0.3,
-      minSpread: (config.minSpread as number) ?? 0.001
+      minSpread: (config.minSpread as number) ?? 0.001,
+      stopLossPercent: (config.stopLossPercent as number) ?? 3.5,
+      takeProfitPercent: (config.takeProfitPercent as number) ?? 6
+    };
+  }
+
+  private buildExitConfig(config: TripleEMAConfig): Partial<ExitConfig> {
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: config.stopLossPercent,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: config.takeProfitPercent,
+      enableTrailingStop: false,
+      useOco: true
     };
   }
 
@@ -530,6 +553,20 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
         min: 0,
         max: 0.05,
         description: 'Minimum EMA spread to generate signal. Filters noise crosses.'
+      },
+      stopLossPercent: {
+        type: 'number',
+        default: 3.5,
+        min: 1,
+        max: 15,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 6,
+        min: 2,
+        max: 20,
+        description: 'Take-profit distance as percentage of entry price'
       }
     };
   }

@@ -157,7 +157,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
   private getConfigWithDefaults(config: Record<string, unknown>): ATRTrailingStopConfig {
     return {
       atrPeriod: Math.max(8, Math.min(25, (config.atrPeriod as number) ?? 20)),
-      atrMultiplier: Math.max(2.0, Math.min(6, (config.atrMultiplier as number) ?? 4.5)),
+      atrMultiplier: Math.max(2.0, Math.min(8, (config.atrMultiplier as number) ?? 4.5)),
       tradeDirection: (config.tradeDirection as 'long' | 'short' | 'both') ?? 'long',
       useHighLow: (config.useHighLow as boolean) ?? true,
       minConfidence: (config.minConfidence as number) ?? 0.4,
@@ -483,7 +483,7 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
         type: 'number',
         default: 4.5,
         min: 2.0,
-        max: 6,
+        max: 8,
         description: 'ATR multiplier for stop distance'
       },
       tradeDirection: {

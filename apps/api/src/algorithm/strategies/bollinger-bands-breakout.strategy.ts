@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -14,6 +15,8 @@ interface BollingerBreakoutConfig {
   confirmationBars: number;
   minConfidence: number;
   squeezeFactor: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
 }
 
 /**
@@ -132,11 +135,16 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
         }
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        signalsGenerated: signals.length
-      });
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        {
+          algorithm: this.name,
+          version: this.version,
+          signalsGenerated: signals.length
+        },
+        this.buildExitConfig(config)
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Bollinger Bands Breakout strategy execution failed: ${err.message}`, err.stack);
@@ -154,7 +162,22 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
       requireConfirmation: (config.requireConfirmation as boolean) ?? true,
       confirmationBars: (config.confirmationBars as number) ?? 3,
       minConfidence: (config.minConfidence as number) ?? 0.5,
-      squeezeFactor: (config.squeezeFactor as number) ?? 1.5
+      squeezeFactor: (config.squeezeFactor as number) ?? 1.5,
+      stopLossPercent: (config.stopLossPercent as number) ?? 3.5,
+      takeProfitPercent: (config.takeProfitPercent as number) ?? 6
+    };
+  }
+
+  private buildExitConfig(config: BollingerBreakoutConfig): Partial<ExitConfig> {
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: config.stopLossPercent,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: config.takeProfitPercent,
+      enableTrailingStop: false,
+      useOco: true
     };
   }
 
@@ -464,6 +487,20 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
         min: 1.0,
         max: 3.0,
         description: 'Max bandwidth/avg to allow signals (lower = stricter squeeze)'
+      },
+      stopLossPercent: {
+        type: 'number',
+        default: 3.5,
+        min: 1.5,
+        max: 15,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 6,
+        min: 2,
+        max: 20,
+        description: 'Take-profit distance as percentage of entry price'
       }
     };
   }

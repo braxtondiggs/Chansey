@@ -151,6 +151,29 @@ export function getConfluenceConfigSchema(baseSchema: Record<string, unknown>): 
       min: 0,
       max: 0.7,
       description: '%B threshold for bearish (< value = price pushing lower band, confirms downtrend)'
+    },
+
+    // Exit management (tunable by optimizer)
+    stopLossPercent: {
+      type: 'number',
+      default: 3.5,
+      min: 1.5,
+      max: 15,
+      description: 'Stop-loss distance as percentage of entry price. Overrides dynamic ATR-based stops when set.'
+    },
+    takeProfitPercent: {
+      type: 'number',
+      default: 6,
+      min: 2,
+      max: 20,
+      description: 'Take-profit distance as percentage of entry price. Overrides dynamic R:R when set.'
+    },
+    maxHoldBars: {
+      type: 'number',
+      default: 100,
+      min: 50,
+      max: 300,
+      description: 'Maximum bars to hold a position before forcing exit'
     }
   };
 }
