@@ -105,24 +105,21 @@ describe('PaperTradingMonitoringService', () => {
     });
 
     it('maps status counts, avg metrics, order and signal analytics from raw rows', async () => {
-      // Status counts (getRawMany) — first sessionQb call used by getPtStatusCounts
-      // Avg metrics (getRawOne) — second sessionQb call path
-      // Top algorithms (getRawMany) — third
-      (sessionQb.getRawMany as jest.Mock)
-        .mockResolvedValueOnce([
-          { status: PaperTradingStatus.COMPLETED, count: '3' },
-          { status: PaperTradingStatus.ACTIVE, count: '2' }
-        ])
-        .mockResolvedValueOnce([
-          { algorithmId: 'algo-1', algorithmName: 'Alpha', sessionCount: '5', avgReturn: '12.5', avgSharpe: '1.8' }
-        ]);
-      (sessionQb.getCount as jest.Mock).mockResolvedValueOnce(5);
-      (sessionQb.getRawOne as jest.Mock).mockResolvedValueOnce({
-        avgSharpe: '1.25',
-        avgReturn: '8.4',
-        avgDrawdown: null,
-        avgWinRate: '0.65'
-      });
+      // Consolidated session aggregate (1st getRawOne) + countRecentActivity (2nd getRawOne)
+      (sessionQb.getRawOne as jest.Mock)
+        .mockResolvedValueOnce({
+          [`status_${PaperTradingStatus.COMPLETED}`]: '3',
+          [`status_${PaperTradingStatus.ACTIVE}`]: '2',
+          total_sessions: '5',
+          avg_sharpe: '1.25',
+          avg_return: '8.4',
+          avg_drawdown: null,
+          avg_win_rate: '0.65',
+          top_algorithms: JSON.stringify([
+            { algorithmId: 'algo-1', algorithmName: 'Alpha', sessionCount: 5, avgReturn: 12.5, avgSharpe: 1.8 }
+          ])
+        })
+        .mockResolvedValueOnce({ last24h: '1', last7d: '4', last30d: '5' });
 
       (orderQb.getRawOne as jest.Mock).mockResolvedValueOnce({
         totalOrders: '10',
@@ -131,30 +128,28 @@ describe('PaperTradingMonitoringService', () => {
         totalVolume: '1000.5',
         totalFees: '2.5',
         avgSlippageBps: null,
-        totalPnL: '50.25'
+        totalPnL: '50.25',
+        bySymbol: JSON.stringify([{ symbol: 'BTC', orderCount: 4, totalVolume: 500, totalPnL: 20 }])
       });
-      (orderQb.getRawMany as jest.Mock).mockResolvedValueOnce([
-        { symbol: 'BTC', orderCount: '4', totalVolume: '500', totalPnL: '20' }
-      ]);
 
       (signalQb.getRawOne as jest.Mock).mockResolvedValueOnce({
         totalSignals: '8',
         processedRate: '0.75',
-        avgConfidence: '0.82'
+        avgConfidence: '0.82',
+        byType: JSON.stringify({ [PaperTradingSignalType.ENTRY]: 5 }),
+        byDirection: JSON.stringify({ [PaperTradingSignalDirection.LONG]: 6 })
       });
-      (signalQb.getRawMany as jest.Mock)
-        .mockResolvedValueOnce([{ signalType: PaperTradingSignalType.ENTRY, count: '5' }])
-        .mockResolvedValueOnce([{ direction: PaperTradingSignalDirection.LONG, count: '6' }]);
 
       const result = await service.getPaperTradingMonitoring({ algorithmId: 'algo-1' });
 
       expect(result.statusCounts[PaperTradingStatus.COMPLETED]).toBe(3);
       expect(result.statusCounts[PaperTradingStatus.ACTIVE]).toBe(2);
       expect(result.totalSessions).toBe(5);
+      expect(result.recentActivity).toEqual({ last24h: 1, last7d: 4, last30d: 5 });
       expect(result.avgMetrics).toEqual({
         sharpeRatio: 1.25,
         totalReturn: 8.4,
-        maxDrawdown: 0, // null coerced via parseFloat → NaN → 0
+        maxDrawdown: 0, // null coerced → 0
         winRate: 0.65
       });
       expect(result.topAlgorithms).toEqual([

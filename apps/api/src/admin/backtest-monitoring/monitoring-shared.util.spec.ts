@@ -176,11 +176,32 @@ describe('monitoring-shared.util', () => {
   });
 
   describe('countRecentActivity', () => {
-    it('returns counts for 24h / 7d / 30d windows', async () => {
-      const repo = { count: jest.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(5).mockResolvedValueOnce(10) };
+    it('returns counts for 24h / 7d / 30d windows via a single aggregate query', async () => {
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ last24h: '1', last7d: '5', last30d: '10' })
+      };
+      const repo = { createQueryBuilder: jest.fn().mockReturnValue(qb) };
       const result = await countRecentActivity(repo as unknown as Repository<Backtest>);
       expect(result).toEqual({ last24h: 1, last7d: 5, last30d: 10 });
-      expect(repo.count).toHaveBeenCalledTimes(3);
+      expect(repo.createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(qb.getRawOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('coerces missing row to zero counts', async () => {
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue(undefined)
+      };
+      const repo = { createQueryBuilder: jest.fn().mockReturnValue(qb) };
+      const result = await countRecentActivity(repo as unknown as Repository<Backtest>);
+      expect(result).toEqual({ last24h: 0, last7d: 0, last30d: 0 });
     });
   });
 

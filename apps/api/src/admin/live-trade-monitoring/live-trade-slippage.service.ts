@@ -30,15 +30,16 @@ export class LiveTradeSlippageService {
   async getSlippageAnalysis(filters: LiveTradeFiltersDto): Promise<SlippageAnalysisDto> {
     const dateRange = getDateRange(filters);
 
-    const [overallLive, overallBacktest, byAlgorithm, byTimeOfDay, byOrderSize, bySymbol] = await Promise.all([
-      this.getOverallLiveSlippage(filters, dateRange),
-      this.getOverallBacktestSlippage(filters),
+    const [overall, byAlgorithm, byTimeOfDay, byOrderSize, bySymbol] = await Promise.all([
+      this.getOverallSlippage(filters, dateRange),
       this.getSlippageByAlgorithm(filters, dateRange),
       this.getSlippageByTimeOfDay(filters, dateRange),
       this.getSlippageByOrderSize(filters, dateRange),
       this.getSlippageBySymbol(filters, dateRange)
     ]);
 
+    const overallLive = overall.overallLive;
+    const overallBacktest = overall.overallBacktest;
     const overallDifferenceBps = new Decimal(overallLive.avgBps).minus(overallBacktest?.avgBps || 0).toNumber();
 
     return {
@@ -54,62 +55,86 @@ export class LiveTradeSlippageService {
     };
   }
 
-  private async getOverallLiveSlippage(
+  /**
+   * Fan-in overall-live + overall-backtest into a single UNION ALL query. Each branch
+   * projects its slippage value plus a 'source' discriminator, and the outer SELECT
+   * aggregates per source. Collapses 2 connections → 1.
+   */
+  private async getOverallSlippage(
     filters: LiveTradeFiltersDto,
     dateRange: DateRange
-  ): Promise<LiveSlippageStatsDto> {
-    const qb = this.orderRepo
-      .createQueryBuilder('o')
-      .where('o.isAlgorithmicTrade = true')
-      .andWhere('o.actualSlippageBps IS NOT NULL');
+  ): Promise<{ overallLive: LiveSlippageStatsDto; overallBacktest: LiveSlippageStatsDto | undefined }> {
+    const params: Record<string, unknown> = {};
+    const liveConditions: string[] = ['o."isAlgorithmicTrade" = TRUE', 'o."actualSlippageBps" IS NOT NULL'];
+    const backtestConditions: string[] = [];
 
     if (filters.algorithmId) {
-      qb.leftJoin('o.algorithmActivation', 'aa').andWhere('aa.algorithmId = :algorithmId', {
-        algorithmId: filters.algorithmId
-      });
+      liveConditions.push('aa."algorithmId" = :algorithmId');
+      backtestConditions.push('b."algorithmId" = :algorithmId');
+      params.algorithmId = filters.algorithmId;
     }
     if (dateRange.startDate) {
-      qb.andWhere('o.createdAt >= :startDate', { startDate: dateRange.startDate });
+      liveConditions.push('o."createdAt" >= :startDate');
+      params.startDate = dateRange.startDate;
     }
     if (dateRange.endDate) {
-      qb.andWhere('o.createdAt <= :endDate', { endDate: dateRange.endDate });
+      liveConditions.push('o."createdAt" <= :endDate');
+      params.endDate = dateRange.endDate;
     }
 
-    const result = await qb
-      .select('COALESCE(AVG(o.actualSlippageBps), 0)', 'avgBps')
-      .addSelect('COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY o.actualSlippageBps), 0)', 'medianBps')
-      .addSelect('COALESCE(MIN(o.actualSlippageBps), 0)', 'minBps')
-      .addSelect('COALESCE(MAX(o.actualSlippageBps), 0)', 'maxBps')
-      .addSelect('COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY o.actualSlippageBps), 0)', 'p95Bps')
-      .addSelect('COALESCE(STDDEV(o.actualSlippageBps), 0)', 'stdDevBps')
-      .addSelect('COUNT(*)', 'orderCount')
-      .getRawOne();
+    const liveJoin = filters.algorithmId
+      ? 'LEFT JOIN algorithm_activations aa ON aa.id = o."algorithmActivationId"'
+      : '';
+    const backtestWhere = backtestConditions.length > 0 ? `WHERE ${backtestConditions.join(' AND ')}` : '';
 
-    return mapSlippageStatsRow(result);
-  }
+    const unionSql = `
+      SELECT 'live' AS source, o."actualSlippageBps" AS bps
+      FROM "order" o
+      ${liveJoin}
+      WHERE ${liveConditions.join(' AND ')}
+      UNION ALL
+      SELECT 'backtest' AS source, f."slippageBps" AS bps
+      FROM simulated_order_fills f
+      LEFT JOIN backtests b ON b.id = f."backtestId"
+      ${backtestWhere}
+    `;
 
-  private async getOverallBacktestSlippage(filters: LiveTradeFiltersDto): Promise<LiveSlippageStatsDto | undefined> {
-    const qb = this.fillRepo.createQueryBuilder('f').leftJoin('f.backtest', 'b');
+    const sql = `
+      SELECT source,
+        COALESCE(AVG(bps), 0) AS "avgBps",
+        COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY bps), 0) AS "medianBps",
+        COALESCE(MIN(bps), 0) AS "minBps",
+        COALESCE(MAX(bps), 0) AS "maxBps",
+        COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY bps), 0) AS "p95Bps",
+        COALESCE(STDDEV(bps), 0) AS "stdDevBps",
+        COUNT(*)::int AS "orderCount"
+      FROM (${unionSql}) combined
+      GROUP BY source
+    `;
 
-    if (filters.algorithmId) {
-      qb.andWhere('b.algorithmId = :algorithmId', { algorithmId: filters.algorithmId });
+    // Manually convert `:name` placeholders to `$N` positional values for manager.query.
+    const paramNames = Object.keys(params);
+    let sqlWithPositional = sql;
+    const positionalValues: unknown[] = [];
+    for (const name of paramNames) {
+      const regex = new RegExp(`:${name}\\b`, 'g');
+      sqlWithPositional = sqlWithPositional.replace(regex, `$${positionalValues.length + 1}`);
+      positionalValues.push(params[name]);
     }
 
-    const result = await qb
-      .select('COALESCE(AVG(f.slippageBps), 0)', 'avgBps')
-      .addSelect('COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY f.slippageBps), 0)', 'medianBps')
-      .addSelect('COALESCE(MIN(f.slippageBps), 0)', 'minBps')
-      .addSelect('COALESCE(MAX(f.slippageBps), 0)', 'maxBps')
-      .addSelect('COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY f.slippageBps), 0)', 'p95Bps')
-      .addSelect('COALESCE(STDDEV(f.slippageBps), 0)', 'stdDevBps')
-      .addSelect('COUNT(*)', 'orderCount')
-      .getRawOne();
+    const rows: Array<Record<string, unknown>> = await this.orderRepo.manager.query(
+      sqlWithPositional,
+      positionalValues
+    );
 
-    if (!result || toInt(result.orderCount) === 0) {
-      return undefined;
-    }
+    const liveRow = rows.find((r) => r.source === 'live');
+    const backtestRow = rows.find((r) => r.source === 'backtest');
 
-    return mapSlippageStatsRow(result);
+    const overallLive = mapSlippageStatsRow(liveRow);
+    const overallBacktest =
+      backtestRow && toInt(backtestRow.orderCount) > 0 ? mapSlippageStatsRow(backtestRow) : undefined;
+
+    return { overallLive, overallBacktest };
   }
 
   private async getSlippageByAlgorithm(

@@ -68,14 +68,14 @@ describe('BacktestMonitoringAnalyticsService', () => {
     backtestRepo = { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) };
 
     const queryMock = {
-      getStatusCounts: jest.fn().mockResolvedValue({}),
-      getTypeDistribution: jest.fn().mockResolvedValue({}),
-      getAverageMetrics: jest
-        .fn()
-        .mockResolvedValue({ sharpeRatio: 1.5, totalReturn: 12.5, maxDrawdown: 8.2, winRate: 0.62 }),
+      getOverviewAggregated: jest.fn().mockResolvedValue({
+        statusCounts: {},
+        typeDistribution: {},
+        averageMetrics: { sharpeRatio: 1.5, totalReturn: 12.5, maxDrawdown: 8.2, winRate: 0.62 },
+        totalBacktests: 17
+      }),
       getRecentActivity: jest.fn().mockResolvedValue({ last24h: 5, last7d: 25, last30d: 100 }),
-      getTopAlgorithms: jest.fn().mockResolvedValue([{ id: 'algo-1', name: 'RSI', avgSharpe: 2.1 }]),
-      getTotalBacktests: jest.fn().mockResolvedValue(17)
+      getTopAlgorithms: jest.fn().mockResolvedValue([{ id: 'algo-1', name: 'RSI', avgSharpe: 2.1 }])
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -93,15 +93,12 @@ describe('BacktestMonitoringAnalyticsService', () => {
   afterEach(() => jest.clearAllMocks());
 
   describe('getOverview', () => {
-    it('composes results from the query service', async () => {
+    it('composes results from the query service via a consolidated aggregate call', async () => {
       const result = await service.getOverview({});
 
-      expect(queryService.getStatusCounts).toHaveBeenCalled();
-      expect(queryService.getTypeDistribution).toHaveBeenCalled();
-      expect(queryService.getAverageMetrics).toHaveBeenCalled();
+      expect(queryService.getOverviewAggregated).toHaveBeenCalled();
       expect(queryService.getRecentActivity).toHaveBeenCalled();
       expect(queryService.getTopAlgorithms).toHaveBeenCalled();
-      expect(queryService.getTotalBacktests).toHaveBeenCalled();
 
       expect(result).toMatchObject({
         averageMetrics: { sharpeRatio: 1.5, totalReturn: 12.5, maxDrawdown: 8.2, winRate: 0.62 },
@@ -118,7 +115,7 @@ describe('BacktestMonitoringAnalyticsService', () => {
 
       await service.getOverview(filters);
 
-      expect(queryService.getStatusCounts).toHaveBeenCalledWith(
+      expect(queryService.getOverviewAggregated).toHaveBeenCalledWith(
         filters,
         expect.objectContaining({ start: expect.any(Date), end: expect.any(Date) })
       );

@@ -1,7 +1,7 @@
 /**
  * Pipeline Orchestration Task
  *
- * Scheduled task that runs daily at 2 AM UTC to orchestrate
+ * Scheduled task that runs daily at 2:30 AM UTC to orchestrate
  * automatic full validation pipelines for users with algo trading enabled.
  *
  * Creates pipelines that run through:
@@ -33,10 +33,12 @@ export class PipelineOrchestrationTask {
   ) {}
 
   /**
-   * Daily cron job at 2 AM UTC (before backtest orchestration at 3 AM).
+   * Daily cron job at 2:30 AM UTC — offset from the 02:00 top-of-hour burst
+   * (hourly market-regime + risk-monitoring, promotion-evaluation, and
+   * live-trading-cron ticks) to avoid Postgres connection-pool saturation.
    * Queries eligible users and adds staggered jobs to the queue.
    */
-  @Cron('0 2 * * *')
+  @Cron('30 2 * * *')
   async scheduleOrchestration(): Promise<void> {
     this.logger.log('Starting daily pipeline orchestration scheduling');
 

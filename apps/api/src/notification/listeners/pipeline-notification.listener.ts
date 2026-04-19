@@ -79,8 +79,8 @@ export class PipelineNotificationListener {
       await this.notificationService.send(
         pipeline.user.id,
         NotificationEventType.PIPELINE_STARTED,
-        'We started building your strategy',
-        `${strategyName} is being trained and tested — you'll get an update as it progresses.`,
+        'We started building a new strategy',
+        `An automated strategy is being trained and tested — we'll let you know as it progresses.`,
         'info',
         {
           userId: pipeline.user.id,
@@ -113,7 +113,7 @@ export class PipelineNotificationListener {
       await this.notificationService.send(
         pipeline.user.id,
         NotificationEventType.PIPELINE_STAGE_COMPLETED,
-        `${strategyName}: ${completedLabel}`,
+        `Strategy progress: ${completedLabel}`,
         `Moving on to: ${nextLabel}.`,
         'info',
         {
@@ -145,8 +145,8 @@ export class PipelineNotificationListener {
         await this.notificationService.send(
           pipeline.user.id,
           NotificationEventType.PIPELINE_REJECTED,
-          `${strategyName} didn't pass the safety review`,
-          `We'll try a different strategy on your next cycle.`,
+          `A strategy didn't pass the safety review`,
+          `We'll try a different approach on your next cycle — no action needed.`,
           'medium',
           {
             userId: pipeline.user.id,
@@ -162,7 +162,7 @@ export class PipelineNotificationListener {
         await this.notificationService.send(
           pipeline.user.id,
           NotificationEventType.PIPELINE_REJECTED,
-          `${strategyName} couldn't find enough opportunities`,
+          `Not enough trading opportunities`,
           `We'll retry with fresh parameters — no action needed from you.`,
           'low',
           {
@@ -178,8 +178,8 @@ export class PipelineNotificationListener {
       await this.notificationService.send(
         pipeline.user.id,
         NotificationEventType.PIPELINE_COMPLETED,
-        `${strategyName} is ready for live trading`,
-        `Your strategy passed every check and is being activated.`,
+        `A new strategy is ready for live trading`,
+        `It passed every check and is being activated on your account.`,
         'info',
         {
           userId: pipeline.user.id,
@@ -207,8 +207,8 @@ export class PipelineNotificationListener {
       await this.notificationService.send(
         pipeline.user.id,
         NotificationEventType.PIPELINE_REJECTED,
-        `${strategyName} couldn't finish building`,
-        `We'll try again on the next cycle.`,
+        `A strategy couldn't finish building`,
+        `We'll try again on the next cycle — no action needed.`,
         'medium',
         {
           userId: pipeline.user.id,

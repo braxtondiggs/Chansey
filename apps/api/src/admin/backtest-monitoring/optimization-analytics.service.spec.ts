@@ -25,6 +25,7 @@ const createMockQueryBuilder = () => {
     limit: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
+    setParameter: jest.fn().mockReturnThis(),
     setParameters: jest.fn().mockReturnThis(),
     getQuery: jest.fn().mockReturnValue(''),
     getParameters: jest.fn().mockReturnValue({}),
@@ -85,16 +86,41 @@ describe('OptimizationAnalyticsService', () => {
       expect(Object.values(OptimizationStatus).every((s) => result.statusCounts[s] === 0)).toBe(true);
     });
 
-    it('parses raw status count rows into the enum map', async () => {
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([
-        { status: OptimizationStatus.COMPLETED, count: '5' },
-        { status: OptimizationStatus.RUNNING, count: '2' }
-      ]);
+    it('parses consolidated aggregate row into the status-count enum map', async () => {
+      (mockQueryBuilder.getRawOne as jest.Mock)
+        .mockResolvedValueOnce({
+          [`status_${OptimizationStatus.COMPLETED}`]: '5',
+          [`status_${OptimizationStatus.RUNNING}`]: '2',
+          total_runs: '7',
+          avg_improvement: '1.25',
+          avg_best_score: '0.82',
+          avg_combinations_tested: '100',
+          result_summary: JSON.stringify({
+            avgTrainScore: 0.6,
+            avgTestScore: 0.55,
+            avgDegradation: 0.08,
+            avgConsistency: 0.7,
+            overfittingRate: 0.1
+          })
+        })
+        .mockResolvedValueOnce({ last24h: '1', last7d: '3', last30d: '7' });
 
       const result = await service.getOptimizationAnalytics({});
 
       expect(result.statusCounts[OptimizationStatus.COMPLETED]).toBe(5);
       expect(result.statusCounts[OptimizationStatus.RUNNING]).toBe(2);
+      expect(result.totalRuns).toBe(7);
+      expect(result.recentActivity).toEqual({ last24h: 1, last7d: 3, last30d: 7 });
+      expect(result.avgImprovement).toBe(1.25);
+      expect(result.avgBestScore).toBe(0.82);
+      expect(result.avgCombinationsTested).toBe(100);
+      expect(result.resultSummary).toEqual({
+        avgTrainScore: 0.6,
+        avgTestScore: 0.55,
+        avgDegradation: 0.08,
+        avgConsistency: 0.7,
+        overfittingRate: 0.1
+      });
     });
 
     it('applies date range filter when startDate/endDate are provided', async () => {
