@@ -137,17 +137,13 @@ export class UsersService {
   }
 
   async getById(id: string): Promise<UserWithExchanges> {
-    try {
-      const user = await this.user.findOneOrFail({ where: { id } });
-      const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
-
-      this.logger.debug(`User retrieved with ID: ${id}`);
-      return Object.assign(user, { exchanges });
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`User not found with ID: ${id}`, err.stack);
+    const user = await this.user.findOne({ where: { id } });
+    if (!user) {
+      this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException(`User with ID ${id} not found`);
     }
+    const exchanges = await this.exchangeKeyService.getSupportedExchangeKeys(user.id);
+    return Object.assign(user, { exchanges });
   }
 
   /**
