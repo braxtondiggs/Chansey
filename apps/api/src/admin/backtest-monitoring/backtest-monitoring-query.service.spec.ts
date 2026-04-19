@@ -21,6 +21,8 @@ const createMockQueryBuilder = () => {
     having: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
+    setParameter: jest.fn().mockReturnThis(),
+    setParameters: jest.fn().mockReturnThis(),
     getCount: jest.fn().mockResolvedValue(0),
     getRawOne: jest.fn().mockResolvedValue({}),
     getRawMany: jest.fn().mockResolvedValue([])
@@ -122,6 +124,55 @@ describe('BacktestMonitoringQueryService', () => {
       expect(qb.andWhere).toHaveBeenCalledWith('b.createdAt BETWEEN :start AND :end', DATE_RANGE);
       expect(qb.andWhere).toHaveBeenCalledWith('b.algorithmId = :algorithmId', { algorithmId: 'algo-1' });
       expect(qb.andWhere).toHaveBeenCalledWith('b.type = :type', { type: BacktestType.HISTORICAL });
+    });
+  });
+
+  describe('getOverviewAggregated', () => {
+    it('fans aggregate selects into a single round trip and maps the row', async () => {
+      const row: Record<string, string> = {
+        [`status_${BacktestStatus.COMPLETED}`]: '12',
+        [`status_${BacktestStatus.RUNNING}`]: '3',
+        [`type_${BacktestType.HISTORICAL}`]: '8',
+        avg_sharpe: '1.75',
+        avg_return: '9.5',
+        avg_drawdown: '7.2',
+        avg_win_rate: '0.55',
+        total_count: '20'
+      };
+      (qb.getRawOne as jest.Mock).mockResolvedValueOnce(row);
+
+      const result = await service.getOverviewAggregated({}, null);
+
+      expect(qb.getRawOne).toHaveBeenCalledTimes(1);
+      expect(result.statusCounts[BacktestStatus.COMPLETED]).toBe(12);
+      expect(result.statusCounts[BacktestStatus.RUNNING]).toBe(3);
+      expect(result.statusCounts[BacktestStatus.FAILED]).toBe(0);
+      expect(result.typeDistribution[BacktestType.HISTORICAL]).toBe(8);
+      expect(result.averageMetrics).toEqual({
+        sharpeRatio: 1.75,
+        totalReturn: 9.5,
+        maxDrawdown: 7.2,
+        winRate: 0.55
+      });
+      expect(result.totalBacktests).toBe(20);
+    });
+
+    it('applies common filters (dateRange + algorithmId)', async () => {
+      await service.getOverviewAggregated({ algorithmId: 'algo-1' }, DATE_RANGE);
+
+      expect(qb.andWhere).toHaveBeenCalledWith('b.createdAt BETWEEN :start AND :end', DATE_RANGE);
+      expect(qb.andWhere).toHaveBeenCalledWith('b.algorithmId = :algorithmId', { algorithmId: 'algo-1' });
+    });
+
+    it('returns zeroed results when row is undefined', async () => {
+      (qb.getRawOne as jest.Mock).mockResolvedValueOnce(undefined);
+
+      const result = await service.getOverviewAggregated({}, null);
+
+      expect(result.totalBacktests).toBe(0);
+      expect(result.averageMetrics).toEqual({ sharpeRatio: 0, totalReturn: 0, maxDrawdown: 0, winRate: 0 });
+      expect(Object.values(BacktestStatus).every((s) => result.statusCounts[s] === 0)).toBe(true);
+      expect(Object.values(BacktestType).every((t) => result.typeDistribution[t] === 0)).toBe(true);
     });
   });
 

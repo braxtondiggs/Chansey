@@ -10,7 +10,6 @@ import {
   PaginatedOptimizationRunsDto
 } from './dto/optimization-analytics.dto';
 import { RecentActivityDto } from './dto/overview.dto';
-import { countRecentActivity } from './monitoring-shared.util';
 
 import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
 import { OptimizationRun, OptimizationStatus } from '../../optimization/entities/optimization-run.entity';
@@ -21,7 +20,9 @@ type DateRange = { start: Date; end: Date } | null;
 export class OptimizationAnalyticsService {
   constructor(
     @InjectRepository(OptimizationRun) private readonly optimizationRunRepo: Repository<OptimizationRun>,
-    @InjectRepository(OptimizationResult) private readonly optimizationResultRepo: Repository<OptimizationResult>
+    // Retained for DI wiring consistency; optimization_results aggregates are now pulled
+    // inline via a scalar subquery from the run repo to save a connection.
+    @InjectRepository(OptimizationResult) private readonly _optimizationResultRepo: Repository<OptimizationResult>
   ) {}
 
   /**
@@ -30,24 +31,20 @@ export class OptimizationAnalyticsService {
   async getOptimizationAnalytics(filters: OptimizationFiltersDto): Promise<OptimizationAnalyticsDto> {
     const dateRange = this.getOptDateRange(filters);
 
-    const [statusCounts, totalRuns, recentActivity, avgMetrics, topStrategies, resultSummary] = await Promise.all([
-      this.getOptStatusCounts(filters, dateRange),
-      this.getOptTotalRuns(filters, dateRange),
-      this.getOptRecentActivity(),
-      this.getOptAvgMetrics(filters, dateRange),
-      this.getOptTopStrategies(filters, dateRange),
-      this.getOptResultSummary(filters, dateRange)
+    const [aggregate, topStrategies] = await Promise.all([
+      this.getOptAggregate(filters, dateRange),
+      this.getOptTopStrategies(filters, dateRange)
     ]);
 
     return {
-      statusCounts,
-      totalRuns,
-      recentActivity,
-      avgImprovement: avgMetrics.avgImprovement,
-      avgBestScore: avgMetrics.avgBestScore,
-      avgCombinationsTested: avgMetrics.avgCombinationsTested,
+      statusCounts: aggregate.statusCounts,
+      totalRuns: aggregate.totalRuns,
+      recentActivity: aggregate.recentActivity,
+      avgImprovement: aggregate.avgImprovement,
+      avgBestScore: aggregate.avgBestScore,
+      avgCombinationsTested: aggregate.avgCombinationsTested,
       topStrategies,
-      resultSummary
+      resultSummary: aggregate.resultSummary
     };
   }
 
@@ -124,67 +121,121 @@ export class OptimizationAnalyticsService {
     }
   }
 
-  /** Status filter intentionally omitted — returns full status breakdown */
-  private async getOptStatusCounts(
-    _filters: OptimizationFiltersDto,
+  /**
+   * Fan-in of statusCounts + totalRuns + recentActivity + avgMetrics + resultSummary into
+   * a single SQL round trip using conditional aggregates and a scalar subquery for the
+   * optimization_results summary. Reduces dashboard pool footprint from 5 connections → 1
+   * on this path.
+   */
+  private async getOptAggregate(
+    filters: OptimizationFiltersDto,
     dateRange: DateRange
-  ): Promise<Record<OptimizationStatus, number>> {
-    const qb = this.optimizationRunRepo
-      .createQueryBuilder('r')
-      .select('r.status', 'status')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('r.status');
+  ): Promise<{
+    statusCounts: Record<OptimizationStatus, number>;
+    totalRuns: number;
+    recentActivity: RecentActivityDto;
+    avgImprovement: number;
+    avgBestScore: number;
+    avgCombinationsTested: number;
+    resultSummary: OptimizationAnalyticsDto['resultSummary'];
+  }> {
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    if (dateRange) {
-      qb.where('r.createdAt BETWEEN :start AND :end', dateRange);
-    }
+    const statusFilter = filters.status ? ' AND r.status = :totalStatusFilter' : '';
 
-    const results = await qb.getRawMany();
-    const counts = Object.values(OptimizationStatus).reduce(
-      (acc, s) => {
-        acc[s] = 0;
-        return acc;
-      },
-      {} as Record<OptimizationStatus, number>
-    );
+    // Scalar subquery selects aggregates over optimization_results scoped to COMPLETED runs
+    // inside the configured date range.
+    const resultSummarySubquery = `(
+      SELECT jsonb_build_object(
+        'avgTrainScore', COALESCE(AVG(res."avgTrainScore"), 0),
+        'avgTestScore', COALESCE(AVG(res."avgTestScore"), 0),
+        'avgDegradation', COALESCE(AVG(res."avgDegradation"), 0),
+        'avgConsistency', COALESCE(AVG(res."consistencyScore"), 0),
+        'overfittingRate', COALESCE(AVG(CASE WHEN res."overfittingWindows" > 0 THEN 1.0 ELSE 0.0 END), 0)
+      )
+      FROM optimization_results res
+      WHERE res."optimizationRunId" IN (
+        SELECT rs.id FROM optimization_runs rs
+        WHERE rs.status = :completedStatus${dateRange ? ' AND rs."createdAt" BETWEEN :start AND :end' : ''}
+      )
+    )`;
 
-    for (const row of results) {
-      counts[row.status as OptimizationStatus] = parseInt(row.count, 10);
-    }
-
-    return counts;
-  }
-
-  private async getOptTotalRuns(filters: OptimizationFiltersDto, dateRange: DateRange): Promise<number> {
     const qb = this.optimizationRunRepo.createQueryBuilder('r');
-    this.applyOptFilters(qb, filters, dateRange);
-    return qb.getCount();
-  }
+    qb.setParameter('completedStatus', OptimizationStatus.COMPLETED);
+    qb.setParameter('recent24h', yesterday);
+    qb.setParameter('recent7d', lastWeek);
+    qb.setParameter('recent30d', lastMonth);
+    if (filters.status) qb.setParameter('totalStatusFilter', filters.status);
 
-  private async getOptRecentActivity(): Promise<RecentActivityDto> {
-    return countRecentActivity(this.optimizationRunRepo);
-  }
+    const selects: Array<[string, string]> = [];
+    // Status counts (status filter omitted — full breakdown)
+    for (const status of Object.values(OptimizationStatus)) {
+      const paramKey = `optStatusVal_${status}`;
+      qb.setParameter(paramKey, status);
+      selects.push([`COUNT(*) FILTER (WHERE r.status = :${paramKey})`, `status_${status}`]);
+    }
+    // Total runs (status filter applied)
+    selects.push([statusFilter ? `COUNT(*) FILTER (WHERE 1=1 ${statusFilter})` : 'COUNT(*)', 'total_runs']);
+    // Recent activity
+    selects.push([`COUNT(*) FILTER (WHERE r."createdAt" >= :recent24h)`, 'recent_24h']);
+    selects.push([`COUNT(*) FILTER (WHERE r."createdAt" >= :recent7d)`, 'recent_7d']);
+    selects.push([`COUNT(*) FILTER (WHERE r."createdAt" >= :recent30d)`, 'recent_30d']);
+    // Avg metrics (COMPLETED only)
+    selects.push([`AVG(r.improvement) FILTER (WHERE r.status = :completedStatus)`, 'avg_improvement']);
+    selects.push([`AVG(r."bestScore") FILTER (WHERE r.status = :completedStatus)`, 'avg_best_score']);
+    selects.push([`AVG(r."combinationsTested") FILTER (WHERE r.status = :completedStatus)`, 'avg_combinations_tested']);
+    // Result summary (scalar subquery — runs in same round trip)
+    selects.push([resultSummarySubquery, 'result_summary']);
 
-  private async getOptAvgMetrics(
-    _filters: OptimizationFiltersDto,
-    dateRange: DateRange
-  ): Promise<{ avgImprovement: number; avgBestScore: number; avgCombinationsTested: number }> {
-    const qb = this.optimizationRunRepo
-      .createQueryBuilder('r')
-      .select('AVG(r.improvement)', 'avgImprovement')
-      .addSelect('AVG(r.bestScore)', 'avgBestScore')
-      .addSelect('AVG(r.combinationsTested)', 'avgCombinationsTested')
-      .where('r.status = :completed', { completed: OptimizationStatus.COMPLETED });
+    qb.select(selects[0][0], selects[0][1]);
+    for (let i = 1; i < selects.length; i++) {
+      qb.addSelect(selects[i][0], selects[i][1]);
+    }
 
     if (dateRange) {
       qb.andWhere('r.createdAt BETWEEN :start AND :end', dateRange);
     }
 
-    const result = await qb.getRawOne();
+    const row = (await qb.getRawOne<Record<string, string | null>>()) ?? {};
+
+    const statusCounts = Object.values(OptimizationStatus).reduce(
+      (acc, s) => {
+        acc[s] = parseInt(row[`status_${s}`] ?? '0', 10) || 0;
+        return acc;
+      },
+      {} as Record<OptimizationStatus, number>
+    );
+
+    const resultSummaryRaw = row.result_summary as unknown;
+    const resultSummary = this.normaliseResultSummary(resultSummaryRaw);
+
     return {
-      avgImprovement: parseFloat(result?.avgImprovement) || 0,
-      avgBestScore: parseFloat(result?.avgBestScore) || 0,
-      avgCombinationsTested: parseFloat(result?.avgCombinationsTested) || 0
+      statusCounts,
+      totalRuns: parseInt(row.total_runs ?? '0', 10) || 0,
+      recentActivity: {
+        last24h: parseInt(row.recent_24h ?? '0', 10) || 0,
+        last7d: parseInt(row.recent_7d ?? '0', 10) || 0,
+        last30d: parseInt(row.recent_30d ?? '0', 10) || 0
+      },
+      avgImprovement: parseFloat(row.avg_improvement ?? '0') || 0,
+      avgBestScore: parseFloat(row.avg_best_score ?? '0') || 0,
+      avgCombinationsTested: parseFloat(row.avg_combinations_tested ?? '0') || 0,
+      resultSummary
+    };
+  }
+
+  private normaliseResultSummary(raw: unknown): OptimizationAnalyticsDto['resultSummary'] {
+    const parsed: Record<string, unknown> =
+      typeof raw === 'string' ? JSON.parse(raw) : ((raw as Record<string, unknown>) ?? {});
+    return {
+      avgTrainScore: Number(parsed.avgTrainScore) || 0,
+      avgTestScore: Number(parsed.avgTestScore) || 0,
+      avgDegradation: Number(parsed.avgDegradation) || 0,
+      avgConsistency: Number(parsed.avgConsistency) || 0,
+      overfittingRate: Number(parsed.overfittingRate) || 0
     };
   }
 
@@ -220,38 +271,5 @@ export class OptimizationAnalyticsService {
       avgImprovement: parseFloat(r.avgImprovement) || 0,
       avgBestScore: parseFloat(r.avgBestScore) || 0
     }));
-  }
-
-  private async getOptResultSummary(
-    _filters: OptimizationFiltersDto,
-    dateRange: DateRange
-  ): Promise<OptimizationAnalyticsDto['resultSummary']> {
-    const runSubQuery = this.optimizationRunRepo
-      .createQueryBuilder('r')
-      .select('r.id')
-      .where('r.status = :completed', { completed: OptimizationStatus.COMPLETED });
-
-    if (dateRange) {
-      runSubQuery.andWhere('r.createdAt BETWEEN :start AND :end', dateRange);
-    }
-
-    const qb = this.optimizationResultRepo
-      .createQueryBuilder('res')
-      .select('AVG(res.avgTrainScore)', 'avgTrainScore')
-      .addSelect('AVG(res.avgTestScore)', 'avgTestScore')
-      .addSelect('AVG(res.avgDegradation)', 'avgDegradation')
-      .addSelect('AVG(res.consistencyScore)', 'avgConsistency')
-      .addSelect('AVG(CASE WHEN res.overfittingWindows > 0 THEN 1.0 ELSE 0.0 END)', 'overfittingRate')
-      .where(`res.optimizationRunId IN (${runSubQuery.getQuery()})`)
-      .setParameters(runSubQuery.getParameters());
-
-    const result = await qb.getRawOne();
-    return {
-      avgTrainScore: parseFloat(result?.avgTrainScore) || 0,
-      avgTestScore: parseFloat(result?.avgTestScore) || 0,
-      avgDegradation: parseFloat(result?.avgDegradation) || 0,
-      avgConsistency: parseFloat(result?.avgConsistency) || 0,
-      overfittingRate: parseFloat(result?.overfittingRate) || 0
-    };
   }
 }

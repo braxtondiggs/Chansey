@@ -42,23 +42,19 @@ export class BacktestMonitoringAnalyticsService {
   async getOverview(filters: BacktestFiltersDto): Promise<BacktestOverviewDto> {
     const dateRange = getDateRange(filters);
 
-    const [statusCounts, typeDistribution, averageMetrics, recentActivity, topAlgorithms, totalBacktests] =
-      await Promise.all([
-        this.queryService.getStatusCounts(filters, dateRange),
-        this.queryService.getTypeDistribution(filters, dateRange),
-        this.queryService.getAverageMetrics(filters, dateRange),
-        this.queryService.getRecentActivity(),
-        this.queryService.getTopAlgorithms(filters, dateRange),
-        this.queryService.getTotalBacktests(filters, dateRange)
-      ]);
+    const [aggregated, recentActivity, topAlgorithms] = await Promise.all([
+      this.queryService.getOverviewAggregated(filters, dateRange),
+      this.queryService.getRecentActivity(),
+      this.queryService.getTopAlgorithms(filters, dateRange)
+    ]);
 
     return {
-      statusCounts,
-      typeDistribution,
-      averageMetrics,
+      statusCounts: aggregated.statusCounts,
+      typeDistribution: aggregated.typeDistribution,
+      averageMetrics: aggregated.averageMetrics,
       recentActivity,
       topAlgorithms,
-      totalBacktests
+      totalBacktests: aggregated.totalBacktests
     };
   }
 

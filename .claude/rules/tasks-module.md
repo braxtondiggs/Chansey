@@ -15,7 +15,7 @@ globs:
 | Task | Schedule | Purpose |
 |------|----------|---------|
 | `PerformanceCalcTask` | 1AM daily | P&L, Sharpe, drawdown for deployments |
-| `PipelineOrchestrationTask` | 2AM daily | Validation pipelines for eligible users |
+| `PipelineOrchestrationTask` | 2:30AM daily | Validation pipelines (offset from 2AM top-of-hour burst) |
 | `PromotionTask` | 2AM daily | Evaluate validated strategies for live deployment |
 | `BacktestOrchestrationTask` | 3AM daily | Auto backtests + watchdog for stuck runs |
 | `RedisMaintenanceTask` | 4AM daily | Trim BullMQ job sets, event streams (ioredis to DB 3) |

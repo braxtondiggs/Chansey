@@ -1,4 +1,4 @@
-import { Between, type ObjectLiteral, type Repository, type SelectQueryBuilder } from 'typeorm';
+import { type ObjectLiteral, type Repository, type SelectQueryBuilder } from 'typeorm';
 
 import { type BacktestFiltersDto, type RecentActivityDto } from './dto/overview.dto';
 import { type SignalAnalyticsDto } from './dto/signal-analytics.dto';
@@ -120,13 +120,19 @@ export async function countRecentActivity(repo: Repository<ObjectLiteral>): Prom
   const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  const [last24h, last7d, last30d] = await Promise.all([
-    repo.count({ where: { createdAt: Between(yesterday, now) } }),
-    repo.count({ where: { createdAt: Between(lastWeek, now) } }),
-    repo.count({ where: { createdAt: Between(lastMonth, now) } })
-  ]);
+  const row = await repo
+    .createQueryBuilder('r')
+    .select('COUNT(*) FILTER (WHERE r."createdAt" >= :d1)', 'last24h')
+    .addSelect('COUNT(*) FILTER (WHERE r."createdAt" >= :d7)', 'last7d')
+    .addSelect('COUNT(*) FILTER (WHERE r."createdAt" >= :d30)', 'last30d')
+    .setParameters({ d1: yesterday, d7: lastWeek, d30: lastMonth })
+    .getRawOne<{ last24h: string; last7d: string; last30d: string }>();
 
-  return { last24h, last7d, last30d };
+  return {
+    last24h: parseInt(row?.last24h ?? '0', 10),
+    last7d: parseInt(row?.last7d ?? '0', 10),
+    last30d: parseInt(row?.last30d ?? '0', 10)
+  };
 }
 
 export interface InstrumentSymbolResolver {
