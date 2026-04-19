@@ -307,13 +307,6 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         min: 2,
         max: 20,
         description: 'Take-profit distance as percentage of entry price'
-      },
-      maxHoldBars: {
-        type: 'number',
-        default: 100,
-        min: 50,
-        max: 300,
-        description: 'Maximum bars to hold a position before forcing exit'
       }
     };
   }

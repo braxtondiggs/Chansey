@@ -15,7 +15,6 @@ interface RSIConfig {
   minConfidence: number;
   stopLossPercent: number;
   takeProfitPercent: number;
-  maxHoldBars: number;
 }
 
 /**
@@ -114,8 +113,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
       overboughtThreshold: (config.overboughtThreshold as number) ?? 75,
       minConfidence: (config.minConfidence as number) ?? 0.5,
       stopLossPercent: (config.stopLossPercent as number) ?? 3.5,
-      takeProfitPercent: (config.takeProfitPercent as number) ?? 6,
-      maxHoldBars: (config.maxHoldBars as number) ?? 100
+      takeProfitPercent: (config.takeProfitPercent as number) ?? 6
     };
   }
 
@@ -316,13 +314,6 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         min: 2,
         max: 20,
         description: 'Take-profit distance as percentage of entry price'
-      },
-      maxHoldBars: {
-        type: 'number',
-        default: 100,
-        min: 50,
-        max: 300,
-        description: 'Maximum bars to hold a position before forcing exit'
       }
     };
   }

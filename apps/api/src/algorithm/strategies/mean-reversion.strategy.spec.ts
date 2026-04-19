@@ -206,14 +206,13 @@ describe('MeanReversionStrategy', () => {
   });
 
   describe('exit config schema', () => {
-    it('exposes stopLossPercent, takeProfitPercent, maxHoldBars in schema', () => {
+    it('exposes stopLossPercent and takeProfitPercent in schema', () => {
       const schema = strategy.getConfigSchema() as Record<string, { default: number }>;
 
       expect(schema.stopLossPercent).toBeDefined();
       expect(schema.stopLossPercent.default).toBe(3.5);
       expect(schema.takeProfitPercent).toBeDefined();
       expect(schema.takeProfitPercent.default).toBe(6);
-      expect(schema.maxHoldBars).toBeDefined();
     });
 
     it('wires schema stopLossPercent into signal exitConfig (replaces hardcoded 3.5)', async () => {

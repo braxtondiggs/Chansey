@@ -298,7 +298,7 @@ describe('RSIStrategy', () => {
   });
 
   describe('exit config schema', () => {
-    it('exposes stopLossPercent, takeProfitPercent, maxHoldBars in schema', () => {
+    it('exposes stopLossPercent and takeProfitPercent in schema', () => {
       const schema = strategy.getConfigSchema() as Record<string, { default: number; min: number; max: number }>;
 
       expect(schema.stopLossPercent).toBeDefined();
@@ -309,9 +309,6 @@ describe('RSIStrategy', () => {
       expect(schema.takeProfitPercent).toBeDefined();
       expect(schema.takeProfitPercent.default).toBe(6);
       expect(schema.takeProfitPercent.max).toBe(20);
-
-      expect(schema.maxHoldBars).toBeDefined();
-      expect(schema.maxHoldBars.default).toBe(100);
     });
 
     it('attaches schema-driven exitConfig to BUY signals', async () => {

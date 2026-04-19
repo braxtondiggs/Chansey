@@ -302,14 +302,13 @@ describe('SimpleMovingAverageCrossoverStrategy', () => {
   });
 
   describe('exit config schema', () => {
-    it('exposes stopLossPercent, takeProfitPercent, maxHoldBars in schema', () => {
+    it('exposes stopLossPercent and takeProfitPercent in schema', () => {
       const schema = strategy.getConfigSchema() as Record<string, { default: number; min: number; max: number }>;
 
       expect(schema.stopLossPercent).toBeDefined();
       expect(schema.stopLossPercent.default).toBe(3.5);
       expect(schema.takeProfitPercent).toBeDefined();
       expect(schema.takeProfitPercent.default).toBe(6);
-      expect(schema.maxHoldBars).toBeDefined();
     });
 
     it('propagates exitConfig on result and signals when golden cross fires', async () => {
