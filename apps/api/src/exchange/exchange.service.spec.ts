@@ -185,6 +185,50 @@ describe('ExchangeService', () => {
     ]);
   });
 
+  describe('createMany', () => {
+    it('skips incoming exchanges whose slug or name already exists in the DB', async () => {
+      const incoming = [
+        new Exchange({ slug: 'binance', name: 'Binance' }),
+        new Exchange({ slug: 'coinbase-new', name: 'Coinbase' }),
+        new Exchange({ slug: 'kraken', name: 'Kraken' })
+      ];
+
+      // DB already has "binance" (slug match) and a legacy row whose name is "Coinbase" under a different slug
+      exchangeRepository.find.mockResolvedValueOnce([
+        { slug: 'binance', name: 'Binance' } as Exchange,
+        { slug: 'coinbase-legacy', name: 'Coinbase' } as Exchange
+      ]);
+      exchangeRepository.save.mockImplementation(async (rows: Exchange[]) => rows);
+
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation();
+
+      const result = await service.createMany(incoming);
+
+      expect(exchangeRepository.save).toHaveBeenCalledWith([expect.objectContaining({ slug: 'kraken' })]);
+      expect(result).toHaveLength(1);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Coinbase'));
+    });
+
+    it('returns an empty array without calling save when every incoming row collides', async () => {
+      const incoming = [new Exchange({ slug: 'binance', name: 'Binance' })];
+
+      exchangeRepository.find.mockResolvedValueOnce([{ slug: 'binance', name: 'Binance' } as Exchange]);
+
+      const result = await service.createMany(incoming);
+
+      expect(exchangeRepository.save).not.toHaveBeenCalled();
+      expect(result).toEqual([]);
+    });
+
+    it('short-circuits on empty input without hitting the DB', async () => {
+      const result = await service.createMany([]);
+
+      expect(exchangeRepository.find).not.toHaveBeenCalled();
+      expect(exchangeRepository.save).not.toHaveBeenCalled();
+      expect(result).toEqual([]);
+    });
+  });
+
   it('filters exchanges to ones with active user keys', async () => {
     const exchanges = [{ id: 'one', supported: true } as Exchange, { id: 'two', supported: true } as Exchange];
 

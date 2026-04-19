@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { In, Repository } from 'typeorm';
@@ -13,6 +13,8 @@ import { stripNullProps } from '../utils/strip-null-props.util';
 
 @Injectable()
 export class ExchangeService implements IExchangeService {
+  private readonly logger = new Logger(ExchangeService.name);
+
   constructor(
     @InjectRepository(Exchange) private readonly exchange: Repository<Exchange>,
     @Inject(EXCHANGE_KEY_SERVICE)
@@ -125,11 +127,27 @@ export class ExchangeService implements IExchangeService {
   }
 
   async createMany(exchanges: Exchange[]): Promise<Exchange[]> {
+    if (exchanges.length === 0) return [];
+
+    const slugs = exchanges.map((ex) => ex.slug).filter((s): s is string => !!s);
+    const names = exchanges.map((ex) => ex.name).filter((n): n is string => !!n);
+
+    // Check both unique constraints (slug AND name) — either can reject an insert.
     const existingExchanges = await this.exchange.find({
-      where: exchanges.map((ex) => ({ slug: ex.slug }))
+      where: [...slugs.map((slug) => ({ slug })), ...names.map((name) => ({ name }))]
     });
 
-    const newExchanges = exchanges.filter((ex) => !existingExchanges.find((existing) => existing.slug === ex.slug));
+    const existingBySlug = new Set(existingExchanges.map((e) => e.slug));
+    const existingByName = new Set(existingExchanges.map((e) => e.name));
+
+    const newExchanges = exchanges.filter((ex) => {
+      if (existingBySlug.has(ex.slug)) return false;
+      if (existingByName.has(ex.name)) {
+        this.logger.warn(`Skipping new exchange "${ex.name}" (slug=${ex.slug}): name collides with an existing row`);
+        return false;
+      }
+      return true;
+    });
 
     if (newExchanges.length === 0) return [];
 
