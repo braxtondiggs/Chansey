@@ -256,6 +256,12 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         param1: 'fastPeriod',
         param2: 'slowPeriod',
         message: 'fastPeriod must be less than slowPeriod'
+      },
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
       }
     ];
   }

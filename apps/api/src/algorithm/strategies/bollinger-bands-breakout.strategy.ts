@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -503,6 +504,17 @@ export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implem
         description: 'Take-profit distance as percentage of entry price'
       }
     };
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
+      }
+    ];
   }
 
   /**

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -246,7 +247,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
   ): Partial<ExitConfig> {
     // Scale take-profit by z-score excess: at threshold σ use base, widen beyond
     const zScoreBoost = Math.max(0, (absZScore - threshold) / threshold);
-    const takeProfitPct = Math.max(1, Math.min(20, takeProfitPercent * (1 + zScoreBoost * 0.5)));
+    const takeProfitPct = Math.max(1, Math.min(40, takeProfitPercent * (1 + zScoreBoost * 0.5)));
 
     return {
       enableStopLoss: true,
@@ -329,6 +330,17 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
         description: 'Take-profit base distance as percentage of entry price (scaled by z-score)'
       }
     };
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
+      }
+    ];
   }
 
   /**

@@ -372,7 +372,10 @@ export class OptimizationCoreService {
         continue;
       }
 
-      // Lightweight exit tracker check (no signal/fill recording)
+      // Lightweight exit tracker check (no signal/fill recording).
+      // `currentBar: i` is required so SL/TS exits register post-exit cooldowns —
+      // without it, the optimizer scores exit params under different semantics than
+      // the full backtest that will ultimately run these same parameters.
       if (exitTracker) {
         await this.exitSignalProcessor.processExitSignals(
           {
@@ -384,7 +387,8 @@ export class OptimizationCoreService {
             timestamp,
             trades,
             slippageConfig,
-            prevCandleMap
+            prevCandleMap,
+            currentBar: i
           },
           exitCallbacks
         );
@@ -456,6 +460,13 @@ export class OptimizationCoreService {
         strategySignals = filteredSignals;
         optMaxAllocation = barMaxAllocation;
         optMinAllocation = barMinAllocation;
+      }
+
+      // Re-entry cooldown filter: suppress BUYs on coins still inside the post-exit
+      // cooldown window. Mirrors the historical path (backtest-bar-processor) so the
+      // optimizer scores the same exit semantics as the full backtest.
+      if (exitTracker) {
+        strategySignals = strategySignals.filter((sig) => sig.action !== 'BUY' || exitTracker.canEnter(sig.coinId, i));
       }
 
       for (const strategySignal of strategySignals) {

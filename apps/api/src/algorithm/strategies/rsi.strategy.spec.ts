@@ -334,10 +334,12 @@ describe('RSIStrategy', () => {
       const result = await strategy.execute(context);
       const buy = result.signals.find((s) => s.type === SignalType.BUY);
       expect(buy).toBeDefined();
-      expect(buy?.exitConfig?.stopLossValue).toBe(5);
-      expect(buy?.exitConfig?.takeProfitValue).toBe(12);
-      expect(buy?.exitConfig?.enableStopLoss).toBe(true);
-      expect(buy?.exitConfig?.enableTakeProfit).toBe(true);
+      // Exit config lives at the result level; mapStrategySignal fans it out
+      // to each signal downstream, so the result-level config is the source of truth.
+      expect(result.exitConfig?.stopLossValue).toBe(5);
+      expect(result.exitConfig?.takeProfitValue).toBe(12);
+      expect(result.exitConfig?.enableStopLoss).toBe(true);
+      expect(result.exitConfig?.enableTakeProfit).toBe(true);
     });
   });
 });

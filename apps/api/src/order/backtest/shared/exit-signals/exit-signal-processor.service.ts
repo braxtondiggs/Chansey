@@ -47,8 +47,11 @@ export interface ProcessExitSignalsOptions {
   coinMap?: Map<string, Coin>;
   quoteCoin?: Coin;
   prevCandleMap?: Map<string, OHLCCandle>;
-  /** Current bar index, passed so the tracker can record re-entry cooldowns. */
-  currentBar?: number;
+  /**
+   * Current bar index. Required so the exit tracker can record re-entry cooldowns
+   * consistently across optimizer and full-backtest paths.
+   */
+  currentBar: number;
 }
 
 /**

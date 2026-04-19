@@ -16,7 +16,9 @@ describe('getConfluenceParameterConstraints — minConfluence guard', () => {
     rsiBuyThreshold: 55,
     rsiSellThreshold: 45,
     bbBuyThreshold: 0.55,
-    bbSellThreshold: 0.45
+    bbSellThreshold: 0.45,
+    stopLossPercent: 3,
+    takeProfitPercent: 6
   };
 
   it('rejects minConfluence > number of enabled directional indicators', () => {

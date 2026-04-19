@@ -252,6 +252,12 @@ export function getConfluenceParameterConstraints(): ParameterConstraint[] {
       message: 'bbSellThreshold must be less than bbBuyThreshold'
     },
     {
+      type: 'less_than',
+      param1: 'stopLossPercent',
+      param2: 'takeProfitPercent',
+      message: 'stopLossPercent must be less than takeProfitPercent'
+    },
+    {
       // Reject combinations whose minConfluence requirement exceeds the
       // number of enabled directional indicators — these would never
       // produce a buy signal and waste optimizer iterations on guaranteed

@@ -505,6 +505,12 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         param1: 'macdFast',
         param2: 'macdSlow',
         message: 'macdFast must be less than macdSlow'
+      },
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
       }
     ];
   }

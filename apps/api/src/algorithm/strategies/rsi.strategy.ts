@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -124,7 +125,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
 
   /**
    * Build exit configuration from schema parameters so the optimizer can tune
-   * stop-loss, take-profit, and hold-time directly.
+   * stop-loss and take-profit directly.
    */
   private buildExitConfig(config: RSIConfig): Partial<ExitConfig> {
     return {
@@ -185,8 +186,7 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
           previousRSI,
           threshold: config.oversoldThreshold,
           condition: 'oversold'
-        },
-        exitConfig: this.buildExitConfig(config)
+        }
       };
     }
 
@@ -321,6 +321,17 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         description: 'Take-profit distance as percentage of entry price'
       }
     };
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
+      }
+    ];
   }
 
   /**

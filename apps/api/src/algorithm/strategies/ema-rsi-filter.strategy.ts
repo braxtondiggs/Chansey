@@ -471,6 +471,12 @@ export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndi
         param1: 'fastEmaPeriod',
         param2: 'slowEmaPeriod',
         message: 'fastEmaPeriod must be less than slowEmaPeriod'
+      },
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
       }
     ];
   }
