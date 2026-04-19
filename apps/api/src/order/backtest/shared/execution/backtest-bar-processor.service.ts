@@ -171,7 +171,8 @@ export class BacktestBarProcessor {
           backtest: ctx.backtest,
           coinMap: ctx.coinMap,
           quoteCoin: ctx.quoteCoin,
-          prevCandleMap: ctx.prevCandleMap
+          prevCandleMap: ctx.prevCandleMap,
+          currentBar: i
         },
         {
           executeTradeFn: this.tradeExecutor.executeTrade.bind(this.tradeExecutor),
@@ -230,7 +231,15 @@ export class BacktestBarProcessor {
       barRegimeResult
     );
 
-    await this.dispatchFilteredSignals(ctx, filteredSignals, timestamp, marketData, currentPrices, {
+    // Re-entry cooldown filter: suppress BUYs on coins that just stopped out.
+    // Applied AFTER regime/throttle filters so cooldown-blocked signals are
+    // excluded even when the strategy would otherwise rebuy immediately.
+    const exitTracker = ctx.exitTracker;
+    const cooldownFiltered = exitTracker
+      ? filteredSignals.filter((sig) => sig.action !== 'BUY' || exitTracker.canEnter(sig.coinId, i))
+      : filteredSignals;
+
+    await this.dispatchFilteredSignals(ctx, cooldownFiltered, timestamp, marketData, currentPrices, {
       barMaxAllocation,
       barMinAllocation
     });

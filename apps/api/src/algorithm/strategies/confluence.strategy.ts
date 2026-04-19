@@ -111,7 +111,11 @@ export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndica
           confluenceScore,
           config,
           isFuturesShort,
-          blockBuy
+          blockBuy,
+          {
+            stopLossPercent: (context.config.stopLossPercent as number) ?? undefined,
+            takeProfitPercent: (context.config.takeProfitPercent as number) ?? undefined
+          }
         );
 
         if (tradingSignal) {

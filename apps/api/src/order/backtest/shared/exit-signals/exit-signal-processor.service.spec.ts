@@ -188,7 +188,8 @@ describe('ExitSignalProcessorService', () => {
           tradingFee: 0,
           timestamp: new Date(),
           trades: [],
-          slippageConfig: DEFAULT_SLIPPAGE_CONFIG
+          slippageConfig: DEFAULT_SLIPPAGE_CONFIG,
+          currentBar: 0
         },
         callbacks
       );
@@ -220,7 +221,8 @@ describe('ExitSignalProcessorService', () => {
           tradingFee: 0.001,
           timestamp: new Date(),
           trades,
-          slippageConfig: DEFAULT_SLIPPAGE_CONFIG
+          slippageConfig: DEFAULT_SLIPPAGE_CONFIG,
+          currentBar: 0
         },
         callbacks
       );
@@ -252,7 +254,8 @@ describe('ExitSignalProcessorService', () => {
           tradingFee: 0.001,
           timestamp: new Date(),
           trades,
-          slippageConfig: DEFAULT_SLIPPAGE_CONFIG
+          slippageConfig: DEFAULT_SLIPPAGE_CONFIG,
+          currentBar: 0
         },
         callbacks
       );
@@ -280,7 +283,8 @@ describe('ExitSignalProcessorService', () => {
           tradingFee: 0.001,
           timestamp: new Date(),
           trades,
-          slippageConfig: DEFAULT_SLIPPAGE_CONFIG
+          slippageConfig: DEFAULT_SLIPPAGE_CONFIG,
+          currentBar: 0
         },
         callbacks
       );
@@ -318,7 +322,8 @@ describe('ExitSignalProcessorService', () => {
           signals,
           simulatedFills,
           backtest,
-          slippageConfig: DEFAULT_SLIPPAGE_CONFIG
+          slippageConfig: DEFAULT_SLIPPAGE_CONFIG,
+          currentBar: 0
         },
         callbacks
       );
@@ -372,7 +377,8 @@ describe('ExitSignalProcessorService', () => {
           signals,
           simulatedFills,
           backtest,
-          slippageConfig: DEFAULT_SLIPPAGE_CONFIG
+          slippageConfig: DEFAULT_SLIPPAGE_CONFIG,
+          currentBar: 0
         },
         callbacks
       );

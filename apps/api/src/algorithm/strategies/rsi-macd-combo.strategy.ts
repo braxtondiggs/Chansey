@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -17,6 +18,8 @@ interface RSIMACDComboConfig {
   macdSignal: number;
   confirmationWindow: number;
   minConfidence: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
 }
 
 interface SignalState {
@@ -147,11 +150,16 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         }
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        signalsGenerated: signals.length
-      });
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        {
+          algorithm: this.name,
+          version: this.version,
+          signalsGenerated: signals.length
+        },
+        this.buildExitConfig(config)
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`RSI MACD Combo strategy execution failed: ${err.message}`, err.stack);
@@ -171,7 +179,22 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
       macdSlow: (config.macdSlow as number) ?? 26,
       macdSignal: (config.macdSignal as number) ?? 9,
       confirmationWindow: (config.confirmationWindow as number) ?? 5,
-      minConfidence: (config.minConfidence as number) ?? 0.5
+      minConfidence: (config.minConfidence as number) ?? 0.5,
+      stopLossPercent: (config.stopLossPercent as number) ?? 3.5,
+      takeProfitPercent: (config.takeProfitPercent as number) ?? 6
+    };
+  }
+
+  private buildExitConfig(config: RSIMACDComboConfig): Partial<ExitConfig> {
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: config.stopLossPercent,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: config.takeProfitPercent,
+      enableTrailingStop: false,
+      useOco: true
     };
   }
 
@@ -457,7 +480,21 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         max: 10,
         description: 'Bars within which both signals must occur'
       },
-      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' }
+      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' },
+      stopLossPercent: {
+        type: 'number',
+        default: 3.5,
+        min: 1.5,
+        max: 15,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 6,
+        min: 2,
+        max: 20,
+        description: 'Take-profit distance as percentage of entry price'
+      }
     };
   }
 
@@ -468,6 +505,12 @@ export class RSIMACDComboStrategy extends BaseAlgorithmStrategy implements IIndi
         param1: 'macdFast',
         param2: 'macdSlow',
         message: 'macdFast must be less than macdSlow'
+      },
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
       }
     ];
   }

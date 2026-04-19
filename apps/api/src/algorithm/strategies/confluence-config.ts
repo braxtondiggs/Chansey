@@ -151,6 +151,28 @@ export function getConfluenceConfigSchema(baseSchema: Record<string, unknown>): 
       min: 0,
       max: 0.7,
       description: '%B threshold for bearish (< value = price pushing lower band, confirms downtrend)'
+    },
+
+    // Exit management (tunable by optimizer).
+    // NOTE: confluence has ~26 optimizable params total (multi-indicator). With sparse
+    // random samples (e.g. <30) the optimizer can find combos that overfit training
+    // windows — measured wfaDegradation > 30% on a 15-iteration local run. Use the
+    // higher-iteration optimization presets (THOROUGH or DEFAULT) for confluence to
+    // keep walk-forward degradation healthy. The risk-monitoring drift detectors
+    // catch any post-deployment degradation that slips past promotion gates.
+    stopLossPercent: {
+      type: 'number',
+      default: 3.5,
+      min: 1.5,
+      max: 15,
+      description: 'Stop-loss distance as percentage of entry price. Overrides dynamic ATR-based stops when set.'
+    },
+    takeProfitPercent: {
+      type: 'number',
+      default: 6,
+      min: 2,
+      max: 20,
+      description: 'Take-profit distance as percentage of entry price. Overrides dynamic R:R when set.'
     }
   };
 }
@@ -228,6 +250,12 @@ export function getConfluenceParameterConstraints(): ParameterConstraint[] {
       param1: 'bbSellThreshold',
       param2: 'bbBuyThreshold',
       message: 'bbSellThreshold must be less than bbBuyThreshold'
+    },
+    {
+      type: 'less_than',
+      param1: 'stopLossPercent',
+      param2: 'takeProfitPercent',
+      message: 'stopLossPercent must be less than takeProfitPercent'
     },
     {
       // Reject combinations whose minConfluence requirement exceeds the

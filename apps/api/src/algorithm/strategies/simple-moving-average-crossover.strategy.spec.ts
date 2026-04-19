@@ -300,4 +300,44 @@ describe('SimpleMovingAverageCrossoverStrategy', () => {
       expect(strategy.canExecute(context)).toBe(false);
     });
   });
+
+  describe('exit config schema', () => {
+    it('exposes stopLossPercent and takeProfitPercent in schema', () => {
+      const schema = strategy.getConfigSchema() as Record<string, { default: number; min: number; max: number }>;
+
+      expect(schema.stopLossPercent).toBeDefined();
+      expect(schema.stopLossPercent.default).toBe(3.5);
+      expect(schema.takeProfitPercent).toBeDefined();
+      expect(schema.takeProfitPercent.default).toBe(6);
+    });
+
+    it('propagates exitConfig on result and signals when golden cross fires', async () => {
+      const prices = createMockPrices(30);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      // Golden cross at last bar
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockSmaValues(fast, slow);
+
+      const result = await strategy.execute(
+        buildContext(prices, {
+          fastPeriod: 10,
+          slowPeriod: 20,
+          stopLossPercent: 4,
+          takeProfitPercent: 10
+        })
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.exitConfig?.stopLossValue).toBe(4);
+      expect(result.exitConfig?.takeProfitValue).toBe(10);
+
+      const buy = result.signals.find((s) => s.type === SignalType.BUY);
+      expect(buy).toBeDefined();
+      expect(buy?.exitConfig?.stopLossValue).toBe(4);
+    });
+  });
 });

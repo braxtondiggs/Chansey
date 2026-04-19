@@ -204,4 +204,41 @@ describe('MeanReversionStrategy', () => {
       expect(strategy.canExecute(context)).toBe(false);
     });
   });
+
+  describe('exit config schema', () => {
+    it('exposes stopLossPercent and takeProfitPercent in schema', () => {
+      const schema = strategy.getConfigSchema() as Record<string, { default: number }>;
+
+      expect(schema.stopLossPercent).toBeDefined();
+      expect(schema.stopLossPercent.default).toBe(3.5);
+      expect(schema.takeProfitPercent).toBeDefined();
+      expect(schema.takeProfitPercent.default).toBe(6);
+    });
+
+    it('wires schema stopLossPercent into signal exitConfig (replaces hardcoded 3.5)', async () => {
+      const prices = createMockPrices(30, 100, 90); // oversold
+      const movingAverage = Array(30).fill(NaN);
+      const standardDeviation = Array(30).fill(NaN);
+      movingAverage[29] = 100;
+      standardDeviation[29] = 2;
+
+      mockIndicators(movingAverage, standardDeviation, 2);
+
+      const result = await strategy.execute(
+        buildContext(prices, {
+          period: 20,
+          threshold: 2,
+          stopLossPercent: 7,
+          takeProfitPercent: 10
+        })
+      );
+
+      expect(result.signals).toHaveLength(1);
+      const signal = result.signals[0];
+      expect(signal.type).toBe(SignalType.BUY);
+      expect(signal.exitConfig?.stopLossValue).toBe(7);
+      // Take-profit is scaled by z-score (boost = 0) so base = 10
+      expect(signal.exitConfig?.takeProfitValue).toBeGreaterThanOrEqual(10);
+    });
+  });
 });

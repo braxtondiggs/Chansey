@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import {
   ExitConfig,
   StopLossType,
@@ -24,6 +25,10 @@ interface RSIDivergenceConfig {
   rsiOversold: number;
   rsiOverbought: number;
   minConfidence: number;
+  stopLossMin: number;
+  stopLossMax: number;
+  takeProfitMin: number;
+  takeProfitMax: number;
 }
 
 interface PivotPoint {
@@ -155,7 +160,11 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
       minDivergencePercent: (config.minDivergencePercent as number) ?? 2,
       rsiOversold: (config.rsiOversold as number) ?? 40,
       rsiOverbought: (config.rsiOverbought as number) ?? 60,
-      minConfidence: (config.minConfidence as number) ?? 0.5
+      minConfidence: (config.minConfidence as number) ?? 0.5,
+      stopLossMin: (config.stopLossMin as number) ?? 2,
+      stopLossMax: (config.stopLossMax as number) ?? 15,
+      takeProfitMin: (config.takeProfitMin as number) ?? 3,
+      takeProfitMax: (config.takeProfitMax as number) ?? 20
     };
   }
 
@@ -343,7 +352,15 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
 
     const strength = this.calculateSignalStrength(divergence, config);
     const confidence = this.calculateConfidence(prices, rsi, divergence, currentATR, config);
-    const exitConfig = this.buildExitConfig(currentATR, currentPrice, divergence);
+    const exitConfig = this.buildExitConfig(
+      currentATR,
+      currentPrice,
+      divergence,
+      config.stopLossMin,
+      config.stopLossMax,
+      config.takeProfitMin,
+      config.takeProfitMax
+    );
 
     const metadata = {
       symbol: coinSymbol,
@@ -433,17 +450,29 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
   }
 
   /**
-   * ATR-scaled exit configuration.
-   * Stop-loss: max(2%, min(6%, ATR/price * 1.5))
-   * Take-profit: max(3%, min(10%, ATR/price * 2.5 + magBonus)) — ~1.7:1 R:R
-   * Trailing stop: 1x ATR percentage, activates at 1.5% profit
+   * ATR-scaled exit configuration with optimizer-tunable bounds.
+   *
+   * Stop-loss: max(stopLossMin, min(stopLossMax, ATR/price * 1.5))
+   * Take-profit: max(takeProfitMin, min(takeProfitMax, ATR/price * 2.5 + magBonus))
+   * Trailing stop: 1x ATR percentage, activates at 1.5% profit.
+   *
+   * The min/max bounds come from the strategy schema so the optimizer can widen
+   * or tighten the search range.
    */
-  private buildExitConfig(currentATR: number, currentPrice: number, divergence: DivergenceResult): Partial<ExitConfig> {
+  private buildExitConfig(
+    currentATR: number,
+    currentPrice: number,
+    divergence: DivergenceResult,
+    stopLossMin: number,
+    stopLossMax: number,
+    takeProfitMin: number,
+    takeProfitMax: number
+  ): Partial<ExitConfig> {
     const atrPct = currentPrice > 0 ? (currentATR / currentPrice) * 100 : 3;
     const magBonus = Math.min(2, divergence.score / 30);
 
-    const stopLossPct = Math.max(2, Math.min(6, atrPct * 1.5));
-    const takeProfitPct = Math.max(3, Math.min(10, atrPct * 2.5 + magBonus));
+    const stopLossPct = Math.max(stopLossMin, Math.min(stopLossMax, atrPct * 1.5));
+    const takeProfitPct = Math.max(takeProfitMin, Math.min(takeProfitMax, atrPct * 2.5 + magBonus));
     const trailingPct = Math.max(1, Math.min(4, atrPct));
 
     return {
@@ -538,8 +567,45 @@ export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IInd
         max: 75,
         description: 'RSI overbought zone gate for bearish signals'
       },
-      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' }
+      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' },
+      stopLossMin: {
+        type: 'number',
+        default: 2,
+        min: 1,
+        max: 5,
+        description: 'Lower bound for ATR-scaled stop-loss percentage'
+      },
+      stopLossMax: {
+        type: 'number',
+        default: 15,
+        min: 5,
+        max: 15,
+        description: 'Upper bound for ATR-scaled stop-loss percentage'
+      },
+      takeProfitMin: {
+        type: 'number',
+        default: 3,
+        min: 2,
+        max: 10,
+        description: 'Lower bound for ATR-scaled take-profit percentage'
+      },
+      takeProfitMax: {
+        type: 'number',
+        default: 20,
+        min: 6,
+        max: 30,
+        description: 'Upper bound for ATR-scaled take-profit percentage'
+      }
     };
+  }
+
+  // Prevent the optimizer from picking inverted bounds (e.g. takeProfitMin=10, takeProfitMax=6)
+  // which would silently collapse the ATR-scaled clamp to a constant and disable the dynamic exit.
+  override getParameterConstraints(): ParameterConstraint[] {
+    return [
+      { type: 'less_than', param1: 'stopLossMin', param2: 'stopLossMax' },
+      { type: 'less_than', param1: 'takeProfitMin', param2: 'takeProfitMax' }
+    ];
   }
 
   canExecute(context: AlgorithmContext): boolean {

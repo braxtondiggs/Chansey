@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
@@ -56,6 +57,8 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
       // Get configuration with defaults
       const period = (context.config.period as number) || 20;
       const threshold = (context.config.threshold as number) || 2; // Standard deviations
+      const stopLossPercent = (context.config.stopLossPercent as number) ?? 3.5;
+      const takeProfitPercent = (context.config.takeProfitPercent as number) ?? 6;
       const isBacktest = !!(
         context.metadata?.backtestId ||
         context.metadata?.isOptimization ||
@@ -124,7 +127,9 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
           priceHistory,
           movingAverage,
           standardDeviation,
-          threshold
+          threshold,
+          stopLossPercent,
+          takeProfitPercent
         );
 
         if (signal) {
@@ -165,7 +170,9 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
     prices: CandleData[],
     movingAverage: number[],
     standardDeviation: number[],
-    threshold: number
+    threshold: number,
+    stopLossPercent: number,
+    takeProfitPercent: number
   ): TradingSignal | null {
     const currentIndex = prices.length - 1;
     const currentPrice = prices[currentIndex].avg;
@@ -197,7 +204,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
           standardDeviation: currentStdDev,
           signalType: 'oversold'
         },
-        exitConfig: this.buildExitConfig(absZScore, threshold)
+        exitConfig: this.buildExitConfig(absZScore, threshold, stopLossPercent, takeProfitPercent)
       };
     }
 
@@ -217,7 +224,7 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
           standardDeviation: currentStdDev,
           signalType: 'overbought'
         },
-        exitConfig: this.buildExitConfig(absZScore, threshold)
+        exitConfig: this.buildExitConfig(absZScore, threshold, stopLossPercent, takeProfitPercent)
       };
     }
 
@@ -227,18 +234,25 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
 
   /**
    * Build strategy-specific exit configuration for mean reversion.
-   * Tight stop loss (mean reversion expects bounded moves) and
-   * take profit scaled by z-score distance from the mean.
+   *
+   * Stop-loss and take-profit base values come from the optimizer-tunable
+   * schema params. Take-profit is scaled up by z-score distance from the mean
+   * so stronger deviations aim for proportionally larger moves.
    */
-  private buildExitConfig(absZScore: number, threshold: number): Partial<ExitConfig> {
-    // Take profit: scaled by z-score distance, capped at 8%
-    // At threshold (e.g., 2σ) → ~3%, at 3σ → ~5%, at 4σ → 8%
-    const takeProfitPct = Math.max(1, Math.min(8, 1.5 + ((absZScore - threshold) / threshold) * 3.5));
+  private buildExitConfig(
+    absZScore: number,
+    threshold: number,
+    stopLossPercent: number,
+    takeProfitPercent: number
+  ): Partial<ExitConfig> {
+    // Scale take-profit by z-score excess: at threshold σ use base, widen beyond
+    const zScoreBoost = Math.max(0, (absZScore - threshold) / threshold);
+    const takeProfitPct = Math.max(1, Math.min(40, takeProfitPercent * (1 + zScoreBoost * 0.5)));
 
     return {
       enableStopLoss: true,
       stopLossType: StopLossType.PERCENTAGE,
-      stopLossValue: 3.5, // 3.5% stop — wide enough to survive normal crypto volatility
+      stopLossValue: stopLossPercent,
       enableTakeProfit: true,
       takeProfitType: TakeProfitType.PERCENTAGE,
       takeProfitValue: takeProfitPct,
@@ -300,8 +314,33 @@ export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IInd
       period: { type: 'number', default: 20, min: 5, max: 100 },
       threshold: { type: 'number', default: 2, min: 1, max: 4 },
       minConfidence: { type: 'number', default: 0.4, min: 0, max: 1 },
-      enableDynamicThreshold: { type: 'boolean', default: true }
+      enableDynamicThreshold: { type: 'boolean', default: true },
+      stopLossPercent: {
+        type: 'number',
+        default: 3.5,
+        min: 1.5,
+        max: 15,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 6,
+        min: 2,
+        max: 20,
+        description: 'Take-profit base distance as percentage of entry price (scaled by z-score)'
+      }
     };
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
+      }
+    ];
   }
 
   /**

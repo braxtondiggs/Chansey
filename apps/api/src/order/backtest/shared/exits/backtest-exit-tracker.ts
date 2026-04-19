@@ -51,7 +51,12 @@ export interface TrackedExit {
  */
 export interface SerializableExitTrackerState {
   positions: TrackedExit[];
+  /** Cooldown map keyed by coinId. Value = bar index at which cooldown expires. */
+  cooldowns?: Array<[string, number]>;
 }
+
+/** Default cooldown window when exitCooldownBars is not specified (bars). */
+export const DEFAULT_EXIT_COOLDOWN_BARS = 10;
 
 /**
  * In-memory position exit tracker for the backtest engine.
@@ -62,6 +67,14 @@ export interface SerializableExitTrackerState {
  */
 export class BacktestExitTracker {
   private positions = new Map<string, TrackedExit>();
+  /**
+   * Re-entry cooldowns keyed by coinId. Value = bar index at which the
+   * cooldown expires (exclusive). A BUY signal is blocked while the current
+   * bar < expiry. Cooldowns are set when a position exits via stop-loss or
+   * trailing stop to prevent rapid re-entry churn on a coin that just gapped
+   * through the stop level.
+   */
+  private exitCooldowns = new Map<string, number>();
 
   constructor(private readonly config: ExitConfig) {}
 
@@ -190,11 +203,14 @@ export class BacktestExitTracker {
    * @param closePrices - Map<coinId, close price> for the current bar
    * @param lowPrices - Map<coinId, low price> for SL breach detection
    * @param highPrices - Map<coinId, high price> for TP breach detection
+   * @param currentBar - Optional current bar index used to record re-entry
+   *   cooldowns on stop-loss / trailing exits. When omitted, no cooldown is set.
    */
   checkExits(
     closePrices: Map<string, number>,
     lowPrices: Map<string, number>,
-    highPrices: Map<string, number>
+    highPrices: Map<string, number>,
+    currentBar?: number
   ): ExitSignal[] {
     const signals: ExitSignal[] = [];
 
@@ -226,6 +242,7 @@ export class BacktestExitTracker {
               lowPrice
             }
           });
+          this.registerExitCooldown(coinId, tracked, currentBar);
           exited = true;
           // OCO: if SL fires, TP is cancelled — handled by removing position below
         }
@@ -284,6 +301,7 @@ export class BacktestExitTracker {
                 lowPrice
               }
             });
+            this.registerExitCooldown(coinId, tracked, currentBar);
             exited = true;
           }
         }
@@ -294,6 +312,34 @@ export class BacktestExitTracker {
     }
 
     return signals;
+  }
+
+  /**
+   * Check whether a BUY on `coinId` is allowed at the current bar.
+   * Returns false while the post-exit cooldown is still active.
+   * Expired cooldowns are cleaned up lazily on read.
+   */
+  canEnter(coinId: string, currentBar: number): boolean {
+    const cooldownExpiry = this.exitCooldowns.get(coinId);
+    if (cooldownExpiry === undefined) return true;
+    if (currentBar >= cooldownExpiry) {
+      this.exitCooldowns.delete(coinId);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Record a re-entry cooldown window for a coin that just exited via SL or
+   * trailing stop. Pulls cooldown length from the position's own config,
+   * falling back to the tracker's base config, then to the default.
+   */
+  private registerExitCooldown(coinId: string, tracked: TrackedExit, currentBar?: number): void {
+    if (currentBar === undefined) return;
+    const cfg = tracked.positionConfig ?? this.config;
+    const cooldownBars = cfg.exitCooldownBars ?? this.config.exitCooldownBars ?? DEFAULT_EXIT_COOLDOWN_BARS;
+    if (cooldownBars <= 0) return;
+    this.exitCooldowns.set(coinId, currentBar + cooldownBars);
   }
 
   /**
@@ -337,7 +383,8 @@ export class BacktestExitTracker {
    */
   serialize(): SerializableExitTrackerState {
     return {
-      positions: Array.from(this.positions.values()).map((t) => ({ ...t }))
+      positions: Array.from(this.positions.values()).map((t) => ({ ...t })),
+      cooldowns: Array.from(this.exitCooldowns.entries())
     };
   }
 
@@ -348,6 +395,11 @@ export class BacktestExitTracker {
     const tracker = new BacktestExitTracker(config);
     for (const pos of state.positions) {
       tracker.positions.set(pos.coinId, { ...pos });
+    }
+    if (state.cooldowns) {
+      for (const [coinId, expiry] of state.cooldowns) {
+        tracker.exitCooldowns.set(coinId, expiry);
+      }
     }
     return tracker;
   }

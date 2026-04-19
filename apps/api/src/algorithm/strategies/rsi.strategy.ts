@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -12,6 +14,8 @@ interface RSIConfig {
   oversoldThreshold: number;
   overboughtThreshold: number;
   minConfidence: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
 }
 
 /**
@@ -88,11 +92,16 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         }
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        signalsGenerated: signals.length
-      });
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        {
+          algorithm: this.name,
+          version: this.version,
+          signalsGenerated: signals.length
+        },
+        this.buildExitConfig(config)
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`RSI strategy execution failed: ${err.message}`, err.stack);
@@ -108,7 +117,26 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
       period: (config.period as number) ?? 14,
       oversoldThreshold: (config.oversoldThreshold as number) ?? 25,
       overboughtThreshold: (config.overboughtThreshold as number) ?? 75,
-      minConfidence: (config.minConfidence as number) ?? 0.5
+      minConfidence: (config.minConfidence as number) ?? 0.5,
+      stopLossPercent: (config.stopLossPercent as number) ?? 3.5,
+      takeProfitPercent: (config.takeProfitPercent as number) ?? 6
+    };
+  }
+
+  /**
+   * Build exit configuration from schema parameters so the optimizer can tune
+   * stop-loss and take-profit directly.
+   */
+  private buildExitConfig(config: RSIConfig): Partial<ExitConfig> {
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: config.stopLossPercent,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: config.takeProfitPercent,
+      enableTrailingStop: false,
+      useOco: true
     };
   }
 
@@ -277,8 +305,33 @@ export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProv
         min: 0,
         max: 1,
         description: 'Minimum confidence required to generate signal'
+      },
+      stopLossPercent: {
+        type: 'number',
+        default: 3.5,
+        min: 1.5,
+        max: 15,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 6,
+        min: 2,
+        max: 20,
+        description: 'Take-profit distance as percentage of entry price'
       }
     };
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
+      }
+    ];
   }
 
   /**

@@ -33,21 +33,13 @@ export class BalanceService {
    * @returns Balance information from all connected exchanges
    */
   async getUserBalances(user: User): Promise<BalanceResponseDto> {
-    this.logger.log(`Getting balances for user: ${user.id}`);
+    const currentBalances = await this.getCurrentBalances(user);
+    const totalUsdValue = currentBalances.reduce((sum, exchange) => sum + exchange.totalUsdValue, 0);
 
-    try {
-      const currentBalances = await this.getCurrentBalances(user);
-      const totalUsdValue = currentBalances.reduce((sum, exchange) => sum + exchange.totalUsdValue, 0);
-
-      return {
-        current: currentBalances,
-        totalUsdValue
-      };
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.error(`Error getting balances for user: ${user.id}`, err.stack);
-      throw error;
-    }
+    return {
+      current: currentBalances,
+      totalUsdValue
+    };
   }
 
   /**

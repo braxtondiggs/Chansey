@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
+import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
@@ -14,6 +16,8 @@ interface BollingerSqueezeConfig {
   minSqueezeBars: number;
   breakoutConfirmation: boolean;
   minConfidence: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
 }
 
 interface SqueezeState {
@@ -128,11 +132,16 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
         );
       }
 
-      return this.createSuccessResult(signals, chartData, {
-        algorithm: this.name,
-        version: this.version,
-        signalsGenerated: signals.length
-      });
+      return this.createSuccessResult(
+        signals,
+        chartData,
+        {
+          algorithm: this.name,
+          version: this.version,
+          signalsGenerated: signals.length
+        },
+        this.buildExitConfig(config)
+      );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(
@@ -153,7 +162,27 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
       squeezeThreshold: (config.squeezeThreshold as number) ?? 0.05, // 5% bandwidth
       minSqueezeBars: (config.minSqueezeBars as number) ?? 4,
       breakoutConfirmation: (config.breakoutConfirmation as boolean) ?? true,
-      minConfidence: (config.minConfidence as number) ?? 0.5
+      minConfidence: (config.minConfidence as number) ?? 0.5,
+      stopLossPercent: (config.stopLossPercent as number) ?? 2.5,
+      takeProfitPercent: (config.takeProfitPercent as number) ?? 5
+    };
+  }
+
+  /**
+   * Build a schema-driven exit configuration for squeeze breakouts.
+   * Takes profit at a wider distance than stop-loss to fix the prior
+   * structurally-inverted risk-reward.
+   */
+  private buildExitConfig(config: BollingerSqueezeConfig): Partial<ExitConfig> {
+    return {
+      enableStopLoss: true,
+      stopLossType: StopLossType.PERCENTAGE,
+      stopLossValue: config.stopLossPercent,
+      enableTakeProfit: true,
+      takeProfitType: TakeProfitType.PERCENTAGE,
+      takeProfitValue: config.takeProfitPercent,
+      enableTrailingStop: false,
+      useOco: true
     };
   }
 
@@ -451,8 +480,33 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
         description: 'Minimum bars in squeeze before breakout signal'
       },
       breakoutConfirmation: { type: 'boolean', default: true, description: 'Require price momentum confirmation' },
-      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' }
+      minConfidence: { type: 'number', default: 0.5, min: 0, max: 1, description: 'Minimum confidence required' },
+      stopLossPercent: {
+        type: 'number',
+        default: 2.5,
+        min: 1.5,
+        max: 15,
+        description: 'Stop-loss distance as percentage of entry price'
+      },
+      takeProfitPercent: {
+        type: 'number',
+        default: 5,
+        min: 2,
+        max: 20,
+        description: 'Take-profit distance as percentage of entry price (must exceed SL for positive expectancy)'
+      }
     };
+  }
+
+  getParameterConstraints(): ParameterConstraint[] {
+    return [
+      {
+        type: 'less_than',
+        param1: 'stopLossPercent',
+        param2: 'takeProfitPercent',
+        message: 'stopLossPercent must be less than takeProfitPercent'
+      }
+    ];
   }
 
   /**

@@ -296,4 +296,50 @@ describe('RSIStrategy', () => {
       expect(strategy.canExecute(context)).toBe(false);
     });
   });
+
+  describe('exit config schema', () => {
+    it('exposes stopLossPercent and takeProfitPercent in schema', () => {
+      const schema = strategy.getConfigSchema() as Record<string, { default: number; min: number; max: number }>;
+
+      expect(schema.stopLossPercent).toBeDefined();
+      expect(schema.stopLossPercent.default).toBe(3.5);
+      expect(schema.stopLossPercent.min).toBe(1.5);
+      expect(schema.stopLossPercent.max).toBe(15);
+
+      expect(schema.takeProfitPercent).toBeDefined();
+      expect(schema.takeProfitPercent.default).toBe(6);
+      expect(schema.takeProfitPercent.max).toBe(20);
+    });
+
+    it('attaches schema-driven exitConfig to BUY signals', async () => {
+      const prices = createMockPrices(30);
+      // Fill last 5 bars with oversold readings so confidence + signal generate
+      const rsiValues = Array(30).fill(NaN);
+      rsiValues[25] = 25;
+      rsiValues[26] = 24;
+      rsiValues[27] = 23;
+      rsiValues[28] = 22;
+      rsiValues[29] = 20;
+      mockRsi(rsiValues);
+
+      const context = buildContext(prices, {
+        period: 14,
+        oversoldThreshold: 30,
+        overboughtThreshold: 70,
+        minConfidence: 0,
+        stopLossPercent: 5,
+        takeProfitPercent: 12
+      });
+
+      const result = await strategy.execute(context);
+      const buy = result.signals.find((s) => s.type === SignalType.BUY);
+      expect(buy).toBeDefined();
+      // Exit config lives at the result level; mapStrategySignal fans it out
+      // to each signal downstream, so the result-level config is the source of truth.
+      expect(result.exitConfig?.stopLossValue).toBe(5);
+      expect(result.exitConfig?.takeProfitValue).toBe(12);
+      expect(result.exitConfig?.enableStopLoss).toBe(true);
+      expect(result.exitConfig?.enableTakeProfit).toBe(true);
+    });
+  });
 });
