@@ -1,7 +1,7 @@
 ---
 description: 1-hour OHLC candle pipeline — fetch, cache, store, serve, backfill
 globs:
-  - "apps/api/src/ohlc/**"
+  - 'apps/api/src/ohlc/**'
 ---
 
 # OHLC Module
@@ -17,11 +17,13 @@ globs:
 
 ## Data Flow
 
-CCXT → `ExchangeOHLCService.fetchOHLCWithFallback()` (priority: binance_us → gdax → kraken, 500ms fallback delay) → `OHLCSyncTask` (hourly) → `upsertCandles()` → PostgreSQL.
+CCXT → `ExchangeOHLCService.fetchOHLCWithFallback()` (priority: binance_us → gdax → kraken, 500ms fallback delay) →
+`OHLCSyncTask` (hourly) → `upsertCandles()` → PostgreSQL.
 
 ## Backfill
 
-`OHLCBackfillService`: batches of 500 candles, 100ms delay, Redis progress tracking (`ohlc:backfill:{coinId}`), 1-year default lookback.
+`OHLCBackfillService`: batches of 500 candles, 100ms delay, Redis progress tracking (`ohlc:backfill:{coinId}`), 1-year
+default lookback.
 
 ## Realtime
 
@@ -29,7 +31,10 @@ CCXT → `ExchangeOHLCService.fetchOHLCWithFallback()` (priority: binance_us →
 
 ## Symbol Map Seeding
 
-Top 50 coins on first boot, weekly refresh (Sunday 4AM), prefers `/USD` over `/USDT`.
+Seed on first boot + weekly refresh (Sunday 4AM UTC). Primary path: union of base symbols listed across priority US
+exchanges (`getAllBaseSymbols` over `binance_us → gdax → kraken`) intersected with the `coin` table via
+`getCoinsBySymbols()` — no hard cap. Fallback to `getPopularCoins(50)` only when no exchange markets can be loaded.
+Prefers `/USD` over `/USDT` when selecting the pair.
 
 ## Health & Pruning
 

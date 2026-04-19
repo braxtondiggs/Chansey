@@ -1,3 +1,4 @@
+export * from './active-pipeline-status.dto';
 export * from './pipeline-filters.dto';
 
 import { type PipelineProgressionRules, type PipelineStage, type PipelineStageConfig } from '../interfaces';

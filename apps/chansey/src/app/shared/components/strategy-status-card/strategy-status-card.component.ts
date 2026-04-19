@@ -135,7 +135,7 @@ export class StrategyStatusCardComponent {
     const data = this.status();
     if (!data) return '';
     if (data.wasRejected || data.isRetrying) return '';
-    if (data.minDaysRemaining === 0 && data.maxDaysRemaining === 0) return 'Activating soon';
+    if (data.minDaysRemaining === 0 && data.maxDaysRemaining === 0) return 'Going live soon';
     if (data.minDaysRemaining === data.maxDaysRemaining) {
       return `Est. ${data.maxDaysRemaining} day${data.maxDaysRemaining === 1 ? '' : 's'} until live trading`;
     }

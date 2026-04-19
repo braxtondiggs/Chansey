@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { DataSource, type Repository } from 'typeorm';
+import { DataSource, type FindManyOptions, In, type Repository } from 'typeorm';
 
 import { PipelineEventHandlerService } from './pipeline-event-handler.service';
 import { PipelineOrchestratorService } from './pipeline-orchestrator.service';
@@ -60,7 +60,8 @@ describe('PipelineOrchestratorService', () => {
             findOne: jest.fn(),
             findAndCount: jest.fn(),
             remove: jest.fn(),
-            update: jest.fn()
+            update: jest.fn(),
+            count: jest.fn()
           }
         },
         {
@@ -292,6 +293,41 @@ describe('PipelineOrchestratorService', () => {
       pipelineRepository.findOne.mockResolvedValue(makePipeline({ status: PipelineStatus.RUNNING }));
       await expect(service.deletePipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
       expect(pipelineRepository.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getActivePipelineStatus', () => {
+    it('reports no active pipelines when count is zero', async () => {
+      pipelineRepository.count.mockResolvedValue(0);
+      await expect(service.getActivePipelineStatus(mockUser.id)).resolves.toEqual({
+        hasActivePipeline: false,
+        activeCount: 0
+      });
+    });
+
+    it('reports a single active pipeline', async () => {
+      pipelineRepository.count.mockResolvedValue(1);
+      await expect(service.getActivePipelineStatus(mockUser.id)).resolves.toEqual({
+        hasActivePipeline: true,
+        activeCount: 1
+      });
+    });
+
+    it('reports multiple active pipelines', async () => {
+      pipelineRepository.count.mockResolvedValue(3);
+      await expect(service.getActivePipelineStatus(mockUser.id)).resolves.toEqual({
+        hasActivePipeline: true,
+        activeCount: 3
+      });
+    });
+
+    it('filters on PENDING, RUNNING, and PAUSED statuses only', async () => {
+      pipelineRepository.count.mockResolvedValue(0);
+      await service.getActivePipelineStatus(mockUser.id);
+      const args = pipelineRepository.count.mock.calls[0][0] as FindManyOptions<Pipeline>;
+      const where = args.where as { user: { id: string }; status: ReturnType<typeof In> };
+      expect(where.user).toEqual({ id: mockUser.id });
+      expect(where.status).toEqual(In([PipelineStatus.PENDING, PipelineStatus.RUNNING, PipelineStatus.PAUSED]));
     });
   });
 

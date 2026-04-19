@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
+import { QueryClient } from '@tanstack/angular-query-experimental';
 import { MessageService } from 'primeng/api';
 import { AutoCompleteModule } from 'primeng/autocomplete';
 import { ButtonModule } from 'primeng/button';
@@ -24,6 +25,7 @@ import {
   TRADING_STYLE_PROFILES,
   TradingStyleProfile
 } from '@chansey/api-interfaces';
+import { ErrorCodes, isApiError, queryKeys } from '@chansey/shared';
 
 import { BEAR_MARKET_CAPITAL_SCALE, DAILY_LOSS_LIMIT_SCALE, RISK_CRITERIA } from './risk-profile.constants';
 
@@ -32,6 +34,7 @@ import { SettingsService } from '../../../pages/user/settings/settings.service';
 import { AuthService } from '../../services/auth.service';
 import { CoinDataService } from '../../services/coin-data.service';
 import { filterCoinSuggestions } from '../../utils/coin-filter.util';
+import { PipelineImpactBannerComponent } from '../pipeline-impact-banner/pipeline-impact-banner.component';
 
 @Component({
   selector: 'app-risk-profile-form',
@@ -43,6 +46,7 @@ import { filterCoinSuggestions } from '../../utils/coin-filter.util';
     FormsModule,
     MessageModule,
     PanelModule,
+    PipelineImpactBannerComponent,
     ProgressBar,
     ReactiveFormsModule,
     RouterLink,
@@ -78,6 +82,7 @@ export class RiskProfileFormComponent {
   private coinDataService = inject(CoinDataService);
   private riskService = inject(RisksService);
   private settingsService = inject(SettingsService);
+  private queryClient = inject(QueryClient);
 
   /** Whether to show the trading coins autocomplete in manual mode */
   showTradingCoins = input(true);
@@ -90,6 +95,9 @@ export class RiskProfileFormComponent {
 
   /** Label for the save button */
   saveButtonLabel = input('Save Risk Profile');
+
+  /** Whether to show the in-flight pipeline banner above the form (disable when the container renders it) */
+  showPipelineBanner = input(true);
 
   /** Emitted after a successful save */
   saved = output<void>();
@@ -137,6 +145,9 @@ export class RiskProfileFormComponent {
 
   tradingCoinObjects = computed(() => this.tradingCoinItems().map((w) => w.coin));
   tradingCoinSuggestions = signal<Coin[]>([]);
+
+  /** Holds the message surfaced when the backend blocks a coin removal (open position exists). */
+  coinRemovalError = signal<string | null>(null);
 
   readonly MIN_TRADING_COINS = MIN_TRADING_COINS;
 
@@ -302,10 +313,24 @@ export class RiskProfileFormComponent {
   onTradingCoinUnselect(event: { value: Coin }): void {
     const coin = event.value;
     if (!coin?.id) return;
+    this.coinRemovalError.set(null);
     this.pendingTradingRemoves.update((set) => new Set([...set, coin.id]));
     const item = this.tradingCoinItems().find((w) => w.coin.id === coin.id);
     if (item) {
       this.removeFromTradingMutation.mutate(item.id, {
+        onError: (error: Error) => {
+          if (isApiError(error) && error.hasCode(ErrorCodes.BUSINESS_COIN_SELECTION_BLOCKED)) {
+            this.coinRemovalError.set(error.message);
+          } else {
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Remove Failed',
+              detail: error?.message || 'Failed to remove coin. Please try again.'
+            });
+          }
+          // Refresh query so the autocomplete re-renders with the coin still selected
+          this.queryClient.invalidateQueries({ queryKey: queryKeys.coins.tradingCoins() });
+        },
         onSettled: () =>
           this.pendingTradingRemoves.update((set) => {
             const newSet = new Set(set);
@@ -314,6 +339,10 @@ export class RiskProfileFormComponent {
           })
       });
     }
+  }
+
+  dismissCoinRemovalError(): void {
+    this.coinRemovalError.set(null);
   }
 
   // --- Save ---

@@ -6,7 +6,8 @@ import { CoinSelection, CoinSelectionRelations } from './coin-selection.entity';
 import { CoinSelectionService } from './coin-selection.service';
 import { CoinSelectionHistoricalPriceTask } from './tasks/coin-selection-historical-price.task';
 
-import { CoinSelectionNotFoundException } from '../common/exceptions';
+import { ActivePositionGuardService } from '../active-position-guard';
+import { CoinSelectionBlockedException, CoinSelectionNotFoundException } from '../common/exceptions';
 import { OHLCService } from '../ohlc/ohlc.service';
 
 describe('CoinSelectionService', () => {
@@ -20,6 +21,7 @@ describe('CoinSelectionService', () => {
   };
   let historicalPriceTask: { addHistoricalPriceJob: jest.Mock };
   let ohlcService: { getCandleCount: jest.Mock };
+  let activePositionGuard: { getActivePositionCoinIds: jest.Mock };
 
   const mockUser = { id: 'user-123' };
 
@@ -33,13 +35,15 @@ describe('CoinSelectionService', () => {
     };
     historicalPriceTask = { addHistoricalPriceJob: jest.fn() };
     ohlcService = { getCandleCount: jest.fn() };
+    activePositionGuard = { getActivePositionCoinIds: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CoinSelectionService,
         { provide: getRepositoryToken(CoinSelection), useValue: selectionRepo },
         { provide: CoinSelectionHistoricalPriceTask, useValue: historicalPriceTask },
-        { provide: OHLCService, useValue: ohlcService }
+        { provide: OHLCService, useValue: ohlcService },
+        { provide: ActivePositionGuardService, useValue: activePositionGuard }
       ]
     }).compile();
 
@@ -171,21 +175,54 @@ describe('CoinSelectionService', () => {
   });
 
   describe('deleteCoinSelectionItem', () => {
-    it('throws when delete affects no rows', async () => {
-      selectionRepo.delete.mockResolvedValue({ affected: 0 });
+    it('throws when selection does not exist', async () => {
+      selectionRepo.findOne.mockResolvedValue(null);
 
       await expect(service.deleteCoinSelectionItem('selection-1', mockUser.id)).rejects.toBeInstanceOf(
         CoinSelectionNotFoundException
       );
+      expect(activePositionGuard.getActivePositionCoinIds).not.toHaveBeenCalled();
+      expect(selectionRepo.delete).not.toHaveBeenCalled();
     });
 
-    it('returns delete result when successful', async () => {
+    it('throws CoinSelectionBlockedException when user has an active position in the coin', async () => {
+      selectionRepo.findOne.mockResolvedValue({
+        id: 'selection-1',
+        coin: { id: 'btc', symbol: 'btc' }
+      });
+      activePositionGuard.getActivePositionCoinIds.mockResolvedValue(new Set(['btc']));
+
+      await expect(service.deleteCoinSelectionItem('selection-1', mockUser.id)).rejects.toBeInstanceOf(
+        CoinSelectionBlockedException
+      );
+      expect(selectionRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes when no active position exists', async () => {
+      selectionRepo.findOne.mockResolvedValue({
+        id: 'selection-1',
+        coin: { id: 'btc', symbol: 'BTC' }
+      });
+      activePositionGuard.getActivePositionCoinIds.mockResolvedValue(new Set());
       selectionRepo.delete.mockResolvedValue({ affected: 1 });
 
       const result = await service.deleteCoinSelectionItem('selection-1', mockUser.id);
 
       expect(result).toEqual({ affected: 1 });
       expect(selectionRepo.delete).toHaveBeenCalledWith({ id: 'selection-1', user: { id: mockUser.id } });
+    });
+
+    it('throws when delete affects no rows', async () => {
+      selectionRepo.findOne.mockResolvedValue({
+        id: 'selection-1',
+        coin: { id: 'btc', symbol: 'BTC' }
+      });
+      activePositionGuard.getActivePositionCoinIds.mockResolvedValue(new Set());
+      selectionRepo.delete.mockResolvedValue({ affected: 0 });
+
+      await expect(service.deleteCoinSelectionItem('selection-1', mockUser.id)).rejects.toBeInstanceOf(
+        CoinSelectionNotFoundException
+      );
     });
   });
 });

@@ -7,6 +7,7 @@ import { CoinSelection } from './coin-selection.entity';
 import { CoinSelectionService } from './coin-selection.service';
 import { CoinSelectionHistoricalPriceTask } from './tasks/coin-selection-historical-price.task';
 
+import { ActivePositionGuardModule } from '../active-position-guard';
 import { CoinModule } from '../coin/coin.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
 
@@ -14,6 +15,7 @@ import { OHLCModule } from '../ohlc/ohlc.module';
   imports: [
     TypeOrmModule.forFeature([CoinSelection]),
     BullModule.registerQueue({ name: 'coin-selection-queue' }),
+    ActivePositionGuardModule,
     forwardRef(() => CoinModule),
     forwardRef(() => OHLCModule)
   ],
