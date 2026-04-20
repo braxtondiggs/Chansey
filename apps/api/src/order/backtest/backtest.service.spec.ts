@@ -175,7 +175,13 @@ describe('BacktestService', () => {
           deterministicSeed: 'seed-1',
           mode: BacktestType.HISTORICAL
         }),
-        { jobId: 'backtest-1', removeOnComplete: true, removeOnFail: 50 }
+        {
+          jobId: 'backtest-1',
+          removeOnComplete: true,
+          removeOnFail: 50,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 }
+        }
       );
       expect(metricsService.recordBacktestCreated).toHaveBeenCalledWith(BacktestType.HISTORICAL, 'Algo');
     });
@@ -290,7 +296,13 @@ describe('BacktestService', () => {
           deterministicSeed: 'live-seed-1',
           mode: BacktestType.LIVE_REPLAY
         }),
-        { jobId: backtestId, removeOnComplete: true, removeOnFail: 50 }
+        {
+          jobId: backtestId,
+          removeOnComplete: true,
+          removeOnFail: 50,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 }
+        }
       );
       expect(historicalQueue.add).not.toHaveBeenCalled();
     });

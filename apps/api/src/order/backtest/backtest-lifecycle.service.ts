@@ -216,7 +216,9 @@ export class BacktestLifecycleService {
       await queue.add('execute-backtest', payload, {
         jobId: backtest.id,
         removeOnComplete: true,
-        removeOnFail: 50
+        removeOnFail: 50,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 }
       });
 
       try {

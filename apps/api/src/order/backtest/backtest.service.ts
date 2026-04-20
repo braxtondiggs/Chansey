@@ -180,7 +180,9 @@ export class BacktestService {
       await targetQueue.add('execute-backtest', jobPayload, {
         jobId: savedBacktest.id,
         removeOnComplete: true,
-        removeOnFail: 50
+        removeOnFail: 50,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 }
       });
 
       return this.mapper.mapRunDetail(savedBacktest);
