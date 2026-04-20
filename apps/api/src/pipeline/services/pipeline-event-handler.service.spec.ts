@@ -76,6 +76,7 @@ describe('PipelineEventHandlerService', () => {
             evaluateOptimizationProgression: jest.fn(),
             advanceToNextStage: jest.fn(),
             failPipeline: jest.fn(),
+            rejectPipeline: jest.fn(),
             calculatePipelineScore: jest.fn(),
             evaluateStageProgression: jest.fn(),
             completePipeline: jest.fn(),
@@ -98,6 +99,7 @@ describe('PipelineEventHandlerService', () => {
 
       expect(progressionService.advanceToNextStage).not.toHaveBeenCalled();
       expect(progressionService.failPipeline).not.toHaveBeenCalled();
+      expect(progressionService.rejectPipeline).not.toHaveBeenCalled();
     });
 
     it('advances pipeline when improvement meets threshold', async () => {
@@ -108,9 +110,10 @@ describe('PipelineEventHandlerService', () => {
 
       expect(progressionService.advanceToNextStage).toHaveBeenCalled();
       expect(progressionService.failPipeline).not.toHaveBeenCalled();
+      expect(progressionService.rejectPipeline).not.toHaveBeenCalled();
     });
 
-    it('fails pipeline when improvement is below threshold', async () => {
+    it('rejects pipeline when improvement is below threshold', async () => {
       pipelineRepository.findOne.mockResolvedValue(makePipeline());
       progressionService.evaluateOptimizationProgression.mockReturnValue({
         passed: false,
@@ -119,10 +122,11 @@ describe('PipelineEventHandlerService', () => {
 
       await service.handleOptimizationComplete('run-123', 'strategy-123', {}, 50, 1);
 
-      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+      expect(progressionService.rejectPipeline).toHaveBeenCalledWith(
         expect.any(Object),
         expect.stringContaining('Optimization did not meet')
       );
+      expect(progressionService.failPipeline).not.toHaveBeenCalled();
       expect(progressionService.advanceToNextStage).not.toHaveBeenCalled();
     });
 
@@ -135,7 +139,7 @@ describe('PipelineEventHandlerService', () => {
       expect(progressionService.evaluateOptimizationProgression).toHaveBeenCalledWith(expect.any(Object), 10, 80);
     });
 
-    it('fails pipeline when bestScore is negative (absolute-score gate)', async () => {
+    it('rejects pipeline when bestScore is negative (absolute-score gate)', async () => {
       pipelineRepository.findOne.mockResolvedValue(makePipeline());
       progressionService.evaluateOptimizationProgression.mockReturnValue({
         passed: false,
@@ -145,10 +149,11 @@ describe('PipelineEventHandlerService', () => {
       await service.handleOptimizationComplete('run-123', 'strategy-123', { rsi: 14 }, -4, 200);
 
       expect(progressionService.evaluateOptimizationProgression).toHaveBeenCalledWith(expect.any(Object), 200, -4);
-      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+      expect(progressionService.rejectPipeline).toHaveBeenCalledWith(
         expect.any(Object),
         expect.stringContaining('Best test score')
       );
+      expect(progressionService.failPipeline).not.toHaveBeenCalled();
       expect(progressionService.advanceToNextStage).not.toHaveBeenCalled();
     });
 
@@ -161,7 +166,7 @@ describe('PipelineEventHandlerService', () => {
 
       await service.handleOptimizationComplete('run-123', 'strategy-123', {}, 100, -100);
 
-      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+      expect(progressionService.rejectPipeline).toHaveBeenCalledWith(
         expect.objectContaining({
           stageResults: expect.objectContaining({
             optimization: expect.objectContaining({ baselineScore: 0 })
@@ -197,6 +202,7 @@ describe('PipelineEventHandlerService', () => {
       expect(pipelineRepository.save).toHaveBeenCalled();
       expect(progressionService.advanceToNextStage).not.toHaveBeenCalled();
       expect(progressionService.failPipeline).not.toHaveBeenCalled();
+      expect(progressionService.rejectPipeline).not.toHaveBeenCalled();
     });
   });
 
@@ -258,17 +264,18 @@ describe('PipelineEventHandlerService', () => {
   });
 
   describe('handleBacktestComplete', () => {
-    it('fails pipeline when 0 trades produced', async () => {
+    it('rejects pipeline when 0 trades produced', async () => {
       pipelineRepository.findOne.mockResolvedValue(
         makePipeline({ currentStage: PipelineStage.HISTORICAL, historicalBacktestId: 'bt-123' })
       );
 
       await service.handleBacktestComplete('bt-123', 'HISTORICAL', { ...baseMetrics, totalTrades: 0 });
 
-      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+      expect(progressionService.rejectPipeline).toHaveBeenCalledWith(
         expect.any(Object),
         expect.stringContaining('0 trades')
       );
+      expect(progressionService.failPipeline).not.toHaveBeenCalled();
       expect(progressionService.advanceToNextStage).not.toHaveBeenCalled();
     });
 
@@ -311,7 +318,7 @@ describe('PipelineEventHandlerService', () => {
       expect(progressionService.failPipeline).not.toHaveBeenCalled();
     });
 
-    it('fails LIVE_REPLAY when score is below minimum', async () => {
+    it('rejects LIVE_REPLAY when score is below minimum', async () => {
       const pipeline = makePipeline({
         currentStage: PipelineStage.LIVE_REPLAY,
         liveReplayBacktestId: 'bt-456',
@@ -331,10 +338,11 @@ describe('PipelineEventHandlerService', () => {
 
       await service.handleBacktestComplete('bt-456', 'LIVE_REPLAY', baseMetrics);
 
-      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+      expect(progressionService.rejectPipeline).toHaveBeenCalledWith(
         expect.any(Object),
         expect.stringContaining('< minimum 30')
       );
+      expect(progressionService.failPipeline).not.toHaveBeenCalled();
       expect(progressionService.advanceToNextStage).not.toHaveBeenCalled();
     });
 
@@ -454,7 +462,7 @@ describe('PipelineEventHandlerService', () => {
       expect(progressionService.failPipeline).not.toHaveBeenCalled();
     });
 
-    it('fails pipeline when thresholds are not met', async () => {
+    it('rejects pipeline when thresholds are not met', async () => {
       const pipeline = makePipeline({ currentStage: PipelineStage.PAPER_TRADE });
       pipelineRepository.findOne.mockResolvedValue(pipeline);
       progressionService.evaluateStageProgression.mockReturnValue({
@@ -464,10 +472,11 @@ describe('PipelineEventHandlerService', () => {
 
       await service.handlePaperTradingComplete('session-123', 'pipeline-123', { ...paperMetrics, sharpeRatio: 0.1 });
 
-      expect(progressionService.failPipeline).toHaveBeenCalledWith(
+      expect(progressionService.rejectPipeline).toHaveBeenCalledWith(
         expect.any(Object),
         expect.stringContaining('Paper trading did not meet thresholds')
       );
+      expect(progressionService.failPipeline).not.toHaveBeenCalled();
       expect(progressionService.completePipeline).not.toHaveBeenCalled();
     });
 

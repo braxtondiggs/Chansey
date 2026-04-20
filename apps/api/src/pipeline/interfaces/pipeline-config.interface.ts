@@ -17,6 +17,7 @@ export enum PipelineStatus {
   PAUSED = 'PAUSED',
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',
+  REJECTED = 'REJECTED',
   CANCELLED = 'CANCELLED'
 }
 

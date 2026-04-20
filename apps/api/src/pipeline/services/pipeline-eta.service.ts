@@ -163,6 +163,7 @@ export class PipelineEtaService {
     if (
       pipeline.status === PipelineStatus.COMPLETED ||
       pipeline.status === PipelineStatus.FAILED ||
+      pipeline.status === PipelineStatus.REJECTED ||
       pipeline.status === PipelineStatus.CANCELLED
     ) {
       return { minDaysRemaining: 0, maxDaysRemaining: 0 };
@@ -256,6 +257,7 @@ export class PipelineEtaService {
 
   private isRejected(pipeline: Pipeline): boolean {
     return (
+      pipeline.status === PipelineStatus.REJECTED ||
       pipeline.status === PipelineStatus.FAILED ||
       (pipeline.status === PipelineStatus.COMPLETED &&
         pipeline.recommendation === DeploymentRecommendation.DO_NOT_DEPLOY)

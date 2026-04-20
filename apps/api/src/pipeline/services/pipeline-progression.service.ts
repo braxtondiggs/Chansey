@@ -309,6 +309,12 @@ export class PipelineProgressionService {
     return raw >= 0 ? raw : Math.abs(raw) * 0.5;
   }
 
+  /**
+   * Mark a pipeline as FAILED due to an infrastructure error — worker crash,
+   * enqueue failure, or watchdog reap. These indicate something is broken and
+   * someone should investigate. For business-rule rejections (threshold gates,
+   * zero trades, low scores), use `rejectPipeline()` instead.
+   */
   async failPipeline(pipeline: Pipeline, reason: string): Promise<void> {
     pipeline.status = PipelineStatus.FAILED;
     pipeline.completedAt = new Date();
@@ -317,9 +323,34 @@ export class PipelineProgressionService {
 
     await this.pipelineRepository.save(pipeline);
 
-    this.logger.warn(`Pipeline ${pipeline.id} failed: ${reason}`);
+    this.logger.error(`Pipeline ${pipeline.id} failed: ${reason}`);
 
     this.eventEmitter.emit(PIPELINE_EVENTS.PIPELINE_FAILED, {
+      pipelineId: pipeline.id,
+      reason,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Mark a pipeline as REJECTED because the strategy completed its stage
+   * cleanly but did not meet promotion thresholds (e.g. optimization
+   * improvement too low, zero trades, score below minimum, paper-trading
+   * metrics below gates). This is a valid outcome — the strategy just did not
+   * qualify — and should not trigger infrastructure alerts. For real failures,
+   * use `failPipeline()`.
+   */
+  async rejectPipeline(pipeline: Pipeline, reason: string): Promise<void> {
+    pipeline.status = PipelineStatus.REJECTED;
+    pipeline.completedAt = new Date();
+    pipeline.failureReason = reason;
+    pipeline.recommendation = DeploymentRecommendation.DO_NOT_DEPLOY;
+
+    await this.pipelineRepository.save(pipeline);
+
+    this.logger.log(`Pipeline ${pipeline.id} rejected: ${reason}`);
+
+    this.eventEmitter.emit(PIPELINE_EVENTS.PIPELINE_REJECTED, {
       pipelineId: pipeline.id,
       reason,
       timestamp: new Date().toISOString()

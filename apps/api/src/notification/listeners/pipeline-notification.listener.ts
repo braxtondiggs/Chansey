@@ -51,6 +51,12 @@ interface PipelineFailedPayload {
   timestamp: string;
 }
 
+interface PipelineRejectedPayload {
+  pipelineId: string;
+  reason: string;
+  timestamp: string;
+}
+
 /**
  * Translates domain-level pipeline events into user-facing notifications.
  * Each pipeline event maps to exactly one notification enqueue via the shared
@@ -209,6 +215,36 @@ export class PipelineNotificationListener {
         NotificationEventType.PIPELINE_REJECTED,
         `A strategy couldn't finish building`,
         `We'll try again on the next cycle — no action needed.`,
+        'medium',
+        {
+          userId: pipeline.user.id,
+          pipelineId: pipeline.id,
+          strategyName,
+          reason: payload.reason
+        }
+      );
+    } catch (error) {
+      const err = toErrorInfo(error);
+      this.logger.error(
+        `Failed to send PIPELINE_REJECTED notification for ${payload.pipelineId}: ${err.message}`,
+        err.stack
+      );
+    }
+  }
+
+  @OnEvent(PIPELINE_EVENTS.PIPELINE_REJECTED, { async: true })
+  async handleRejected(payload: PipelineRejectedPayload): Promise<void> {
+    try {
+      const pipeline = await this.loadPipelineWithUser(payload.pipelineId);
+      if (!pipeline) return;
+
+      const strategyName = pipeline.strategyConfig?.name ?? pipeline.name;
+
+      await this.notificationService.send(
+        pipeline.user.id,
+        NotificationEventType.PIPELINE_REJECTED,
+        `A strategy didn't pass the safety review`,
+        `We'll try a different approach on your next cycle — no action needed.`,
         'medium',
         {
           userId: pipeline.user.id,
