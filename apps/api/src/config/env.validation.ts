@@ -111,7 +111,31 @@ const envSchema = z.object({
   LISTING_TRACKER_POLL_INTERVAL_SECONDS: z.coerce.number().min(10).max(600).default(30),
   LISTING_SCORE_THRESHOLD: z.coerce.number().min(0).max(100).default(70),
   LISTING_SCORE_CRON: z.string().default('30 2 * * *'),
-  DEFILLAMA_BASE_URL: z.string().url().default('https://api.llama.fi')
+  DEFILLAMA_BASE_URL: z.string().url().default('https://api.llama.fi'),
+
+  // Data Retention (DataRetentionTask — daily at 04:15 UTC)
+  // All values are days. Omit to use the sensible defaults baked into the task.
+  DATA_RETENTION_EXCHANGE_KEY_HEALTH_LOG_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_PAPER_TRADING_SNAPSHOT_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_PAPER_TRADING_SESSION_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_BACKTEST_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_OPTIMIZATION_RUN_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_PIPELINE_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_DRIFT_ALERT_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_NOTIFICATION_READ_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_NOTIFICATION_UNREAD_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_MARKET_REGIME_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_STRATEGY_SCORE_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_PERFORMANCE_METRIC_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_LISTING_TRADE_POSITION_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_LISTING_ANNOUNCEMENT_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_LISTING_CANDIDATE_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_COMPARISON_REPORT_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_BACKTEST_RUN_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_MARKET_DATA_SET_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_ALGORITHM_PERFORMANCE_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_AUDIT_LOG_DAYS: z.coerce.number().int().positive().optional().catch(undefined),
+  DATA_RETENTION_SECURITY_AUDIT_LOG_DAYS: z.coerce.number().int().positive().optional().catch(undefined)
 });
 
 /**

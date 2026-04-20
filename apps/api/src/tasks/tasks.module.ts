@@ -6,6 +6,7 @@ import { BacktestOrchestrationProcessor } from './backtest-orchestration.process
 import { BacktestOrchestrationService } from './backtest-orchestration.service';
 import { BacktestOrchestrationTask } from './backtest-orchestration.task';
 import { BacktestWatchdogService } from './backtest-watchdog.service';
+import { DataRetentionTask } from './data-retention.task';
 import { DatabaseMaintenanceTask } from './database-maintenance.task';
 import { DriftDetectionProcessor } from './drift-detection.processor';
 import { DriftDetectionTask } from './drift-detection.task';
@@ -66,6 +67,7 @@ import { UsersModule } from '../users/users.module';
  * - PipelineOrchestrationTask: Daily at 2 AM - Orchestrate full validation pipelines for algo-enabled users
  * - BacktestOrchestrationTask: Twice daily at 3 AM/3 PM UTC - Orchestrate automatic backtests for algo-enabled users
  * - RedisMaintenanceTask: Daily at 4 AM UTC - Trim stale BullMQ job data and orphaned keys
+ * - DataRetentionTask: Daily at 4:15 AM UTC - Prune stale rows from log/append-only tables
  * - DatabaseMaintenanceTask: Daily at 4:30 AM UTC - ANALYZE hot tables to keep planner stats fresh
  */
 const BACKTEST_QUEUE_NAMES = backtestConfig();
@@ -128,7 +130,8 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
     PipelineOrchestrationProcessor,
     PipelineOrchestrationService,
     RedisMaintenanceTask,
-    DatabaseMaintenanceTask
+    DatabaseMaintenanceTask,
+    DataRetentionTask
   ],
   exports: [
     StrategyEvaluationTask,
@@ -140,7 +143,8 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
     BacktestOrchestrationTask,
     PipelineOrchestrationTask,
     RedisMaintenanceTask,
-    DatabaseMaintenanceTask
+    DatabaseMaintenanceTask,
+    DataRetentionTask
   ]
 })
 export class TasksModule {}

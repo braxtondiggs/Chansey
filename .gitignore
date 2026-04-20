@@ -68,3 +68,4 @@ Thumbs.db
 
 .nx/polygraph
 .claude/worktrees
+.claude/scheduled_tasks.lock
