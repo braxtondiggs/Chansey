@@ -140,7 +140,7 @@ export class DataRetentionTask {
     const start = Date.now();
     try {
       const trimmed = sql.trimStart();
-      const wrapped = trimmed.toUpperCase().startsWith('WITH ')
+      const wrapped = /^with\b/i.test(trimmed)
         ? sql
         : `WITH deleted_rows AS (${sql} RETURNING 1)
            SELECT count(*)::int AS deleted FROM deleted_rows`;
