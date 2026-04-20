@@ -101,6 +101,82 @@ describe('OHLCService', () => {
     expect(result).toEqual(candles);
   });
 
+  it('getCandlesByDateRange issues a single query when range fits in one chunk', async () => {
+    const qb = createQueryBuilder();
+    qb.getMany.mockResolvedValue([{ coinId: 'btc' }] as OHLCCandle[]);
+    (ohlcRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+    // 90 days exactly — should still be one query
+    await service.getCandlesByDateRange(['btc'], new Date('2024-01-01T00:00:00Z'), new Date('2024-03-31T00:00:00Z'));
+
+    expect(ohlcRepository.createQueryBuilder).toHaveBeenCalledTimes(1);
+  });
+
+  it('getCandlesByDateRange splits a 365-day range into sequential chunks', async () => {
+    const boundaries: Array<{ startDate?: Date; endDate?: Date }> = [];
+    (ohlcRepository.createQueryBuilder as jest.Mock).mockImplementation(() => {
+      const qb = createQueryBuilder();
+      const chunk: { startDate?: Date; endDate?: Date } = {};
+      boundaries.push(chunk);
+      qb.andWhere.mockImplementation((_clause: string, params?: { startDate?: Date; endDate?: Date }) => {
+        if (params?.startDate) chunk.startDate = params.startDate;
+        if (params?.endDate) chunk.endDate = params.endDate;
+        return qb;
+      });
+      qb.getMany.mockResolvedValue([{ coinId: 'btc', timestamp: new Date('2024-01-01T00:00:00Z') }] as OHLCCandle[]);
+      return qb;
+    });
+
+    const startDate = new Date('2024-01-01T00:00:00Z');
+    const endDate = new Date('2024-12-31T00:00:00Z');
+    const result = await service.getCandlesByDateRange(['btc'], startDate, endDate);
+
+    // 365 days / 90-day chunks = 5 chunks (90 + 90 + 90 + 90 + 5)
+    expect(ohlcRepository.createQueryBuilder).toHaveBeenCalledTimes(5);
+    expect(result).toHaveLength(5);
+    expect(boundaries).toHaveLength(5);
+
+    // First chunk starts at requested startDate, last chunk ends at requested endDate
+    expect(boundaries[0].startDate).toEqual(startDate);
+    expect(boundaries[boundaries.length - 1].endDate).toEqual(endDate);
+
+    // Chunks are non-overlapping: each chunk starts 1ms after previous chunk's end
+    for (let i = 1; i < boundaries.length; i++) {
+      const current = boundaries[i].startDate;
+      const previous = boundaries[i - 1].endDate;
+      expect(current && previous && current.getTime() === previous.getTime() + 1).toBe(true);
+    }
+  });
+
+  it('getCandlesByDateRange concatenates chunked results preserving order', async () => {
+    const resultBatches = [
+      [
+        { coinId: 'btc', timestamp: new Date('2024-01-02T00:00:00Z') },
+        { coinId: 'btc', timestamp: new Date('2024-03-01T00:00:00Z') }
+      ],
+      [{ coinId: 'btc', timestamp: new Date('2024-05-01T00:00:00Z') }]
+    ] as OHLCCandle[][];
+
+    let call = 0;
+    (ohlcRepository.createQueryBuilder as jest.Mock).mockImplementation(() => {
+      const qb = createQueryBuilder();
+      qb.getMany.mockResolvedValue(resultBatches[call++]);
+      return qb;
+    });
+
+    // 150 days — spans two chunks (90 + 60)
+    const result = await service.getCandlesByDateRange(
+      ['btc'],
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-05-30T00:00:00Z')
+    );
+
+    expect(result).toHaveLength(3);
+    expect(result[0].timestamp).toEqual(new Date('2024-01-02T00:00:00Z'));
+    expect(result[1].timestamp).toEqual(new Date('2024-03-01T00:00:00Z'));
+    expect(result[2].timestamp).toEqual(new Date('2024-05-01T00:00:00Z'));
+  });
+
   it('getCandlesByDateRangeGrouped groups by coin', async () => {
     const candles = [
       {

@@ -27,7 +27,7 @@ export const databaseConfig = registerAs(
     extra: {
       max: parseInt(process.env.PG_POOL_MAX || '40', 10),
       idleTimeoutMillis: parseInt(process.env.PG_POOL_IDLE_TIMEOUT_MS || '30000', 10),
-      connectionTimeoutMillis: 30000,
+      connectionTimeoutMillis: 90000,
       statement_timeout: 300000,
       work_mem: '32MB',
       keepAlive: true,

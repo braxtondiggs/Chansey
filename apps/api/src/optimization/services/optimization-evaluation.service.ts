@@ -145,6 +145,8 @@ export class OptimizationEvaluationService {
       if (heartbeatFn) {
         await heartbeatFn();
       }
+      // Yield event loop so pg-pool acquire callbacks and queue health checks aren't starved
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
 
     const avgTrainScore = totalTrainScore / windows.length;

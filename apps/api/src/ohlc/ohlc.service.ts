@@ -74,6 +74,9 @@ export interface GapSummary {
 export class OHLCService {
   private readonly logger = new Logger(OHLCService.name);
 
+  private static readonly CHUNK_DAYS = 90;
+  private static readonly MS_PER_DAY = 86_400_000;
+
   constructor(
     @InjectRepository(OHLCCandle)
     private readonly ohlcRepository: Repository<OHLCCandle>,
@@ -107,11 +110,49 @@ export class OHLCService {
 
   /**
    * Get candles by date range with database-level filtering
-   * This replaces the inefficient in-memory filtering in the backtest engine
+   * This replaces the inefficient in-memory filtering in the backtest engine.
+   *
+   * Ranges wider than CHUNK_DAYS are split into sequential sub-fetches so a single
+   * query cannot hold a pool connection long enough to starve other consumers.
    */
   async getCandlesByDateRange(coinIds: string[], startDate: Date, endDate: Date): Promise<OHLCCandle[]> {
     if (coinIds.length === 0) return [];
 
+    const chunkMs = OHLCService.CHUNK_DAYS * OHLCService.MS_PER_DAY;
+    const rangeMs = endDate.getTime() - startDate.getTime();
+    if (rangeMs <= chunkMs) {
+      return this.fetchCandleChunk(coinIds, startDate, endDate);
+    }
+
+    const results: OHLCCandle[][] = [];
+    const totalChunks = Math.ceil(rangeMs / chunkMs);
+    const startMs = Date.now();
+    let totalRows = 0;
+    let cursor = startDate;
+    let chunkIndex = 0;
+    while (cursor.getTime() < endDate.getTime()) {
+      const tentativeEnd = new Date(cursor.getTime() + chunkMs);
+      const chunkEnd = tentativeEnd.getTime() > endDate.getTime() ? endDate : tentativeEnd;
+      const t0 = Date.now();
+      const chunk = await this.fetchCandleChunk(coinIds, cursor, chunkEnd);
+      this.logger.debug(
+        `getCandlesByDateRange chunk ${++chunkIndex}/${totalChunks}: ${chunk.length} rows in ${Date.now() - t0}ms ` +
+          `(${coinIds.length} coins, ${cursor.toISOString()}..${chunkEnd.toISOString()})`
+      );
+      totalRows += chunk.length;
+      results.push(chunk);
+      // Move cursor 1 ms past chunkEnd so the next chunk's `>=` doesn't duplicate the boundary row
+      cursor = new Date(chunkEnd.getTime() + 1);
+    }
+    // Info-level summary for chunked fetches — visible in prod for verifying the connection-timeout fix
+    this.logger.log(
+      `getCandlesByDateRange chunked: ${totalRows} rows across ${totalChunks} chunks in ${Date.now() - startMs}ms ` +
+        `(${coinIds.length} coins, ${startDate.toISOString()}..${endDate.toISOString()})`
+    );
+    return results.flat();
+  }
+
+  private fetchCandleChunk(coinIds: string[], startDate: Date, endDate: Date): Promise<OHLCCandle[]> {
     return this.ohlcRepository
       .createQueryBuilder('candle')
       .select([
