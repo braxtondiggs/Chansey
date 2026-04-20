@@ -114,6 +114,16 @@ export class OHLCService {
 
     return this.ohlcRepository
       .createQueryBuilder('candle')
+      .select([
+        'candle.coinId',
+        'candle.timestamp',
+        'candle.open',
+        'candle.high',
+        'candle.low',
+        'candle.close',
+        'candle.volume',
+        'candle.quoteVolume'
+      ])
       .where('candle.coinId IN (:...coinIds)', { coinIds })
       .andWhere('candle.timestamp >= :startDate', { startDate })
       .andWhere('candle.timestamp <= :endDate', { endDate })

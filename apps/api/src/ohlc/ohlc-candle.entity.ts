@@ -1,15 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  Index,
-  JoinColumn,
-  ManyToOne,
-  PrimaryGeneratedColumn,
-  Unique
-} from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn, Unique } from 'typeorm';
 
 import { Coin } from '../coin/coin.entity';
 import { Exchange } from '../exchange/exchange.entity';
@@ -19,9 +10,8 @@ import { NUMERIC_TRANSFORMER } from '../utils/transformers';
 @Unique(['coinId', 'timestamp', 'exchangeId'])
 @Index(['coinId', 'timestamp'])
 @Index(['timestamp'])
-@Index(['exchangeId', 'timestamp'])
 export class OHLCCandle {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: 'uuid', default: () => 'gen_random_uuid()' })
   @ApiProperty({
     description: 'Unique identifier for the candle',
     example: 'a3bb189e-8bf9-3888-9912-ace4e6543002'
@@ -44,10 +34,7 @@ export class OHLCCandle {
   @JoinColumn({ name: 'exchangeId' })
   exchange: Exchange;
 
-  @Column({
-    type: 'timestamptz',
-    nullable: false
-  })
+  @PrimaryColumn({ type: 'timestamptz' })
   @ApiProperty({
     description: 'Candle open timestamp (start of hour)',
     example: '2024-01-06T12:00:00.000Z'
