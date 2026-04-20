@@ -14,9 +14,16 @@ export class GridSearchService {
    * Generate all parameter combinations from a parameter space
    * @param space Parameter space definition
    * @param maxCombinations Optional limit on combinations (random sample if exceeded)
+   * @param reachabilityFilter Optional predicate to drop combos whose indicators can't warm up + fire
+   *   inside the available test window. Applied after constraints, before sampling, so the sampling
+   *   budget isn't wasted on unreachable combos. The baseline always bypasses this filter.
    * @returns Array of parameter combinations
    */
-  generateCombinations(space: ParameterSpace, maxCombinations?: number): ParameterCombination[] {
+  generateCombinations(
+    space: ParameterSpace,
+    maxCombinations?: number,
+    reachabilityFilter?: (params: Record<string, unknown>) => boolean
+  ): ParameterCombination[] {
     // Expand each parameter to its possible values
     const parameterValues: Map<string, (number | string | boolean)[]> = new Map();
 
@@ -36,11 +43,18 @@ export class GridSearchService {
       `Generated ${validCombinations.length} valid combinations from ${allCombinations.length} total (${space.parameters.length} parameters)`
     );
 
+    // Filter by reachability (e.g. indicator warmup fits within the test window)
+    const reachable = reachabilityFilter ? validCombinations.filter(reachabilityFilter) : validCombinations;
+
+    if (reachabilityFilter) {
+      this.logger.log(`Pruned ${validCombinations.length - reachable.length} unreachable combinations`);
+    }
+
     // Find baseline combination
     const baselineValues = this.getBaselineValues(space);
 
     // Build result with baseline marked
-    let combinations = validCombinations.map((values, index) => ({
+    let combinations = reachable.map((values, index) => ({
       index,
       values,
       isBaseline: this.isBaselineCombination(values, baselineValues)
@@ -261,8 +275,16 @@ export class GridSearchService {
 
   /**
    * Generate combinations for random search
+   * @param space Parameter space definition
+   * @param numCombinations Target number of combinations
+   * @param reachabilityFilter Optional predicate to reject combos whose indicators can't warm up + fire
+   *   inside the available test window. Baseline always bypasses this filter.
    */
-  generateRandomCombinations(space: ParameterSpace, numCombinations: number): ParameterCombination[] {
+  generateRandomCombinations(
+    space: ParameterSpace,
+    numCombinations: number,
+    reachabilityFilter?: (params: Record<string, unknown>) => boolean
+  ): ParameterCombination[] {
     const combinations: ParameterCombination[] = [];
     const seen = new Set<string>();
 
@@ -289,6 +311,10 @@ export class GridSearchService {
       }
 
       if (!this.validateConstraints(randomCombo, space.constraints || [])) {
+        continue;
+      }
+
+      if (reachabilityFilter && !reachabilityFilter(randomCombo)) {
         continue;
       }
 

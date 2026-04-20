@@ -207,6 +207,35 @@ describe('GridSearchService', () => {
       expect(combinations[0].isBaseline).toBe(true);
       expect(combinations[0].values).toEqual({ fast: 5, slow: 5 });
     });
+
+    it('should drop combos rejected by reachabilityFilter (cartesian path)', () => {
+      const space = createSpace({
+        parameters: [createParam({ name: 'period', type: 'integer', min: 1, max: 4, step: 1, default: 1 })]
+      });
+
+      // Filter keeps only combos with period <= 2
+      const filter = (params: Record<string, unknown>) => (params.period as number) <= 2;
+      const combinations = service.generateCombinations(space, undefined, filter);
+
+      // Expected: period=1 (baseline) and period=2 — period=3 and period=4 pruned
+      const periods = combinations.map((c) => c.values.period).sort();
+      expect(periods).toEqual([1, 2]);
+      expect(combinations.some((c) => c.isBaseline && c.values.period === 1)).toBe(true);
+    });
+
+    it('should behave identically to today when reachabilityFilter is undefined', () => {
+      const space = createSpace({
+        parameters: [createParam({ name: 'period', type: 'integer', min: 1, max: 3, step: 1, default: 1 })]
+      });
+
+      const withoutFilter = service.generateCombinations(space);
+      const explicitUndefined = service.generateCombinations(space, undefined, undefined);
+
+      expect(withoutFilter.map((c) => c.values.period).sort()).toEqual(
+        explicitUndefined.map((c) => c.values.period).sort()
+      );
+      expect(withoutFilter.length).toBe(3);
+    });
   });
 
   describe('validateConstraints', () => {
@@ -365,6 +394,37 @@ describe('GridSearchService', () => {
 
       expect(combinations.length).toBe(1);
       expect(combinations[0].isBaseline).toBe(true);
+    });
+
+    it('should reject combos failing reachabilityFilter and keep retrying', () => {
+      const space = createSpace({
+        parameters: [createParam({ name: 'period', type: 'integer', min: 1, max: 10, step: 1, default: 3 })]
+      });
+
+      const filter = (params: Record<string, unknown>) => (params.period as number) <= 5;
+      const combinations = service.generateRandomCombinations(space, 5, filter);
+
+      // Every non-baseline combo must satisfy the filter
+      for (const combo of combinations.filter((c) => !c.isBaseline)) {
+        expect((combo.values.period as number) <= 5).toBe(true);
+      }
+      // With up to 5 passing values (1..5) + baseline (3), should still get up to numCombinations
+      expect(combinations.length).toBeGreaterThanOrEqual(1);
+      expect(combinations.length).toBeLessThanOrEqual(5);
+    });
+
+    it('should include baseline even if reachabilityFilter would reject it', () => {
+      const space = createSpace({
+        parameters: [createParam({ name: 'period', type: 'integer', min: 1, max: 10, step: 1, default: 10 })]
+      });
+
+      // Filter rejects everything (including baseline=10)
+      const filter = () => false;
+      const combinations = service.generateRandomCombinations(space, 5, filter);
+
+      expect(combinations.length).toBe(1);
+      expect(combinations[0].isBaseline).toBe(true);
+      expect(combinations[0].values.period).toBe(10);
     });
   });
 

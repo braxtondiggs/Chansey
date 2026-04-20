@@ -360,14 +360,14 @@ describe('SignalThrottleService', () => {
 
     it('uses paper trading defaults when passed as second argument', () => {
       const config = service.resolveConfig(undefined, PAPER_TRADING_DEFAULT_THROTTLE_CONFIG);
-      expect(config.cooldownMs).toBe(0);
+      expect(config.cooldownMs).toBe(60 * 60 * 1000);
       expect(config.maxTradesPerDay).toBe(6);
       expect(config.minSellPercent).toBe(0.5);
     });
 
-    it('PAPER_TRADING_DEFAULT_THROTTLE_CONFIG: explicit param overrides default cooldownMs=0', () => {
-      const config = service.resolveConfig({ cooldownMs: 3_600_000 }, PAPER_TRADING_DEFAULT_THROTTLE_CONFIG);
-      expect(config.cooldownMs).toBe(3_600_000);
+    it('PAPER_TRADING_DEFAULT_THROTTLE_CONFIG: explicit param overrides default cooldownMs', () => {
+      const config = service.resolveConfig({ cooldownMs: 0 }, PAPER_TRADING_DEFAULT_THROTTLE_CONFIG);
+      expect(config.cooldownMs).toBe(0);
     });
   });
 

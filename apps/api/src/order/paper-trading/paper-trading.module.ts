@@ -5,6 +5,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { PaperTradingExitExecutorService } from './engine/paper-trading-exit-executor.service';
+import { PaperTradingHistoricalCandleService } from './engine/paper-trading-historical-candle.service';
 import { PaperTradingOpportunitySellingService } from './engine/paper-trading-opportunity-selling.service';
 import { PaperTradingOrderExecutorService } from './engine/paper-trading-order-executor.service';
 import { PaperTradingPortfolioService } from './engine/paper-trading-portfolio.service';
@@ -89,6 +90,7 @@ const PAPER_TRADING_CONFIG = paperTradingConfig();
     PaperTradingOrderExecutorService,
     PaperTradingExitExecutorService,
     PaperTradingOpportunitySellingService,
+    PaperTradingHistoricalCandleService,
     PaperTradingMarketDataService,
     PaperTradingSlippageService,
     PaperTradingStreamService,

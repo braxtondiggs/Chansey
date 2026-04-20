@@ -476,11 +476,21 @@ describe('Pipeline Orchestration DTOs', () => {
     it.each([
       [1, 180, 75],
       [3, 120, 50],
-      [5, 60, 30]
+      [5, 90, 30]
     ])('risk level %i should use trainDays=%i, maxCombinations=%i', (level, trainDays, maxCombinations) => {
       const config = getOptimizationConfig(level);
       expect(config.trainDays).toBe(trainDays);
       expect(config.maxCombinations).toBe(maxCombinations);
+    });
+
+    it.each([
+      [4, 120, 45],
+      [5, 90, 45]
+    ])('risk level %i should use testDays >= 45 days (trainDays=%i, testDays=%i)', (level, trainDays, testDays) => {
+      const config = getOptimizationConfig(level);
+      expect(config.trainDays).toBe(trainDays);
+      expect(config.testDays).toBe(testDays);
+      expect(config.testDays).toBeGreaterThanOrEqual(45);
     });
 
     it('should fall back to level 3 defaults for invalid risk level', () => {

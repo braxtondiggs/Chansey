@@ -212,6 +212,14 @@ export class PaperTradingSession {
   @ApiProperty({ description: 'Number of ticks processed', default: 0 })
   tickCount: number;
 
+  @IsOptional()
+  @Column({ type: 'jsonb', nullable: true })
+  @ApiProperty({
+    description: 'Per-symbol epoch ms of the latest candle evaluated by the strategy (dedup guard)',
+    required: false
+  })
+  lastProcessedCandleTs?: Record<string, number> | null;
+
   @IsNumber()
   @Column({ type: 'integer', default: 0 })
   @ApiProperty({ description: 'Count of consecutive errors (for auto-pause)', default: 0 })

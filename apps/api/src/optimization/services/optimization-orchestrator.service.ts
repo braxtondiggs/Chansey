@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -10,6 +10,7 @@ import { GridSearchService } from './grid-search.service';
 import { OptimizationEvaluationService } from './optimization-evaluation.service';
 import { OptimizationQueryService } from './optimization-query.service';
 
+import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
 import { toErrorInfo } from '../../shared/error.util';
 import { sanitizeNumericValues } from '../../utils/validators/numeric-sanitizer';
@@ -17,6 +18,9 @@ import { OptimizationResult } from '../entities/optimization-result.entity';
 import { OptimizationProgressDetails, OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
 import { OptimizationConfig, ParameterSpace } from '../interfaces';
 import { calculateImprovement } from '../utils/optimization-scoring.util';
+
+/** Bars per day for the 1h candle timeframe used by all optimization runs today. */
+const BARS_PER_DAY_1H = 24;
 
 @Injectable()
 export class OptimizationOrchestratorService {
@@ -33,7 +37,9 @@ export class OptimizationOrchestratorService {
     private readonly evaluationService: OptimizationEvaluationService,
     private readonly queryService: OptimizationQueryService,
     private readonly dataSource: DataSource,
-    private readonly eventEmitter: EventEmitter2
+    private readonly eventEmitter: EventEmitter2,
+    @Inject(forwardRef(() => AlgorithmRegistry))
+    private readonly algorithmRegistry: AlgorithmRegistry
   ) {}
 
   /**
@@ -104,10 +110,16 @@ export class OptimizationOrchestratorService {
       throw new NotFoundException(`Strategy config ${strategyConfigId} not found`);
     }
 
+    const reachabilityFilter = await this.buildReachabilityFilter(strategyConfig.algorithmId, config);
+
     const combinations =
       config.method === 'random_search'
-        ? this.gridSearchService.generateRandomCombinations(parameterSpace, config.maxIterations || 100)
-        : this.gridSearchService.generateCombinations(parameterSpace, config.maxCombinations);
+        ? this.gridSearchService.generateRandomCombinations(
+            parameterSpace,
+            config.maxIterations || 100,
+            reachabilityFilter
+          )
+        : this.gridSearchService.generateCombinations(parameterSpace, config.maxCombinations, reachabilityFilter);
 
     const baselineCombination = combinations.find((c) => c.isBaseline);
     const baselineParameters = baselineCombination?.values || this.getDefaultParameters(parameterSpace);
@@ -447,5 +459,26 @@ export class OptimizationOrchestratorService {
       defaults[param.name] = param.default;
     }
     return defaults;
+  }
+
+  /**
+   * Build a reachability filter for grid-search. Rejects parameter combinations whose required
+   * indicator warmup exceeds the available test-window bars, so the sampling budget isn't wasted
+   * on combos that can never produce signals. Returns undefined when the strategy doesn't declare
+   * a minimum-data-points requirement (filter is skipped in that case).
+   */
+  private async buildReachabilityFilter(
+    algorithmId: string,
+    config: OptimizationConfig
+  ): Promise<((params: Record<string, unknown>) => boolean) | undefined> {
+    const strategy = await this.algorithmRegistry.getStrategyForAlgorithm(algorithmId);
+    if (!strategy?.getMinDataPoints) {
+      return undefined;
+    }
+
+    const testBars = config.walkForward.testDays * BARS_PER_DAY_1H;
+    const getMinDataPoints = strategy.getMinDataPoints.bind(strategy);
+
+    return (params: Record<string, unknown>) => getMinDataPoints(params) <= testBars;
   }
 }

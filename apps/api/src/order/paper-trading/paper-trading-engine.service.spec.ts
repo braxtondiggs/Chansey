@@ -114,7 +114,6 @@ const createService = (overrides: Overrides = {}) => {
 
   const marketDataService = {
     getPrices: jest.fn().mockResolvedValue(new Map(Object.entries(prices).map(([sym, p]) => [sym, { price: p }]))),
-    getHistoricalCandles: jest.fn().mockResolvedValue([]),
     resolveSymbolUniverse:
       overrides.resolveSymbolUniverse ??
       jest
@@ -124,6 +123,10 @@ const createService = (overrides: Overrides = {}) => {
         ),
     clearSymbolCache: jest.fn(),
     sweepOrphaned: jest.fn().mockReturnValue(0)
+  };
+
+  const historicalCandleService = {
+    getHistoricalCandles: jest.fn().mockResolvedValue([])
   };
 
   const algorithmRegistry = {
@@ -151,6 +154,7 @@ const createService = (overrides: Overrides = {}) => {
 
   const service = new PaperTradingEngineService(
     marketDataService as any,
+    historicalCandleService as any,
     algorithmRegistry as any,
     signalThrottle as any,
     compositeRegimeService as any,
@@ -174,6 +178,7 @@ const createService = (overrides: Overrides = {}) => {
     exitExecutor,
     opportunitySelling,
     marketDataService,
+    historicalCandleService,
     algorithmRegistry,
     signalFilterChain,
     compositeRegimeService
@@ -262,11 +267,11 @@ describe('PaperTradingEngineService', () => {
       // Exchange returns prices only for BTC/USD; UNKNOWN/USD is absent from the price response
       const resolveSymbolUniverse = jest.fn().mockResolvedValue(['BTC/USD', 'UNKNOWN/USD']);
       const prices = { 'BTC/USD': 50000 }; // UNKNOWN/USD intentionally absent
-      const { service, marketDataService } = createService({ accounts: [], prices, resolveSymbolUniverse });
+      const { service, historicalCandleService } = createService({ accounts: [], prices, resolveSymbolUniverse });
 
       await service.processTick(makeSession(), exchangeKey);
 
-      const candleCalls = marketDataService.getHistoricalCandles.mock.calls.map((c: any[]) => c[1]);
+      const candleCalls = historicalCandleService.getHistoricalCandles.mock.calls.map((c: any[]) => c[1]);
       expect(candleCalls).toContain('BTC/USD');
       expect(candleCalls).not.toContain('UNKNOWN/USD');
     });
@@ -506,7 +511,7 @@ describe('PaperTradingEngineService', () => {
     const signalThrottle = {
       createState: jest.fn().mockReturnValue({ lastSignalTime: {}, tradeTimestamps: [] }),
       filterSignals: jest.fn().mockImplementation((signals: any[]) => ({ accepted: signals, rejected: [] })),
-      resolveConfig: jest.fn().mockReturnValue({ cooldownMs: 0, maxTradesPerDay: 6, minSellPercent: 0.5 }),
+      resolveConfig: jest.fn().mockReturnValue({ cooldownMs: 60 * 60 * 1000, maxTradesPerDay: 6, minSellPercent: 0.5 }),
       toThrottleSignal: jest.fn().mockImplementation((s: any) => s)
     };
     const { service, marketDataService, algorithmRegistry } = createService({ signalThrottle });
@@ -526,6 +531,132 @@ describe('PaperTradingEngineService', () => {
       session.algorithmConfig,
       PAPER_TRADING_DEFAULT_THROTTLE_CONFIG
     );
+  });
+
+  describe('per-bar strategy dedup', () => {
+    const makeCandle = (ts: number, price = 50000) => ({
+      avg: price,
+      high: price,
+      low: price,
+      date: new Date(ts),
+      open: price,
+      close: price,
+      volume: 1
+    });
+
+    it('runs the strategy when the candle bar is newer than lastProcessedCandleTs', async () => {
+      const { service, algorithmRegistry, historicalCandleService, exitExecutor } = createService();
+      const newerTs = Date.now();
+      historicalCandleService.getHistoricalCandles.mockResolvedValue([
+        makeCandle(newerTs - 3_600_000),
+        makeCandle(newerTs)
+      ]);
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+      const session = makeSession({ lastProcessedCandleTs: { 'BTC/USD': newerTs - 3_600_000 } });
+      await service.processTick(session, exchangeKey);
+
+      expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(1);
+      expect(exitExecutor.checkAndExecute).toHaveBeenCalledTimes(1);
+      expect(session.lastProcessedCandleTs).toEqual({ 'BTC/USD': newerTs });
+    });
+
+    it('skips strategy execution (but runs exits) when the candle bar has not advanced', async () => {
+      const { service, algorithmRegistry, historicalCandleService, exitExecutor, throttleService } = createService();
+      const ts = Date.now();
+      historicalCandleService.getHistoricalCandles.mockResolvedValue([makeCandle(ts - 3_600_000), makeCandle(ts)]);
+
+      const session = makeSession({ lastProcessedCandleTs: { 'BTC/USD': ts } });
+      const result = await service.processTick(session, exchangeKey);
+
+      expect(exitExecutor.checkAndExecute).toHaveBeenCalledTimes(1);
+      expect(algorithmRegistry.executeAlgorithm).not.toHaveBeenCalled();
+      expect(throttleService.filter).not.toHaveBeenCalled();
+      expect(result.processed).toBe(true);
+      expect(result.signalsReceived).toBe(0);
+      expect(session.lastProcessedCandleTs).toEqual({ 'BTC/USD': ts });
+    });
+
+    it('runs the strategy again when a new bar arrives after an earlier skip', async () => {
+      const { service, algorithmRegistry, historicalCandleService } = createService();
+      const firstTs = Date.now();
+      historicalCandleService.getHistoricalCandles.mockResolvedValueOnce([makeCandle(firstTs)]);
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+      const session = makeSession({ lastProcessedCandleTs: null });
+      await service.processTick(session, exchangeKey);
+      expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(1);
+      expect(session.lastProcessedCandleTs).toEqual({ 'BTC/USD': firstTs });
+
+      // Same bar — should skip
+      historicalCandleService.getHistoricalCandles.mockResolvedValueOnce([makeCandle(firstTs)]);
+      await service.processTick(session, exchangeKey);
+      expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(1);
+
+      // Next bar — should run again
+      const nextTs = firstTs + 3_600_000;
+      historicalCandleService.getHistoricalCandles.mockResolvedValueOnce([makeCandle(nextTs)]);
+      await service.processTick(session, exchangeKey);
+      expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
+      expect(session.lastProcessedCandleTs).toEqual({ 'BTC/USD': nextTs });
+    });
+
+    it('runs the strategy on the first tick even when no lastProcessedCandleTs is set', async () => {
+      const { service, algorithmRegistry, historicalCandleService } = createService();
+      const ts = Date.now();
+      historicalCandleService.getHistoricalCandles.mockResolvedValue([makeCandle(ts)]);
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+      const session = makeSession(); // lastProcessedCandleTs undefined
+      await service.processTick(session, exchangeKey);
+
+      expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(1);
+      expect(session.lastProcessedCandleTs).toEqual({ 'BTC/USD': ts });
+    });
+
+    it('runs the strategy when no historical candles are available (null timestamp)', async () => {
+      // When all candle fetches return empty arrays, we still evaluate — this is the pre-existing fallback
+      const { service, algorithmRegistry, historicalCandleService } = createService();
+      historicalCandleService.getHistoricalCandles.mockResolvedValue([]);
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+      const session = makeSession({ lastProcessedCandleTs: { 'BTC/USD': Date.now() } });
+      await service.processTick(session, exchangeKey);
+
+      expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-runs the strategy when a lagging symbol catches up to a bar already reached by another', async () => {
+      const { service, algorithmRegistry, historicalCandleService } = createService({
+        accounts: [],
+        prices: { 'BTC/USD': 50000, 'ETH/USD': 3000 },
+        resolveSymbolUniverse: jest.fn().mockResolvedValue(['BTC/USD', 'ETH/USD'])
+      });
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({ success: true, signals: [] });
+
+      const ts = Date.now();
+      // Tick 1: BTC advances to ts, ETH still lagging at ts - 1h.
+      historicalCandleService.getHistoricalCandles
+        .mockImplementationOnce((_: string, symbol: string) =>
+          Promise.resolve(symbol === 'BTC/USD' ? [makeCandle(ts)] : [makeCandle(ts - 3_600_000)])
+        )
+        .mockImplementationOnce((_: string, symbol: string) =>
+          Promise.resolve(symbol === 'BTC/USD' ? [makeCandle(ts)] : [makeCandle(ts - 3_600_000)])
+        );
+
+      const session = makeSession();
+      await service.processTick(session, exchangeKey);
+      expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(1);
+      expect(session.lastProcessedCandleTs).toEqual({ 'BTC/USD': ts, 'ETH/USD': ts - 3_600_000 });
+
+      // Tick 2: ETH catches up to ts (same bar BTC already had). Must re-run — this is where max broke.
+      historicalCandleService.getHistoricalCandles
+        .mockImplementationOnce(() => Promise.resolve([makeCandle(ts)]))
+        .mockImplementationOnce(() => Promise.resolve([makeCandle(ts)]));
+      await service.processTick(session, exchangeKey);
+      expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(2);
+      expect(session.lastProcessedCandleTs).toEqual({ 'BTC/USD': ts, 'ETH/USD': ts });
+    });
   });
 
   it('does not produce duplicate signals when multiple symbols share a base currency', async () => {
