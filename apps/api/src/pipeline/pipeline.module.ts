@@ -28,6 +28,7 @@ import { PaperTradingSession } from '../order/paper-trading/entities/paper-tradi
 import { PaperTradingModule } from '../order/paper-trading/paper-trading.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
+import { TasksModule } from '../tasks/tasks.module';
 
 const PIPELINE_CONFIG = pipelineConfig();
 
@@ -45,6 +46,7 @@ const PIPELINE_CONFIG = pipelineConfig();
     forwardRef(() => ScoringModule),
     forwardRef(() => MarketRegimeModule),
     forwardRef(() => CoinSelectionModule),
+    forwardRef(() => TasksModule),
     ExchangeSelectionModule
   ],
   controllers: [PipelineController, UserPipelineController],
