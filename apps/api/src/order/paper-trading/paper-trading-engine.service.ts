@@ -14,6 +14,7 @@ import {
   TradingSignal
 } from './engine/paper-trading-engine.utils';
 import { PaperTradingExitExecutorService } from './engine/paper-trading-exit-executor.service';
+import { PaperTradingHistoricalCandleService } from './engine/paper-trading-historical-candle.service';
 import { PaperTradingOpportunitySellingService } from './engine/paper-trading-opportunity-selling.service';
 import { PaperTradingOrderExecutorService } from './engine/paper-trading-order-executor.service';
 import { PaperTradingPortfolioService } from './engine/paper-trading-portfolio.service';
@@ -45,6 +46,7 @@ export class PaperTradingEngineService {
 
   constructor(
     private readonly marketDataService: PaperTradingMarketDataService,
+    private readonly historicalCandleService: PaperTradingHistoricalCandleService,
     private readonly algorithmRegistry: AlgorithmRegistry,
     private readonly signalThrottle: SignalThrottleService,
     private readonly compositeRegimeService: CompositeRegimeService,
@@ -97,35 +99,46 @@ export class PaperTradingEngineService {
         ));
       }
 
-      const signals = await this.runAlgorithm(
-        session,
-        algoPortfolio,
-        priceMap,
-        activeAccounts,
-        quoteCurrency,
-        historicalCandles
-      );
-      signalsReceived = signals.length;
+      const currentTimestamps = this.getPerSymbolLatestTimestamps(historicalCandles);
+      const noCandles = Object.keys(currentTimestamps).length === 0;
+      const shouldRunStrategy =
+        noCandles || this.hasAnySymbolAdvanced(currentTimestamps, session.lastProcessedCandleTs);
 
-      const filtered = await this.filterSignals(session, signals);
+      if (shouldRunStrategy) {
+        const signals = await this.runAlgorithm(
+          session,
+          algoPortfolio,
+          priceMap,
+          activeAccounts,
+          quoteCurrency,
+          historicalCandles
+        );
+        signalsReceived = signals.length;
 
-      const heldCoins = new Set(
-        activeAccounts.filter((a) => a.currency !== quoteCurrency && a.total > 1e-8).map((a) => a.currency)
-      );
+        const filtered = await this.filterSignals(session, signals);
 
-      const loopResult = await this.processSignalLoop(
-        session,
-        filtered,
-        algoPortfolio,
-        heldCoins,
-        priceMap,
-        historicalCandles,
-        quoteCurrency,
-        exchangeSlug,
-        now
-      );
-      ordersExecuted += loopResult.ordersExecuted;
-      errors.push(...loopResult.errors);
+        const heldCoins = new Set(
+          activeAccounts.filter((a) => a.currency !== quoteCurrency && a.total > 1e-8).map((a) => a.currency)
+        );
+
+        const loopResult = await this.processSignalLoop(
+          session,
+          filtered,
+          algoPortfolio,
+          heldCoins,
+          priceMap,
+          historicalCandles,
+          quoteCurrency,
+          exchangeSlug,
+          now
+        );
+        ordersExecuted += loopResult.ordersExecuted;
+        errors.push(...loopResult.errors);
+
+        if (!noCandles) {
+          session.lastProcessedCandleTs = currentTimestamps;
+        }
+      }
 
       const finalPortfolioValue = await this.finalizeSnapshot(session, priceMap, quoteCurrency, ordersExecuted, now);
 
@@ -150,6 +163,35 @@ export class PaperTradingEngineService {
         prices: {}
       };
     }
+  }
+
+  /**
+   * Per-symbol dedup: re-run the strategy when any symbol's latest bar has advanced
+   * past its last-processed entry, or when a symbol is seen for the first time.
+   * A global max across symbols was wrong — a fast-arriving symbol would advance the
+   * scalar and cause lagging symbols' new bars to be silently skipped.
+   */
+  private getPerSymbolLatestTimestamps(historicalCandles: Record<string, CandleData[]>): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [symbol, candles] of Object.entries(historicalCandles)) {
+      if (candles.length === 0) continue;
+      const last = candles[candles.length - 1];
+      const ts = last.date instanceof Date ? last.date.getTime() : new Date(last.date).getTime();
+      if (Number.isFinite(ts)) result[symbol] = ts;
+    }
+    return result;
+  }
+
+  private hasAnySymbolAdvanced(
+    current: Record<string, number>,
+    previous: Record<string, number> | null | undefined
+  ): boolean {
+    if (!previous) return true;
+    for (const [symbol, ts] of Object.entries(current)) {
+      const prev = previous[symbol];
+      if (prev === undefined || ts > prev) return true;
+    }
+    return false;
   }
 
   /** Fetch accounts, prices, and historical candles for the tick. */
@@ -180,7 +222,7 @@ export class PaperTradingEngineService {
     const historicalCandles: Record<string, CandleData[]> = {};
     const candleResults = await Promise.all(
       validSymbols.map(async (symbol) => {
-        const candles = await this.marketDataService.getHistoricalCandles(
+        const candles = await this.historicalCandleService.getHistoricalCandles(
           exchangeSlug,
           symbol,
           '1h',
@@ -446,7 +488,10 @@ export class PaperTradingEngineService {
       return [];
     } catch (error: unknown) {
       const err = toErrorInfo(error);
-      this.logger.warn(`Algorithm execution failed: ${err.message}`);
+      this.logger.error(
+        `Algorithm execution failed (sessionId=${session.id}, algorithmId=${session.algorithm?.id ?? 'unknown'}): ${err.message}`,
+        err.stack
+      );
       return [];
     }
   }

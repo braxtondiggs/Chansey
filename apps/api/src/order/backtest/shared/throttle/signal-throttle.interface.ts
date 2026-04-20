@@ -28,7 +28,10 @@ export const DEFAULT_THROTTLE_CONFIG: Readonly<SignalThrottleConfig> = {
 
 export const PAPER_TRADING_DEFAULT_THROTTLE_CONFIG: Readonly<SignalThrottleConfig> = {
   ...DEFAULT_THROTTLE_CONFIG,
-  cooldownMs: 0 // No cooldown — paper trading ticks frequently (default 30s), not daily candles
+  // Matches the candle timeframe strategies evaluate against (1h). Per-bar dedup in the engine
+  // is the primary guard; this cooldown is a safety net that caps same-direction signals per
+  // coin at 1/hour if dedup misses a quirk in a new strategy.
+  cooldownMs: 60 * 60 * 1000
 };
 
 /** Key for per-coin per-direction cooldown tracking */

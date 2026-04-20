@@ -89,7 +89,7 @@ describe('optimization-scoring.util', () => {
       const metrics = { ...baseMetrics, tradeCount: 0 };
       const score = calculateObjectiveScore(metrics, { metric: 'sharpe_ratio', minimize: false });
       expect(score).toBe(ZERO_TRADE_PENALTY);
-      expect(score).toBe(-3);
+      expect(score).toBe(-0.5);
     });
 
     it('should return 0 for non-finite scores (NaN, Infinity)', () => {

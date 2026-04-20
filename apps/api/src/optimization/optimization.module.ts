@@ -13,6 +13,7 @@ import { OptimizationOrchestratorService } from './services/optimization-orchest
 import { OptimizationQueryService } from './services/optimization-query.service';
 import { OptimizationRecoveryService } from './services/optimization-recovery.service';
 
+import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { Coin } from '../coin/coin.entity';
 import { OHLCModule } from '../ohlc/ohlc.module';
 import { OrderModule } from '../order/order.module';
@@ -26,7 +27,8 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
     BullModule.registerQueue({ name: 'optimization' }),
     ScoringModule,
     forwardRef(() => OrderModule),
-    forwardRef(() => OHLCModule)
+    forwardRef(() => OHLCModule),
+    forwardRef(() => AlgorithmModule)
   ],
   providers: [
     GridSearchService,

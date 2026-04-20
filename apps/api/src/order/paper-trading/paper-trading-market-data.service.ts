@@ -13,9 +13,8 @@ import { CoinSelectionRelations } from '../../coin-selection/coin-selection.enti
 import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
 import { EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
-import { CandleData } from '../../ohlc/ohlc-candle.entity';
 import { toErrorInfo } from '../../shared/error.util';
-import { withExchangeRetry, withExchangeRetryThrow } from '../../shared/retry.util';
+import { withExchangeRetry } from '../../shared/retry.util';
 import type { User } from '../../users/users.entity';
 
 export type { PriceData, OrderBook, OrderBookLevel, RealisticSlippageResult } from './paper-trading-market-data.types';
@@ -223,20 +222,47 @@ export class PaperTradingMarketDataService {
       ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
       : await this.exchangeManager.getPublicClient(exchangeSlug);
 
-    // Fetch all tickers with retry
-    const result = await withExchangeRetry(
-      () => client.fetchTickers(uncachedSymbols.map((s) => this.exchangeManager.formatSymbol(exchangeSlug, s))),
-      {
-        logger: this.logger,
-        operationName: `fetchTickers(${exchangeSlug})`
+    // Lazy-load markets so we can filter out symbols the exchange doesn't list.
+    // Without this, CCXT drops unknown symbols internally and may send an empty
+    // `symbols` param to the REST API, which Binance rejects with code -1102.
+    let marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
+    if (!marketsLoaded) {
+      try {
+        await client.loadMarkets();
+        marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.warn(`loadMarkets(${exchangeSlug}) failed, proceeding without symbol validation: ${err.message}`);
       }
-    );
+    }
+
+    const formattedPairs = uncachedSymbols.map((raw) => ({
+      raw,
+      formatted: this.exchangeManager.formatSymbol(exchangeSlug, raw)
+    }));
+
+    const validPairs = marketsLoaded
+      ? formattedPairs.filter(({ formatted }) => formatted in (client.markets as Record<string, unknown>))
+      : formattedPairs;
+
+    if (validPairs.length === 0) {
+      this.logger.warn(
+        `getPrices(${exchangeSlug}): none of ${uncachedSymbols.length} requested symbols ` +
+          `(${uncachedSymbols.join(', ')}) exist on exchange; returning cached-only results`
+      );
+      return results;
+    }
+
+    // Fetch all tickers with retry
+    const result = await withExchangeRetry(() => client.fetchTickers(validPairs.map((p) => p.formatted)), {
+      logger: this.logger,
+      operationName: `fetchTickers(${exchangeSlug})`
+    });
 
     if (result.success && result.result) {
       const tickers = result.result;
 
-      for (const symbol of uncachedSymbols) {
-        const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
+      for (const { raw: symbol, formatted: formattedSymbol } of validPairs) {
         const ticker = tickers[formattedSymbol];
 
         if (ticker) {
@@ -307,55 +333,6 @@ export class PaperTradingMarketDataService {
     }
 
     return results;
-  }
-
-  /**
-   * Get historical OHLC candles for algorithm indicator computation.
-   * Uses caching to minimize exchange API calls across ticks.
-   */
-  async getHistoricalCandles(
-    exchangeSlug: string,
-    symbol: string,
-    timeframe = '1h',
-    limit = 100,
-    user?: User
-  ): Promise<CandleData[]> {
-    const cacheKey = `paper-trading:ohlcv:${exchangeSlug}:${symbol}:${timeframe}:${user?.id ?? 'public'}`;
-
-    const cached = await this.cacheManager.get<CandleData[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    try {
-      const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
-      const client = user
-        ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
-        : await this.exchangeManager.getPublicClient(exchangeSlug);
-
-      const ohlcv = await withExchangeRetryThrow(
-        () => client.fetchOHLCV(formattedSymbol, timeframe, undefined, limit),
-        { logger: this.logger, operationName: `fetchOHLCV(${exchangeSlug}:${symbol})` }
-      );
-
-      const candles = ohlcv.map((candle) => ({
-        avg: candle[4] as number, // close price — representative price for indicators
-        high: candle[2] as number,
-        low: candle[3] as number,
-        date: new Date(candle[0] as number),
-        open: candle[1] as number,
-        close: candle[4] as number,
-        volume: candle[5] as number
-      }));
-
-      // Cache for 5 minutes — candles shift slowly relative to 30s tick frequency
-      await this.cacheManager.set(cacheKey, candles, 5 * 60 * 1000);
-      return candles;
-    } catch (error: unknown) {
-      const err = toErrorInfo(error);
-      this.logger.warn(`Failed to fetch OHLCV for ${symbol} from ${exchangeSlug}: ${err.message}`);
-      return [];
-    }
   }
 
   /**

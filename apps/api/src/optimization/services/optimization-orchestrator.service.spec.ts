@@ -9,6 +9,7 @@ import { type OptimizationEvaluationService } from './optimization-evaluation.se
 import { OptimizationOrchestratorService } from './optimization-orchestrator.service';
 import { type OptimizationQueryService } from './optimization-query.service';
 
+import { type AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { type StrategyConfig } from '../../strategy/entities/strategy-config.entity';
 import { type OptimizationResult } from '../entities/optimization-result.entity';
 import { type OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
@@ -57,6 +58,7 @@ describe('OptimizationOrchestratorService', () => {
   let queryService: jest.Mocked<OptimizationQueryService>;
   let dataSource: jest.Mocked<DataSource>;
   let eventEmitter: jest.Mocked<EventEmitter2>;
+  let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
 
   beforeEach(() => {
     optimizationRunRepo = {
@@ -129,6 +131,10 @@ describe('OptimizationOrchestratorService', () => {
       emit: jest.fn()
     } as unknown as jest.Mocked<EventEmitter2>;
 
+    algorithmRegistry = {
+      getStrategyForAlgorithm: jest.fn().mockResolvedValue(undefined)
+    } as unknown as jest.Mocked<AlgorithmRegistry>;
+
     service = new OptimizationOrchestratorService(
       optimizationRunRepo,
       optimizationResultRepo,
@@ -137,7 +143,8 @@ describe('OptimizationOrchestratorService', () => {
       evaluationService,
       queryService,
       dataSource,
-      eventEmitter
+      eventEmitter,
+      algorithmRegistry
     );
   });
 
@@ -315,7 +322,48 @@ describe('OptimizationOrchestratorService', () => {
 
       await service.startOptimization('strategy-1', createValidSpace(), config);
 
-      expect(gridSearchService.generateRandomCombinations).toHaveBeenCalledWith(expect.any(Object), 50);
+      expect(gridSearchService.generateRandomCombinations).toHaveBeenCalledWith(expect.any(Object), 50, undefined);
+    });
+
+    it('should pass a reachabilityFilter when the strategy declares getMinDataPoints', async () => {
+      const config = createValidConfig({
+        walkForward: { trainDays: 90, testDays: 30, stepDays: 15, method: 'rolling', minWindowsRequired: 3 }
+      });
+      const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
+
+      // Strategy requires >= 1000 bars, testDays=30 → 30 * 24 = 720 bars → filter rejects it
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
+        getMinDataPoints: () => 1000
+      } as any);
+
+      queryService.findStrategyConfig.mockResolvedValue(strategyConfig);
+      gridSearchService.generateCombinations.mockReturnValue([{ index: 0, values: {}, isBaseline: true }]);
+      optimizationRunRepo.create.mockReturnValue({} as OptimizationRun);
+      optimizationRunRepo.save.mockResolvedValue({ id: 'run-1' } as OptimizationRun);
+
+      await service.startOptimization('strategy-1', createValidSpace(), config);
+
+      const call = gridSearchService.generateCombinations.mock.calls[0];
+      const filter = call[2];
+      expect(filter).toBeDefined();
+      // 1000 > 720 → filter rejects
+      expect(filter?.({})).toBe(false);
+    });
+
+    it('should pass undefined filter when strategy lacks getMinDataPoints', async () => {
+      const config = createValidConfig();
+      const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
+
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({} as any);
+
+      queryService.findStrategyConfig.mockResolvedValue(strategyConfig);
+      gridSearchService.generateCombinations.mockReturnValue([{ index: 0, values: {}, isBaseline: true }]);
+      optimizationRunRepo.create.mockReturnValue({} as OptimizationRun);
+      optimizationRunRepo.save.mockResolvedValue({ id: 'run-1' } as OptimizationRun);
+
+      await service.startOptimization('strategy-1', createValidSpace(), config);
+
+      expect(gridSearchService.generateCombinations).toHaveBeenCalledWith(expect.any(Object), undefined, undefined);
     });
   });
 

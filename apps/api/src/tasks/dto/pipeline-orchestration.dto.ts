@@ -131,8 +131,8 @@ export const OPTIMIZATION_CONFIG: Record<number, RiskOptimizationConfig> = {
   1: { trainDays: 180, testDays: 90, stepDays: 45, maxCombinations: 75, maxCoins: 10 }, // Conservative
   2: { trainDays: 150, testDays: 60, stepDays: 30, maxCombinations: 60, maxCoins: 10 },
   3: { trainDays: 120, testDays: 45, stepDays: 30, maxCombinations: 50, maxCoins: 10 }, // Default
-  4: { trainDays: 90, testDays: 30, stepDays: 21, maxCombinations: 40, maxCoins: 8 },
-  5: { trainDays: 60, testDays: 21, stepDays: 14, maxCombinations: 30, maxCoins: 8 } // Aggressive
+  4: { trainDays: 120, testDays: 45, stepDays: 21, maxCombinations: 40, maxCoins: 8 },
+  5: { trainDays: 90, testDays: 45, stepDays: 21, maxCombinations: 30, maxCoins: 8 } // Aggressive
 };
 
 /**
