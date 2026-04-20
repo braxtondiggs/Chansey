@@ -15,6 +15,11 @@ import { NotificationController } from './notification.controller';
 import { NotificationListener } from './notification.listener';
 import { NotificationProcessor } from './notification.processor';
 import { NotificationService } from './notification.service';
+import { PipelineNotificationDigestProcessor } from './processors/pipeline-notification-digest.processor';
+import {
+  PIPELINE_DIGEST_QUEUE,
+  PipelineNotificationDigestService
+} from './services/pipeline-notification-digest.service';
 
 import { EmailModule } from '../email/email.module';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
@@ -24,7 +29,7 @@ import { User } from '../users/users.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, PushSubscription, Notification, Pipeline]),
-    BullModule.registerQueue({ name: 'notification' }),
+    BullModule.registerQueue({ name: 'notification' }, { name: PIPELINE_DIGEST_QUEUE }),
     EmailModule
   ],
   controllers: [NotificationController],
@@ -34,6 +39,8 @@ import { User } from '../users/users.entity';
     NotificationProcessor,
     NotificationListener,
     PipelineNotificationListener,
+    PipelineNotificationDigestService,
+    PipelineNotificationDigestProcessor,
     EmailNotificationService,
     PushNotificationService,
     SmsNotificationService

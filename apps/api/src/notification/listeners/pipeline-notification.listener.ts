@@ -4,12 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import {
-  DeploymentRecommendation,
-  NotificationEventType,
-  PipelineStage,
-  PipelineStatus
-} from '@chansey/api-interfaces';
+import { DeploymentRecommendation, PipelineStage, PipelineStatus } from '@chansey/api-interfaces';
 
 import { Pipeline } from '../../pipeline/entities/pipeline.entity';
 import {
@@ -18,24 +13,11 @@ import {
   type PipelineStatusChangeEvent
 } from '../../pipeline/interfaces';
 import { toErrorInfo } from '../../shared/error.util';
-import { NotificationService } from '../notification.service';
-
-/** Maps a newly-entered pipeline stage to a user-facing label */
-const STAGE_FRIENDLY_LABEL: Record<string, string> = {
-  [PipelineStage.OPTIMIZE]: 'Training your strategy',
-  [PipelineStage.HISTORICAL]: 'Testing against history',
-  [PipelineStage.LIVE_REPLAY]: 'Replaying recent market data',
-  [PipelineStage.PAPER_TRADE]: 'Practicing with pretend money',
-  [PipelineStage.COMPLETED]: 'Final safety review'
-};
-
-/** Maps the stage a pipeline just left into a "just finished" label */
-const STAGE_COMPLETED_LABEL: Record<string, string> = {
-  [PipelineStage.OPTIMIZE]: 'training complete',
-  [PipelineStage.HISTORICAL]: 'historical testing complete',
-  [PipelineStage.LIVE_REPLAY]: 'recent market replay complete',
-  [PipelineStage.PAPER_TRADE]: 'paper trading complete'
-};
+import {
+  DigestBucket,
+  DigestEntry,
+  PipelineNotificationDigestService
+} from '../services/pipeline-notification-digest.service';
 
 interface PipelineCompletedPayload {
   pipelineId: string;
@@ -58,16 +40,16 @@ interface PipelineRejectedPayload {
 }
 
 /**
- * Translates domain-level pipeline events into user-facing notifications.
- * Each pipeline event maps to exactly one notification enqueue via the shared
- * NotificationService (which applies preferences + rate-limit + quiet hours).
+ * Translates domain-level pipeline events into per-user digest buckets.
+ * Events are buffered by `PipelineNotificationDigestService`, which emits
+ * one aggregated notification per bucket after its debounce window elapses.
  */
 @Injectable()
 export class PipelineNotificationListener {
   private readonly logger = new Logger(PipelineNotificationListener.name);
 
   constructor(
-    private readonly notificationService: NotificationService,
+    private readonly digest: PipelineNotificationDigestService,
     @InjectRepository(Pipeline) private readonly pipelineRepository: Repository<Pipeline>
   ) {}
 
@@ -76,31 +58,13 @@ export class PipelineNotificationListener {
     if (payload.newStatus !== PipelineStatus.RUNNING) return;
     if (payload.previousStatus !== PipelineStatus.PENDING) return;
 
-    try {
-      const pipeline = await this.loadPipelineWithUser(payload.pipelineId);
-      if (!pipeline) return;
-
-      const strategyName = pipeline.strategyConfig?.name ?? pipeline.name;
-
-      await this.notificationService.send(
-        pipeline.user.id,
-        NotificationEventType.PIPELINE_STARTED,
-        'We started building a new strategy',
-        `An automated strategy is being trained and tested — we'll let you know as it progresses.`,
-        'info',
-        {
-          userId: pipeline.user.id,
-          pipelineId: pipeline.id,
-          strategyName
-        }
-      );
-    } catch (error) {
-      const err = toErrorInfo(error);
-      this.logger.error(
-        `Failed to send PIPELINE_STARTED notification for ${payload.pipelineId}: ${err.message}`,
-        err.stack
-      );
-    }
+    await this.enqueueForPipeline(payload.pipelineId, 'started', (pipeline, strategyName) => ({
+      pipelineId: pipeline.id,
+      userId: pipeline.user.id,
+      strategyName,
+      subType: 'started',
+      at: payload.timestamp ?? new Date().toISOString()
+    }));
   }
 
   @OnEvent(PIPELINE_EVENTS.PIPELINE_STAGE_TRANSITION, { async: true })
@@ -108,157 +72,70 @@ export class PipelineNotificationListener {
     // Skip the transition into COMPLETED — handled by PIPELINE_COMPLETED instead.
     if (payload.newStage === PipelineStage.COMPLETED) return;
 
-    try {
-      const pipeline = await this.loadPipelineWithUser(payload.pipelineId);
-      if (!pipeline) return;
-
-      const strategyName = pipeline.strategyConfig?.name ?? pipeline.name;
-      const completedLabel = STAGE_COMPLETED_LABEL[payload.previousStage] ?? 'stage complete';
-      const nextLabel = STAGE_FRIENDLY_LABEL[payload.newStage] ?? 'next stage';
-
-      await this.notificationService.send(
-        pipeline.user.id,
-        NotificationEventType.PIPELINE_STAGE_COMPLETED,
-        `Strategy progress: ${completedLabel}`,
-        `Moving on to: ${nextLabel}.`,
-        'info',
-        {
-          userId: pipeline.user.id,
-          pipelineId: pipeline.id,
-          strategyName,
-          completedStage: payload.previousStage,
-          nextStage: payload.newStage
-        }
-      );
-    } catch (error) {
-      const err = toErrorInfo(error);
-      this.logger.error(
-        `Failed to send PIPELINE_STAGE_COMPLETED notification for ${payload.pipelineId}: ${err.message}`,
-        err.stack
-      );
-    }
+    await this.enqueueForPipeline(payload.pipelineId, 'stage', (pipeline, strategyName) => ({
+      pipelineId: pipeline.id,
+      userId: pipeline.user.id,
+      strategyName,
+      subType: 'stage',
+      previousStage: payload.previousStage,
+      newStage: payload.newStage,
+      at: payload.timestamp ?? new Date().toISOString()
+    }));
   }
 
   @OnEvent(PIPELINE_EVENTS.PIPELINE_COMPLETED, { async: true })
   async handleCompleted(payload: PipelineCompletedPayload): Promise<void> {
-    try {
-      const pipeline = await this.loadPipelineWithUser(payload.pipelineId);
-      if (!pipeline) return;
-
-      const strategyName = pipeline.strategyConfig?.name ?? pipeline.name;
-
-      if (payload.recommendation === DeploymentRecommendation.DO_NOT_DEPLOY) {
-        await this.notificationService.send(
-          pipeline.user.id,
-          NotificationEventType.PIPELINE_REJECTED,
-          `A strategy didn't pass the safety review`,
-          `We'll try a different approach on your next cycle — no action needed.`,
-          'medium',
-          {
-            userId: pipeline.user.id,
-            pipelineId: pipeline.id,
-            strategyName,
-            reason: pipeline.failureReason ?? payload.reason ?? 'Failed final review'
-          }
-        );
-        return;
-      }
-
-      if (payload.recommendation === DeploymentRecommendation.INCONCLUSIVE_RETRY) {
-        await this.notificationService.send(
-          pipeline.user.id,
-          NotificationEventType.PIPELINE_REJECTED,
-          `Not enough trading opportunities`,
-          `We'll retry with fresh parameters — no action needed from you.`,
-          'low',
-          {
-            userId: pipeline.user.id,
-            pipelineId: pipeline.id,
-            strategyName,
-            reason: payload.reason ?? 'Insufficient trading signals'
-          }
-        );
-        return;
-      }
-
-      await this.notificationService.send(
-        pipeline.user.id,
-        NotificationEventType.PIPELINE_COMPLETED,
-        `A new strategy is ready for live trading`,
-        `It passed every check and is being activated on your account.`,
-        'info',
-        {
-          userId: pipeline.user.id,
-          pipelineId: pipeline.id,
-          strategyName
-        }
-      );
-    } catch (error) {
-      const err = toErrorInfo(error);
-      this.logger.error(
-        `Failed to send PIPELINE_COMPLETED notification for ${payload.pipelineId}: ${err.message}`,
-        err.stack
-      );
-    }
+    await this.enqueueForPipeline(payload.pipelineId, 'terminal', (pipeline, strategyName) => ({
+      pipelineId: pipeline.id,
+      userId: pipeline.user.id,
+      strategyName,
+      subType: 'completed',
+      recommendation: payload.recommendation,
+      inconclusive: payload.inconclusive,
+      reason: pipeline.failureReason ?? payload.reason,
+      at: payload.timestamp ?? new Date().toISOString()
+    }));
   }
 
   @OnEvent(PIPELINE_EVENTS.PIPELINE_FAILED, { async: true })
   async handleFailed(payload: PipelineFailedPayload): Promise<void> {
-    try {
-      const pipeline = await this.loadPipelineWithUser(payload.pipelineId);
-      if (!pipeline) return;
-
-      const strategyName = pipeline.strategyConfig?.name ?? pipeline.name;
-
-      await this.notificationService.send(
-        pipeline.user.id,
-        NotificationEventType.PIPELINE_REJECTED,
-        `A strategy couldn't finish building`,
-        `We'll try again on the next cycle — no action needed.`,
-        'medium',
-        {
-          userId: pipeline.user.id,
-          pipelineId: pipeline.id,
-          strategyName,
-          reason: payload.reason
-        }
-      );
-    } catch (error) {
-      const err = toErrorInfo(error);
-      this.logger.error(
-        `Failed to send PIPELINE_REJECTED notification for ${payload.pipelineId}: ${err.message}`,
-        err.stack
-      );
-    }
+    await this.enqueueForPipeline(payload.pipelineId, 'terminal', (pipeline, strategyName) => ({
+      pipelineId: pipeline.id,
+      userId: pipeline.user.id,
+      strategyName,
+      subType: 'failed',
+      reason: payload.reason,
+      at: payload.timestamp ?? new Date().toISOString()
+    }));
   }
 
   @OnEvent(PIPELINE_EVENTS.PIPELINE_REJECTED, { async: true })
   async handleRejected(payload: PipelineRejectedPayload): Promise<void> {
+    await this.enqueueForPipeline(payload.pipelineId, 'terminal', (pipeline, strategyName) => ({
+      pipelineId: pipeline.id,
+      userId: pipeline.user.id,
+      strategyName,
+      subType: 'rejected',
+      reason: payload.reason,
+      at: payload.timestamp ?? new Date().toISOString()
+    }));
+  }
+
+  private async enqueueForPipeline(
+    pipelineId: string,
+    bucket: DigestBucket,
+    buildEntry: (pipeline: Pipeline, strategyName: string) => DigestEntry
+  ): Promise<void> {
     try {
-      const pipeline = await this.loadPipelineWithUser(payload.pipelineId);
-      if (!pipeline) return;
+      const pipeline = await this.loadPipelineWithUser(pipelineId);
+      if (!pipeline || !pipeline.user) return;
 
       const strategyName = pipeline.strategyConfig?.name ?? pipeline.name;
-
-      await this.notificationService.send(
-        pipeline.user.id,
-        NotificationEventType.PIPELINE_REJECTED,
-        `A strategy didn't pass the safety review`,
-        `We'll try a different approach on your next cycle — no action needed.`,
-        'medium',
-        {
-          userId: pipeline.user.id,
-          pipelineId: pipeline.id,
-          strategyName,
-          reason: payload.reason
-        }
-      );
+      const entry = buildEntry(pipeline, strategyName);
+      await this.digest.enqueue(bucket, entry);
     } catch (error) {
       const err = toErrorInfo(error);
-      this.logger.error(
-        `Failed to send PIPELINE_REJECTED notification for ${payload.pipelineId}: ${err.message}`,
-        err.stack
-      );
+      this.logger.error(`Failed to enqueue ${bucket} digest for pipeline ${pipelineId}: ${err.message}`, err.stack);
     }
   }
 
