@@ -626,6 +626,38 @@ describe('PaperTradingEngineService', () => {
       expect(algorithmRegistry.executeAlgorithm).toHaveBeenCalledTimes(1);
     });
 
+    it('advances lastProcessedCandleTs via finally when filterSignals throws, so the same bar is not re-run', async () => {
+      const throwingThrottle = {
+        filter: jest.fn(() => {
+          throw new Error('throttle filter crashed');
+        }),
+        clear: jest.fn(),
+        has: jest.fn(),
+        restore: jest.fn(),
+        getSerialized: jest.fn(),
+        sweepOrphaned: jest.fn().mockReturnValue(0)
+      };
+      const { service, algorithmRegistry, historicalCandleService } = createService();
+      // Replace the throttleService mock after construction — patch via the private field
+      (service as unknown as { throttleService: typeof throwingThrottle }).throttleService = throwingThrottle;
+
+      const ts = Date.now();
+      historicalCandleService.getHistoricalCandles.mockResolvedValue([makeCandle(ts - 3_600_000), makeCandle(ts)]);
+      // runAlgorithm must return a signal so filterSignals is actually invoked
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.BUY, coinId: 'BTC', strength: 0.1, confidence: 0.8, reason: 'entry' }]
+      });
+
+      const session = makeSession({ lastProcessedCandleTs: { 'BTC/USD': ts - 3_600_000 } });
+      const result = await service.processTick(session, exchangeKey);
+
+      // processTick's outer try/catch returns processed: false, but the finally still fired
+      expect(result.processed).toBe(false);
+      expect(session.lastProcessedCandleTs).toEqual({ 'BTC/USD': ts });
+      expect(throwingThrottle.filter).toHaveBeenCalledTimes(1);
+    });
+
     it('re-runs the strategy when a lagging symbol catches up to a bar already reached by another', async () => {
       const { service, algorithmRegistry, historicalCandleService } = createService({
         accounts: [],
