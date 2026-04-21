@@ -309,7 +309,7 @@ describe('PaperTradingMarketDataService', () => {
       expect(cacheManager.set).toHaveBeenCalledTimes(2);
     });
 
-    it('silently omits symbols the batcher does not return on successful fetch', async () => {
+    it('returns partial results when batcher omits symbols and recovery finds nothing', async () => {
       const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
       const tickerBatcher = {
         getTicker: jest.fn(),
@@ -401,6 +401,78 @@ describe('PaperTradingMarketDataService', () => {
 
       await expect(service.getPrices('binance', ['BTC/USDT', 'ETH/USDT'])).rejects.toThrow(
         /2 symbol\(s\) have no stale cache, fallback exchange, or DB fallback/
+      );
+    });
+
+    it('recovers partial-batch misses from stale cache on otherwise successful fetch', async () => {
+      const staleEth: PriceData = {
+        symbol: 'ETH/USDT',
+        price: 2400,
+        timestamp: new Date(),
+        source: 'binance'
+      };
+
+      const cacheManager = {
+        get: jest.fn().mockImplementation((key: string) => {
+          if (key === 'paper-trading:price:binance:ETH/USDT:stale') return Promise.resolve(staleEth);
+          return Promise.resolve(null);
+        }),
+        set: jest.fn()
+      };
+      const tickerBatcher = {
+        getTicker: jest.fn(),
+        getTickers: jest
+          .fn()
+          .mockResolvedValue(
+            new Map<string, BatchedTicker>([
+              ['BTC/USDT', mkBatched({ symbol: 'BTC/USDT', price: 45000, source: 'binance' })]
+              // ETH/USDT missing from response
+            ])
+          )
+      };
+
+      const { service } = createService({ cacheManager, tickerBatcher });
+      const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
+
+      expect(result.get('BTC/USDT')?.price).toBe(45000);
+      expect(result.get('ETH/USDT')?.price).toBe(2400);
+      expect(result.get('ETH/USDT')?.source).toBe('binance:stale');
+    });
+
+    it('recovers partial-batch misses via fallback exchange when stale cache is empty', async () => {
+      const cacheManager = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn()
+      };
+      const tickerBatcher = {
+        getTicker: jest
+          .fn()
+          .mockImplementation((slug: string) =>
+            slug === 'gdax'
+              ? Promise.resolve(mkBatched({ symbol: 'ETH/USD', price: 2400, source: 'gdax' }))
+              : Promise.resolve(undefined)
+          ),
+        getTickers: jest
+          .fn()
+          .mockResolvedValue(
+            new Map<string, BatchedTicker>([
+              ['BTC/USDT', mkBatched({ symbol: 'BTC/USDT', price: 45000, source: 'binance' })]
+              // ETH/USDT missing from response
+            ])
+          )
+      };
+
+      const { service } = createService({ cacheManager, tickerBatcher });
+      const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
+
+      expect(result.get('BTC/USDT')?.price).toBe(45000);
+      expect(result.get('ETH/USDT')?.price).toBe(2400);
+      expect(result.get('ETH/USDT')?.source).toBe('gdax:fallback');
+      // Fallback price is written back to the stale cache so the next miss is instant
+      expect(cacheManager.set).toHaveBeenCalledWith(
+        'paper-trading:price:binance:ETH/USDT:stale',
+        expect.objectContaining({ source: 'gdax:fallback' }),
+        1800000
       );
     });
 

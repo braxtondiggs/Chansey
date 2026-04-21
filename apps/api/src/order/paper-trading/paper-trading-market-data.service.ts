@@ -244,51 +244,39 @@ export class PaperTradingMarketDataService {
       }
     }
 
-    // On a successful fetch, symbols the exchange didn't return are silently
-    // omitted. Only a hard fetch failure drops into the stale-cache chain.
-    if (!fetchError) {
-      return results;
-    }
+    // Run the stale → fallback-exchange → DB recovery chain for any uncached symbol
+    // that didn't come back from the batcher, regardless of whether it threw or just
+    // returned a partial map. A silent drop would otherwise shrink the trading
+    // universe mid-session.
+    const partialMisses = uncachedSymbols.filter((s) => !results.has(s));
 
-    this.logger.warn(
-      `${circuitOpen ? 'Circuit open' : 'Batcher fetch exhausted'} for ${exchangeSlug}. ` +
-        `Falling back to stale cached prices for ${uncachedSymbols.length} symbol(s).`
-    );
-
-    const stillMissing: string[] = [];
-    for (const symbol of uncachedSymbols) {
-      if (results.has(symbol)) continue;
-      const staleKey = `paper-trading:price:${exchangeSlug}:${symbol}:stale`;
-      const stale = await this.cacheManager.get<PriceData>(staleKey);
-      if (stale) {
-        results.set(symbol, { ...stale, source: `${stale.source}:stale` });
-      } else {
-        stillMissing.push(symbol);
-      }
-    }
-
-    for (const symbol of stillMissing) {
-      const fallbackPrice = await this.tryFallbackExchanges(symbol, exchangeSlug);
-      if (fallbackPrice) {
-        results.set(symbol, fallbackPrice);
-        const cacheKey = `paper-trading:price:${exchangeSlug}:${symbol}:stale`;
-        await this.cacheManager.set(cacheKey, fallbackPrice, STALE_CACHE_TTL_MS);
-        continue;
-      }
-
-      const dbPrice = await this.tryDatabasePrice(symbol);
-      if (dbPrice) {
-        results.set(symbol, dbPrice);
-        continue;
-      }
-    }
-
-    const finalMisses = stillMissing.filter((s) => !results.has(s));
-    if (finalMisses.length > 0) {
-      throw new Error(
-        `Failed to fetch prices from ${exchangeSlug} via batcher, ` +
-          `and ${finalMisses.length} symbol(s) have no stale cache, fallback exchange, or DB fallback`
+    if (partialMisses.length > 0) {
+      this.logger.warn(
+        fetchError
+          ? `${circuitOpen ? 'Circuit open' : 'Batcher fetch exhausted'} for ${exchangeSlug}. ` +
+              `Falling back for ${partialMisses.length} symbol(s).`
+          : `Batcher returned partial data for ${exchangeSlug}. Falling back for ${partialMisses.length} symbol(s).`
       );
+
+      // Phase 1: parallel stale-cache (Redis) — cheap
+      const afterStale = await this.recoverFromStaleCache(exchangeSlug, partialMisses, results);
+      // Phase 2: parallel fallback-exchange + DB — only for what stale cache missed
+      if (afterStale.length > 0) {
+        await this.recoverFromExternalFallback(exchangeSlug, afterStale, results);
+      }
+    }
+
+    // Only throw when the fetch itself failed AND recovery didn't cover every
+    // symbol. Partial batch success with unrecoverable symbols returns what we have —
+    // the engine already tolerates missing symbols via its validSymbols filter.
+    if (fetchError) {
+      const finalMisses = uncachedSymbols.filter((s) => !results.has(s));
+      if (finalMisses.length > 0) {
+        throw new Error(
+          `Failed to fetch prices from ${exchangeSlug} via batcher, ` +
+            `and ${finalMisses.length} symbol(s) have no stale cache, fallback exchange, or DB fallback`
+        );
+      }
     }
 
     return results;
@@ -360,6 +348,61 @@ export class PaperTradingMarketDataService {
     }
 
     return null;
+  }
+
+  /**
+   * Parallel stale-cache lookup. Mutates `results` with hits.
+   * Returns the symbols that weren't recovered from stale cache.
+   */
+  private async recoverFromStaleCache(
+    exchangeSlug: string,
+    symbols: string[],
+    results: Map<string, PriceData>
+  ): Promise<string[]> {
+    const lookups = await Promise.all(
+      symbols.map(async (symbol) => {
+        const staleKey = `paper-trading:price:${exchangeSlug}:${symbol}:stale`;
+        const stale = await this.cacheManager.get<PriceData>(staleKey);
+        return { symbol, stale };
+      })
+    );
+
+    const stillMissing: string[] = [];
+    for (const { symbol, stale } of lookups) {
+      if (stale) {
+        results.set(symbol, { ...stale, source: `${stale.source}:stale` });
+      } else {
+        stillMissing.push(symbol);
+      }
+    }
+    return stillMissing;
+  }
+
+  /**
+   * Parallel fallback-exchange + DB lookup. Mutates `results` with hits.
+   * Writes successful fallback prices back to the stale cache so the next
+   * miss is served from Phase 1.
+   */
+  private async recoverFromExternalFallback(
+    exchangeSlug: string,
+    symbols: string[],
+    results: Map<string, PriceData>
+  ): Promise<void> {
+    await Promise.all(
+      symbols.map(async (symbol) => {
+        const staleKey = `paper-trading:price:${exchangeSlug}:${symbol}:stale`;
+        const fallbackPrice = await this.tryFallbackExchanges(symbol, exchangeSlug);
+        if (fallbackPrice) {
+          results.set(symbol, fallbackPrice);
+          await this.cacheManager.set(staleKey, fallbackPrice, STALE_CACHE_TTL_MS);
+          return;
+        }
+        const dbPrice = await this.tryDatabasePrice(symbol);
+        if (dbPrice) {
+          results.set(symbol, dbPrice);
+        }
+      })
+    );
   }
 
   /**
