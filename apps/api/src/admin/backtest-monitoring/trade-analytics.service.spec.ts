@@ -5,52 +5,85 @@ import { type ObjectLiteral, type Repository, type SelectQueryBuilder } from 'ty
 
 import { TradeAnalyticsService } from './trade-analytics.service';
 
-import { BacktestTrade } from '../../order/backtest/backtest-trade.entity';
+import { BacktestSummary } from '../../order/backtest/backtest-summary.entity';
 import { Backtest } from '../../order/backtest/backtest.entity';
-import { SimulatedOrderFill } from '../../order/backtest/simulated-order-fill.entity';
+import {
+  buildHistogram,
+  HOLD_TIME_BUCKET_EDGES,
+  SLIPPAGE_BPS_BUCKET_EDGES
+} from '../../order/backtest/summary-histogram.util';
 
 type MockRepo<T extends ObjectLiteral> = Partial<jest.Mocked<Repository<T>>>;
 
-const createMockQueryBuilder = () => {
+const createBacktestIdsQb = (ids: Array<{ b_id: string }>) => {
   const qb: Partial<SelectQueryBuilder<any>> = {
     select: jest.fn().mockReturnThis(),
-    addSelect: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
-    leftJoin: jest.fn().mockReturnThis(),
-    groupBy: jest.fn().mockReturnThis(),
-    addGroupBy: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockReturnThis(),
-    setParameter: jest.fn().mockReturnThis(),
-    getRawOne: jest.fn().mockResolvedValue({}),
-    getRawMany: jest.fn().mockResolvedValue([])
+    getRawMany: jest.fn().mockResolvedValue(ids)
   };
   return qb as SelectQueryBuilder<any>;
 };
 
+function makeSummary(partial: Partial<BacktestSummary> = {}): BacktestSummary {
+  const base = new BacktestSummary({
+    backtestId: 'bt-1',
+    totalSignals: 0,
+    entryCount: 0,
+    exitCount: 0,
+    adjustmentCount: 0,
+    riskControlCount: 0,
+    avgConfidence: null,
+    totalTrades: 0,
+    buyCount: 0,
+    sellCount: 0,
+    totalVolume: 0,
+    totalFees: 0,
+    winCount: 0,
+    lossCount: 0,
+    grossProfit: 0,
+    grossLoss: 0,
+    largestWin: null,
+    largestLoss: null,
+    avgWin: null,
+    avgLoss: null,
+    totalRealizedPnL: null,
+    holdTimeMinMs: null,
+    holdTimeMaxMs: null,
+    holdTimeAvgMs: null,
+    holdTimeMedianMs: null,
+    holdTimeCount: 0,
+    slippageAvgBps: null,
+    slippageMaxBps: null,
+    slippageP95Bps: null,
+    slippageTotalImpact: 0,
+    slippageFillCount: 0,
+    holdTimeHistogram: null,
+    slippageHistogram: null,
+    signalsByConfidenceBucket: [],
+    signalsByType: {},
+    signalsByDirection: {},
+    signalsByInstrument: [],
+    tradesByInstrument: [],
+    computedAt: new Date()
+  });
+  Object.assign(base, partial);
+  return base;
+}
+
 describe('TradeAnalyticsService', () => {
   let service: TradeAnalyticsService;
   let backtestRepo: MockRepo<Backtest>;
-  let tradeRepo: MockRepo<BacktestTrade>;
-  let fillRepo: MockRepo<SimulatedOrderFill>;
-  let mockQueryBuilder: SelectQueryBuilder<any>;
+  let summaryRepo: MockRepo<BacktestSummary>;
 
   beforeEach(async () => {
-    mockQueryBuilder = createMockQueryBuilder();
-
-    backtestRepo = { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) };
-    tradeRepo = {
-      createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder)
-    };
-    fillRepo = { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) };
+    backtestRepo = { createQueryBuilder: jest.fn() };
+    summaryRepo = { find: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TradeAnalyticsService,
         { provide: getRepositoryToken(Backtest), useValue: backtestRepo },
-        { provide: getRepositoryToken(BacktestTrade), useValue: tradeRepo },
-        { provide: getRepositoryToken(SimulatedOrderFill), useValue: fillRepo }
+        { provide: getRepositoryToken(BacktestSummary), useValue: summaryRepo }
       ]
     }).compile();
 
@@ -59,195 +92,133 @@ describe('TradeAnalyticsService', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  describe('getTradeAnalytics', () => {
-    it('returns empty analytics when no backtests match filters', async () => {
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([]);
+  it('returns empty analytics when no backtests match filters', async () => {
+    (backtestRepo.createQueryBuilder as jest.Mock).mockReturnValue(createBacktestIdsQb([]));
+    const result = await service.getTradeAnalytics({});
+    expect(result.summary.totalTrades).toBe(0);
+    expect(result.profitability.profitFactor).toBe(0);
+    expect(result.duration.avgHoldTime).toBe('N/A');
+  });
 
-      const result = await service.getTradeAnalytics({});
+  it('returns empty analytics when no summaries yet exist', async () => {
+    (backtestRepo.createQueryBuilder as jest.Mock).mockReturnValue(createBacktestIdsQb([{ b_id: 'bt-1' }]));
+    (summaryRepo.find as jest.Mock).mockResolvedValue([]);
+    const result = await service.getTradeAnalytics({});
+    expect(result.summary.totalTrades).toBe(0);
+  });
 
-      expect(result).toMatchObject({
-        summary: {
-          totalTrades: 0,
-          totalVolume: 0,
-          totalFees: 0
-        },
-        profitability: {
-          winCount: 0,
-          lossCount: 0,
-          winRate: 0
-        }
-      });
+  it('aggregates trade summary counters across summaries', async () => {
+    (backtestRepo.createQueryBuilder as jest.Mock).mockReturnValue(
+      createBacktestIdsQb([{ b_id: 'bt-1' }, { b_id: 'bt-2' }])
+    );
+    (summaryRepo.find as jest.Mock).mockResolvedValue([
+      makeSummary({ totalTrades: 50, buyCount: 25, sellCount: 25, totalVolume: 100000, totalFees: 100 }),
+      makeSummary({ totalTrades: 30, buyCount: 15, sellCount: 15, totalVolume: 60000, totalFees: 80 })
+    ]);
+    const result = await service.getTradeAnalytics({});
+    expect(result.summary).toEqual({
+      totalTrades: 80,
+      totalVolume: 160000,
+      totalFees: 180,
+      buyCount: 40,
+      sellCount: 40
     });
+  });
 
-    it('returns trade analytics when backtests exist', async () => {
-      // Mock backtest IDs
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([{ b_id: 'bt-1' }]);
+  it('computes profitability with profitFactor of 0 when no losses (avoids Infinity)', async () => {
+    (backtestRepo.createQueryBuilder as jest.Mock).mockReturnValue(createBacktestIdsQb([{ b_id: 'bt-1' }]));
+    (summaryRepo.find as jest.Mock).mockResolvedValue([
+      makeSummary({
+        winCount: 2,
+        lossCount: 0,
+        grossProfit: 500,
+        grossLoss: 0,
+        largestWin: 300,
+        largestLoss: null,
+        avgWin: 250,
+        avgLoss: null,
+        totalRealizedPnL: 500
+      })
+    ]);
+    const result = await service.getTradeAnalytics({});
+    expect(result.profitability.profitFactor).toBe(0);
+    expect(result.profitability.winRate).toBe(1);
+    expect(result.profitability.avgWin).toBe(250);
+  });
 
-      // Mock trade summary
-      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
-        totalTrades: '50',
-        totalVolume: '100000',
-        totalFees: '100',
-        buyCount: '25',
-        sellCount: '25'
-      });
+  it('merges hold-time histograms and interpolates median', async () => {
+    const h1 = buildHistogram([1000, 5000, 10000, 20000], HOLD_TIME_BUCKET_EDGES);
+    const h2 = buildHistogram([15000, 25000, 40000, 60000], HOLD_TIME_BUCKET_EDGES);
+    (backtestRepo.createQueryBuilder as jest.Mock).mockReturnValue(
+      createBacktestIdsQb([{ b_id: 'bt-1' }, { b_id: 'bt-2' }])
+    );
+    (summaryRepo.find as jest.Mock).mockResolvedValue([
+      makeSummary({ holdTimeHistogram: h1, holdTimeCount: 4 }),
+      makeSummary({ holdTimeHistogram: h2, holdTimeCount: 4 })
+    ]);
+    const result = await service.getTradeAnalytics({});
 
-      // Mock profitability
-      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
-        winCount: '15',
-        lossCount: '10',
-        grossProfit: '5000',
-        grossLoss: '2000',
-        largestWin: '1000',
-        largestLoss: '-500',
-        avgWin: '333',
-        avgLoss: '-200',
-        totalRealizedPnL: '3000'
-      });
+    // Combined 8 samples, avg = (sum) / 8. Sum from histograms = 1000+5000+10000+20000+15000+25000+40000+60000 = 176000
+    expect(result.duration.avgHoldTimeMs).toBeCloseTo(176000 / 8, 5);
+    expect(result.duration.medianHoldTimeMs).toBeGreaterThan(0);
+    expect(result.duration.avgHoldTime).not.toBe('N/A');
+  });
 
-      // Mock duration stats (no hold-time rows)
-      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({ cnt: '0' });
+  it('aggregates slippage using histogram-merged p95 and summary scalars', async () => {
+    const h1 = buildHistogram([50, 100, 200], SLIPPAGE_BPS_BUCKET_EDGES);
+    const h2 = buildHistogram([150, 1200], SLIPPAGE_BPS_BUCKET_EDGES);
+    (backtestRepo.createQueryBuilder as jest.Mock).mockReturnValue(
+      createBacktestIdsQb([{ b_id: 'bt-1' }, { b_id: 'bt-2' }])
+    );
+    (summaryRepo.find as jest.Mock).mockResolvedValue([
+      makeSummary({ slippageHistogram: h1, slippageFillCount: 3, slippageMaxBps: 200, slippageTotalImpact: 50 }),
+      makeSummary({ slippageHistogram: h2, slippageFillCount: 2, slippageMaxBps: 1200, slippageTotalImpact: 30 })
+    ]);
+    const result = await service.getTradeAnalytics({});
+    expect(result.slippage.fillCount).toBe(5);
+    expect(result.slippage.maxBps).toBe(1200);
+    expect(result.slippage.totalImpact).toBe(80);
+    expect(result.slippage.p95Bps).toBeGreaterThan(0);
+  });
 
-      // Mock slippage
-      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({
-        avgBps: '5.5',
-        totalImpact: '50',
-        maxBps: '15',
-        fillCount: '40'
-      });
-
-      // Mock p95 slippage
-      (mockQueryBuilder.getRawOne as jest.Mock).mockResolvedValueOnce({ p95Bps: '10' });
-
-      // Mock by instrument
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([
-        {
-          instrument: 'BTC/USDT',
-          tradeCount: '30',
-          totalReturn: '10.5',
-          winRate: '0.65',
-          totalVolume: '50000',
-          totalPnL: '2000'
-        }
-      ]);
-
-      const result = await service.getTradeAnalytics({});
-
-      expect(result.summary).toEqual({
-        totalTrades: 50,
-        totalVolume: 100000,
-        totalFees: 100,
-        buyCount: 25,
-        sellCount: 25
-      });
-
-      // winRate = 15/25 = 0.6; profitFactor = 5000/2000 = 2.5
-      // expectancy = 333*0.6 - 200*0.4 = 199.8 - 80 = 119.8
-      expect(result.profitability).toEqual({
-        winCount: 15,
-        lossCount: 10,
-        winRate: 0.6,
-        profitFactor: 2.5,
-        largestWin: 1000,
-        largestLoss: -500,
-        expectancy: expect.closeTo(119.8, 5),
-        avgWin: 333,
-        avgLoss: 200, // source negates parseFloat(avgLoss) = -(-200) = 200
-        totalRealizedPnL: 3000
-      });
-
-      expect(result.duration).toEqual({
-        avgHoldTimeMs: 0,
-        avgHoldTime: 'N/A',
-        medianHoldTimeMs: 0,
-        medianHoldTime: 'N/A',
-        maxHoldTimeMs: 0,
-        maxHoldTime: 'N/A',
-        minHoldTimeMs: 0,
-        minHoldTime: 'N/A'
-      });
-
-      expect(result.slippage).toEqual({
-        avgBps: 5.5,
-        totalImpact: 50,
-        p95Bps: 10,
-        maxBps: 15,
-        fillCount: 40
-      });
-
-      expect(result.byInstrument).toEqual([
-        {
-          instrument: 'BTC/USDT',
-          tradeCount: 30,
-          totalReturn: 10.5,
-          winRate: 0.65,
-          totalVolume: 50000,
-          totalPnL: 2000
-        }
-      ]);
-    });
-
-    it('returns profitFactor of 0 when there are wins but no losses (avoids Infinity)', async () => {
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([{ b_id: 'bt-1' }]);
-      (mockQueryBuilder.getRawOne as jest.Mock)
-        .mockResolvedValueOnce({ totalTrades: '5', totalVolume: '1000', totalFees: '1', buyCount: '3', sellCount: '2' })
-        .mockResolvedValueOnce({
-          winCount: '2',
-          lossCount: '0',
-          grossProfit: '500',
-          grossLoss: '0',
-          largestWin: '300',
-          largestLoss: '0',
-          avgWin: '250',
-          avgLoss: null,
-          totalRealizedPnL: '500'
-        })
-        .mockResolvedValueOnce({ cnt: '0' })
-        .mockResolvedValueOnce({ avgBps: '0', totalImpact: '0', maxBps: '0', fillCount: '0' })
-        .mockResolvedValueOnce({ p95Bps: '0' });
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([]);
-
-      const result = await service.getTradeAnalytics({});
-
-      expect(result.profitability.profitFactor).toBe(0);
-      expect(result.profitability.winRate).toBe(1);
-      expect(result.profitability.lossCount).toBe(0);
-    });
-
-    it('computes duration stats from SQL aggregation over holdTimeMs', async () => {
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([{ b_id: 'bt-1' }]);
-      (mockQueryBuilder.getRawOne as jest.Mock)
-        .mockResolvedValueOnce({}) // summary
-        .mockResolvedValueOnce({}) // profitability
-        .mockResolvedValueOnce({ cnt: '4', avgMs: '4500', medianMs: '4000', minMs: '1000', maxMs: '9000' })
-        .mockResolvedValueOnce({}) // slippage
-        .mockResolvedValueOnce({}); // p95
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([]);
-
-      const result = await service.getTradeAnalytics({});
-
-      expect(result.duration.avgHoldTimeMs).toBe(4500);
-      expect(result.duration.medianHoldTimeMs).toBe(4000);
-      expect(result.duration.minHoldTimeMs).toBe(1000);
-      expect(result.duration.maxHoldTimeMs).toBe(9000);
-      expect(result.duration.avgHoldTime).not.toBe('N/A');
-    });
-
-    it('falls back to "Unknown" for instruments with null symbols', async () => {
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([{ b_id: 'bt-1' }]);
-      (mockQueryBuilder.getRawOne as jest.Mock)
-        .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({ cnt: '0' })
-        .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({});
-      (mockQueryBuilder.getRawMany as jest.Mock).mockResolvedValueOnce([
-        { instrument: null, tradeCount: '5', totalReturn: '1', winRate: '0.5', totalVolume: '100', totalPnL: '10' }
-      ]);
-
-      const result = await service.getTradeAnalytics({});
-
-      expect(result.byInstrument[0].instrument).toBe('Unknown');
+  it('aggregates tradesByInstrument top 10 sorted by totalVolume', async () => {
+    (backtestRepo.createQueryBuilder as jest.Mock).mockReturnValue(createBacktestIdsQb([{ b_id: 'bt-1' }]));
+    (summaryRepo.find as jest.Mock).mockResolvedValue([
+      makeSummary({
+        tradesByInstrument: [
+          {
+            instrument: 'BTC/USD',
+            tradeCount: 30,
+            sellCount: 15,
+            wins: 10,
+            losses: 5,
+            totalVolume: 50000,
+            totalPnL: 2000,
+            returnSum: 10.5,
+            returnCount: 15
+          },
+          {
+            instrument: 'ETH/USD',
+            tradeCount: 8,
+            sellCount: 4,
+            wins: 2,
+            losses: 2,
+            totalVolume: 10000,
+            totalPnL: 100,
+            returnSum: 1.0,
+            returnCount: 4
+          }
+        ]
+      })
+    ]);
+    const result = await service.getTradeAnalytics({});
+    expect(result.byInstrument[0]).toEqual({
+      instrument: 'BTC/USD',
+      tradeCount: 30,
+      totalReturn: 10.5,
+      winRate: 10 / 15,
+      totalVolume: 50000,
+      totalPnL: 2000
     });
   });
 });

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Decimal } from 'decimal.js';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { BacktestFiltersDto } from './dto/overview.dto';
 import {
@@ -15,21 +15,17 @@ import {
 } from './dto/trade-analytics.dto';
 import { formatDuration, getDateRange, getEmptyTradeAnalytics, getFilteredBacktestIds } from './monitoring-shared.util';
 
-import { BacktestTrade, TradeType } from '../../order/backtest/backtest-trade.entity';
+import { BacktestSummary, InstrumentTradeBreakdown } from '../../order/backtest/backtest-summary.entity';
 import { Backtest } from '../../order/backtest/backtest.entity';
-import { SimulatedOrderFill } from '../../order/backtest/simulated-order-fill.entity';
+import { mergeHistograms, percentileFromHistogram } from '../../order/backtest/summary-histogram.util';
 
 @Injectable()
 export class TradeAnalyticsService {
   constructor(
     @InjectRepository(Backtest) private readonly backtestRepo: Repository<Backtest>,
-    @InjectRepository(BacktestTrade) private readonly tradeRepo: Repository<BacktestTrade>,
-    @InjectRepository(SimulatedOrderFill) private readonly fillRepo: Repository<SimulatedOrderFill>
+    @InjectRepository(BacktestSummary) private readonly summaryRepo: Repository<BacktestSummary>
   ) {}
 
-  /**
-   * Get trade analytics
-   */
   async getTradeAnalytics(filters: BacktestFiltersDto): Promise<TradeAnalyticsDto> {
     const dateRange = getDateRange(filters);
     const backtestIds = await getFilteredBacktestIds(this.backtestRepo, filters, dateRange);
@@ -38,81 +34,84 @@ export class TradeAnalyticsService {
       return getEmptyTradeAnalytics();
     }
 
-    const [summary, profitability, duration, slippage, byInstrument] = await Promise.all([
-      this.getTradeSummary(backtestIds),
-      this.getProfitabilityStats(backtestIds),
-      this.getTradeDurationStats(backtestIds),
-      this.getSlippageStats(backtestIds),
-      this.getTradesByInstrument(backtestIds)
-    ]);
+    const summaries = await this.summaryRepo.find({
+      where: { backtestId: In(backtestIds) }
+    });
+
+    if (summaries.length === 0) {
+      return getEmptyTradeAnalytics();
+    }
 
     return {
-      summary,
-      profitability,
-      duration,
-      slippage,
-      byInstrument
+      summary: this.aggregateSummary(summaries),
+      profitability: this.aggregateProfitability(summaries),
+      duration: this.aggregateDuration(summaries),
+      slippage: this.aggregateSlippage(summaries),
+      byInstrument: this.aggregateByInstrument(summaries)
     };
   }
 
-  private async getTradeSummary(backtestIds: string[]): Promise<TradeSummaryDto> {
-    const qb = this.tradeRepo
-      .createQueryBuilder('t')
-      .select('COUNT(*)', 'totalTrades')
-      .addSelect('SUM(t.totalValue)', 'totalVolume')
-      .addSelect('SUM(t.fee)', 'totalFees')
-      .addSelect(`COUNT(*) FILTER (WHERE t.type = :buyType)`, 'buyCount')
-      .addSelect(`COUNT(*) FILTER (WHERE t.type = :sellType)`, 'sellCount')
-      .where('t.backtestId IN (:...backtestIds)', { backtestIds })
-      .setParameter('buyType', TradeType.BUY)
-      .setParameter('sellType', TradeType.SELL);
-
-    const result = await qb.getRawOne();
-
-    return {
-      totalTrades: parseInt(result?.totalTrades, 10) || 0,
-      totalVolume: parseFloat(result?.totalVolume) || 0,
-      totalFees: parseFloat(result?.totalFees) || 0,
-      buyCount: parseInt(result?.buyCount, 10) || 0,
-      sellCount: parseInt(result?.sellCount, 10) || 0
-    };
+  private aggregateSummary(summaries: BacktestSummary[]): TradeSummaryDto {
+    let totalTrades = 0;
+    let totalVolume = 0;
+    let totalFees = 0;
+    let buyCount = 0;
+    let sellCount = 0;
+    for (const s of summaries) {
+      totalTrades += s.totalTrades;
+      totalVolume += Number(s.totalVolume) || 0;
+      totalFees += Number(s.totalFees) || 0;
+      buyCount += s.buyCount;
+      sellCount += s.sellCount;
+    }
+    return { totalTrades, totalVolume, totalFees, buyCount, sellCount };
   }
 
-  private async getProfitabilityStats(backtestIds: string[]): Promise<ProfitabilityStatsDto> {
-    const qb = this.tradeRepo
-      .createQueryBuilder('t')
-      .select(`COUNT(*) FILTER (WHERE t.realizedPnL > 0)`, 'winCount')
-      .addSelect(`COUNT(*) FILTER (WHERE t.realizedPnL < 0)`, 'lossCount')
-      .addSelect(`SUM(CASE WHEN t.realizedPnL > 0 THEN t.realizedPnL ELSE 0 END)`, 'grossProfit')
-      .addSelect(`ABS(SUM(CASE WHEN t.realizedPnL < 0 THEN t.realizedPnL ELSE 0 END))`, 'grossLoss')
-      .addSelect(`MAX(t.realizedPnL)`, 'largestWin')
-      .addSelect(`MIN(t.realizedPnL)`, 'largestLoss')
-      .addSelect(`AVG(CASE WHEN t.realizedPnL > 0 THEN t.realizedPnL ELSE NULL END)`, 'avgWin')
-      .addSelect(`AVG(CASE WHEN t.realizedPnL < 0 THEN t.realizedPnL ELSE NULL END)`, 'avgLoss')
-      .addSelect(`SUM(t.realizedPnL)`, 'totalRealizedPnL')
-      .where('t.backtestId IN (:...backtestIds)', { backtestIds })
-      .andWhere('t.type = :sellType', { sellType: TradeType.SELL });
+  private aggregateProfitability(summaries: BacktestSummary[]): ProfitabilityStatsDto {
+    let winCount = 0;
+    let lossCount = 0;
+    let grossProfit = 0;
+    let grossLoss = 0;
+    let largestWin: number | null = null;
+    let largestLoss: number | null = null;
+    let winSum = 0;
+    let lossSum = 0;
+    let totalRealizedPnL = 0;
 
-    const result = await qb.getRawOne();
+    for (const s of summaries) {
+      winCount += s.winCount;
+      lossCount += s.lossCount;
+      grossProfit += Number(s.grossProfit) || 0;
+      grossLoss += Number(s.grossLoss) || 0;
+      if (s.largestWin !== null) {
+        const v = Number(s.largestWin);
+        if (largestWin === null || v > largestWin) largestWin = v;
+      }
+      if (s.largestLoss !== null) {
+        const v = Number(s.largestLoss);
+        if (largestLoss === null || v < largestLoss) largestLoss = v;
+      }
+      if (s.avgWin !== null && s.winCount > 0) {
+        winSum += Number(s.avgWin) * s.winCount;
+      }
+      if (s.avgLoss !== null && s.lossCount > 0) {
+        lossSum += Number(s.avgLoss) * s.lossCount;
+      }
+      if (s.totalRealizedPnL !== null) {
+        totalRealizedPnL += Number(s.totalRealizedPnL);
+      }
+    }
 
-    const winCount = parseInt(result?.winCount, 10) || 0;
-    const lossCount = parseInt(result?.lossCount, 10) || 0;
-    const totalTrades = winCount + lossCount;
-    const winRate = totalTrades > 0 ? winCount / totalTrades : 0;
-
-    const grossProfit = parseFloat(result?.grossProfit) || 0;
-    const grossLoss = parseFloat(result?.grossLoss) || 0;
-
-    // Use Decimal.js for precise financial calculations
+    const resolvedTrades = winCount + lossCount;
+    const winRate = resolvedTrades > 0 ? winCount / resolvedTrades : 0;
     const profitFactor = grossLoss > 0 ? new Decimal(grossProfit).dividedBy(grossLoss).toNumber() : 0;
+    const avgWin = winCount > 0 ? winSum / winCount : 0;
+    const avgLossNegative = lossCount > 0 ? lossSum / lossCount : 0;
+    const avgLossAbs = Math.abs(avgLossNegative);
 
-    const avgWin = parseFloat(result?.avgWin) || 0;
-    const avgLoss = Math.abs(parseFloat(result?.avgLoss) || 0);
-
-    // Expectancy = (avgWin * winRate) - (avgLoss * lossRate)
     const expectancy = new Decimal(avgWin)
       .times(winRate)
-      .minus(new Decimal(avgLoss).times(1 - winRate))
+      .minus(new Decimal(avgLossAbs).times(1 - winRate))
       .toNumber();
 
     return {
@@ -120,41 +119,25 @@ export class TradeAnalyticsService {
       lossCount,
       winRate,
       profitFactor,
-      largestWin: parseFloat(result?.largestWin) || 0,
-      largestLoss: parseFloat(result?.largestLoss) || 0,
+      largestWin: largestWin ?? 0,
+      largestLoss: largestLoss ?? 0,
       expectancy,
       avgWin,
-      avgLoss: -(parseFloat(result?.avgLoss) || 0),
-      totalRealizedPnL: parseFloat(result?.totalRealizedPnL) || 0
+      avgLoss: avgLossNegative,
+      totalRealizedPnL
     };
   }
 
-  private async getTradeDurationStats(backtestIds: string[]): Promise<TradeDurationStatsDto> {
-    // Aggregate directly in SQL over metadata->>'holdTimeMs' so we don't have
-    // to stream every trade into memory and we avoid the unordered-pagination
-    // bug of the previous batched approach. PERCENTILE_CONT yields the true
-    // median (including the even-count midpoint).
-    const result = await this.tradeRepo
-      .createQueryBuilder('t')
-      .select(`AVG((t.metadata->>'holdTimeMs')::bigint)`, 'avgMs')
-      .addSelect(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (t.metadata->>'holdTimeMs')::bigint)`, 'medianMs')
-      .addSelect(`MAX((t.metadata->>'holdTimeMs')::bigint)`, 'maxMs')
-      .addSelect(`MIN((t.metadata->>'holdTimeMs')::bigint)`, 'minMs')
-      .addSelect(`COUNT(*)`, 'cnt')
-      .where('t.backtestId IN (:...backtestIds)', { backtestIds })
-      .andWhere('t.type = :sellType', { sellType: TradeType.SELL })
-      .andWhere(`t.metadata ? 'holdTimeMs'`)
-      .getRawOne();
-
-    const cnt = parseInt(result?.cnt, 10) || 0;
-    if (cnt === 0) {
+  private aggregateDuration(summaries: BacktestSummary[]): TradeDurationStatsDto {
+    const merged = mergeHistograms(summaries.map((s) => s.holdTimeHistogram));
+    if (!merged || merged.count === 0) {
       return getEmptyTradeAnalytics().duration;
     }
 
-    const avgHoldTimeMs = parseFloat(result?.avgMs) || 0;
-    const medianHoldTimeMs = parseFloat(result?.medianMs) || 0;
-    const maxHoldTimeMs = parseFloat(result?.maxMs) || 0;
-    const minHoldTimeMs = parseFloat(result?.minMs) || 0;
+    const avgHoldTimeMs = merged.count > 0 ? merged.sum / merged.count : 0;
+    const medianHoldTimeMs = percentileFromHistogram(merged, 0.5) ?? 0;
+    const maxHoldTimeMs = merged.max ?? 0;
+    const minHoldTimeMs = merged.min ?? 0;
 
     return {
       avgHoldTimeMs,
@@ -168,67 +151,74 @@ export class TradeAnalyticsService {
     };
   }
 
-  private async getSlippageStats(backtestIds: string[]): Promise<BacktestSlippageStatsDto> {
-    const qb = this.fillRepo
-      .createQueryBuilder('f')
-      .select('AVG(f.slippageBps)', 'avgBps')
-      .addSelect('SUM(f.slippageBps * f.filledQuantity * f.averagePrice / 10000)', 'totalImpact')
-      .addSelect('MAX(f.slippageBps)', 'maxBps')
-      .addSelect('COUNT(*)', 'fillCount')
-      .where('f.backtestId IN (:...backtestIds)', { backtestIds })
-      .andWhere('f.slippageBps IS NOT NULL');
+  private aggregateSlippage(summaries: BacktestSummary[]): BacktestSlippageStatsDto {
+    let totalImpact = 0;
+    let fillCount = 0;
+    let maxBps: number | null = null;
+    for (const s of summaries) {
+      totalImpact += Number(s.slippageTotalImpact) || 0;
+      fillCount += s.slippageFillCount;
+      if (s.slippageMaxBps !== null) {
+        const v = Number(s.slippageMaxBps);
+        if (maxBps === null || v > maxBps) maxBps = v;
+      }
+    }
 
-    const result = await qb.getRawOne();
-
-    // Calculate 95th percentile using PostgreSQL's PERCENTILE_CONT (efficient)
-    const p95Result = await this.fillRepo
-      .createQueryBuilder('f')
-      .select('PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY f.slippageBps)', 'p95Bps')
-      .where('f.backtestId IN (:...backtestIds)', { backtestIds })
-      .andWhere('f.slippageBps IS NOT NULL')
-      .getRawOne();
-
-    const p95Bps = parseFloat(p95Result?.p95Bps) || 0;
+    const merged = mergeHistograms(summaries.map((s) => s.slippageHistogram));
+    const avgBps = merged && merged.count > 0 ? merged.sum / merged.count : 0;
+    const p95Bps = percentileFromHistogram(merged, 0.95) ?? 0;
 
     return {
-      avgBps: parseFloat(result?.avgBps) || 0,
-      totalImpact: parseFloat(result?.totalImpact) || 0,
+      avgBps,
+      totalImpact,
       p95Bps,
-      maxBps: parseFloat(result?.maxBps) || 0,
-      fillCount: parseInt(result?.fillCount, 10) || 0
+      maxBps: maxBps ?? 0,
+      fillCount
     };
   }
 
-  private async getTradesByInstrument(backtestIds: string[]): Promise<InstrumentTradeMetricsDto[]> {
-    const qb = this.tradeRepo
-      .createQueryBuilder('t')
-      .leftJoin('t.baseCoin', 'bc')
-      .leftJoin('t.quoteCoin', 'qc')
-      .select(`CONCAT(bc.symbol, '/', qc.symbol)`, 'instrument')
-      .addSelect('COUNT(*)', 'tradeCount')
-      .addSelect(`SUM(t.realizedPnLPercent) FILTER (WHERE t.type = :sellType)`, 'totalReturn')
-      .addSelect(
-        `AVG(CASE WHEN t.realizedPnL > 0 THEN 1.0 WHEN t.realizedPnL < 0 THEN 0.0 ELSE NULL END) FILTER (WHERE t.type = :sellType)`,
-        'winRate'
-      )
-      .addSelect('SUM(t.totalValue)', 'totalVolume')
-      .addSelect(`SUM(t.realizedPnL) FILTER (WHERE t.type = :sellType)`, 'totalPnL')
-      .where('t.backtestId IN (:...backtestIds)', { backtestIds })
-      .setParameter('sellType', TradeType.SELL)
-      .groupBy('bc.symbol')
-      .addGroupBy('qc.symbol')
-      .orderBy('SUM(t.totalValue)', 'DESC')
-      .limit(10);
-
-    const results = await qb.getRawMany();
-
-    return results.map((r) => ({
-      instrument: r.instrument || 'Unknown',
-      tradeCount: parseInt(r.tradeCount, 10) || 0,
-      totalReturn: parseFloat(r.totalReturn) || 0,
-      winRate: parseFloat(r.winRate) || 0,
-      totalVolume: parseFloat(r.totalVolume) || 0,
-      totalPnL: parseFloat(r.totalPnL) || 0
-    }));
+  private aggregateByInstrument(summaries: BacktestSummary[]): InstrumentTradeMetricsDto[] {
+    const merged = new Map<string, InstrumentTradeBreakdown>();
+    for (const s of summaries) {
+      for (const row of s.tradesByInstrument ?? []) {
+        let target = merged.get(row.instrument);
+        if (!target) {
+          target = {
+            instrument: row.instrument,
+            tradeCount: 0,
+            sellCount: 0,
+            wins: 0,
+            losses: 0,
+            totalVolume: 0,
+            totalPnL: 0,
+            returnSum: 0,
+            returnCount: 0
+          };
+          merged.set(row.instrument, target);
+        }
+        target.tradeCount += row.tradeCount;
+        target.sellCount += row.sellCount;
+        target.wins += row.wins;
+        target.losses += row.losses;
+        target.totalVolume += row.totalVolume;
+        target.totalPnL += row.totalPnL;
+        target.returnSum += row.returnSum;
+        target.returnCount += row.returnCount;
+      }
+    }
+    return Array.from(merged.values())
+      .sort((a, b) => b.totalVolume - a.totalVolume)
+      .slice(0, 10)
+      .map((o) => {
+        const resolved = o.wins + o.losses;
+        return {
+          instrument: o.instrument,
+          tradeCount: o.tradeCount,
+          totalReturn: o.returnSum,
+          winRate: resolved > 0 ? o.wins / resolved : 0,
+          totalVolume: o.totalVolume,
+          totalPnL: o.totalPnL
+        };
+      });
   }
 }

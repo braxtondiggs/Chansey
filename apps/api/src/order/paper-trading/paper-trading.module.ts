@@ -16,6 +16,7 @@ import {
   PaperTradingAccount,
   PaperTradingOrder,
   PaperTradingSession,
+  PaperTradingSessionSummary,
   PaperTradingSignal,
   PaperTradingSnapshot
 } from './entities';
@@ -25,6 +26,7 @@ import { PaperTradingMarketDataService } from './paper-trading-market-data.servi
 import { PaperTradingQueryService } from './paper-trading-query.service';
 import { PaperTradingRecoveryService } from './paper-trading-recovery.service';
 import { PaperTradingRetryService } from './paper-trading-retry.service';
+import { PaperTradingSessionSummaryService } from './paper-trading-session-summary.service';
 import { PaperTradingSlippageService } from './paper-trading-slippage.service';
 import { PaperTradingStreamService } from './paper-trading-stream.service';
 import { paperTradingConfig } from './paper-trading.config';
@@ -55,6 +57,7 @@ const PAPER_TRADING_CONFIG = paperTradingConfig();
     ConfigModule.forFeature(paperTradingConfig),
     TypeOrmModule.forFeature([
       PaperTradingSession,
+      PaperTradingSessionSummary,
       PaperTradingAccount,
       PaperTradingOrder,
       PaperTradingSignal,
@@ -97,14 +100,16 @@ const PAPER_TRADING_CONFIG = paperTradingConfig();
     PaperTradingProcessor,
     PaperTradingGateway,
     PaperTradingRecoveryService,
-    PaperTradingRetryService
+    PaperTradingRetryService,
+    PaperTradingSessionSummaryService
   ],
   exports: [
     PaperTradingService,
     PaperTradingQueryService,
     PaperTradingJobService,
     PaperTradingEngineService,
-    PaperTradingMarketDataService
+    PaperTradingMarketDataService,
+    PaperTradingSessionSummaryService
   ]
 })
 export class PaperTradingModule {}

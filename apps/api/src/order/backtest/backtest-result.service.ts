@@ -8,6 +8,7 @@ import { BacktestCheckpointState, PersistedResultsCounts } from './backtest-chec
 import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.entity';
 import { BacktestSignal } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
+import { BacktestSummaryService } from './backtest-summary.service';
 import { BacktestTrade } from './backtest-trade.entity';
 import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { SimulatedOrderFill } from './simulated-order-fill.entity';
@@ -46,6 +47,7 @@ export class BacktestResultService {
     private readonly dataSource: DataSource,
     private readonly backtestStream: BacktestStreamService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly backtestSummaryService: BacktestSummaryService,
     @Optional() private readonly metricsService?: MetricsService
   ) {}
 
@@ -144,6 +146,15 @@ export class BacktestResultService {
 
     // Publish status AFTER transaction commits to ensure consistency
     await this.backtestStream.publishStatus(backtest.id, 'completed');
+
+    // Compute analytics summary for admin dashboard reads. Non-blocking — failure
+    // must not prevent the pipeline from advancing.
+    try {
+      await this.backtestSummaryService.computeAndPersist(backtest.id);
+    } catch (err: unknown) {
+      const info = toErrorInfo(err);
+      this.logger.error(`Failed to compute summary for backtest ${backtest.id}: ${info.message}`, info.stack);
+    }
 
     // Emit completion event for pipeline orchestrator
     // Map BacktestType enum to the expected string types

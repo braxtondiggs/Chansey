@@ -9,6 +9,7 @@ import { DataSource, type QueryDeepPartialEntity, Repository } from 'typeorm';
 import { GridSearchService } from './grid-search.service';
 import { OptimizationEvaluationService } from './optimization-evaluation.service';
 import { OptimizationQueryService } from './optimization-query.service';
+import { OptimizationRunSummaryService } from './optimization-run-summary.service';
 
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
@@ -38,6 +39,7 @@ export class OptimizationOrchestratorService {
     private readonly queryService: OptimizationQueryService,
     private readonly dataSource: DataSource,
     private readonly eventEmitter: EventEmitter2,
+    private readonly summaryService: OptimizationRunSummaryService,
     @Inject(forwardRef(() => AlgorithmRegistry))
     private readonly algorithmRegistry: AlgorithmRegistry
   ) {}
@@ -423,6 +425,15 @@ export class OptimizationOrchestratorService {
     this.logger.log(
       `Optimization run ${run.id} completed. Best score: ${bestScore.toFixed(4)}, Improvement: ${improvement.toFixed(2)}%`
     );
+
+    // Compute analytics summary for admin dashboard reads. Non-blocking — failure
+    // must not prevent the pipeline from advancing.
+    try {
+      await this.summaryService.computeAndPersist(run.id);
+    } catch (err: unknown) {
+      const info = toErrorInfo(err);
+      this.logger.error(`Failed to compute summary for optimization run ${run.id}: ${info.message}`, info.stack);
+    }
 
     this.eventEmitter.emit(PIPELINE_EVENTS.OPTIMIZATION_COMPLETED, {
       runId: run.id,

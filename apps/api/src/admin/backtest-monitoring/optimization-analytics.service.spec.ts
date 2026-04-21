@@ -5,7 +5,6 @@ import { type ObjectLiteral, type Repository, type SelectQueryBuilder } from 'ty
 
 import { OptimizationAnalyticsService } from './optimization-analytics.service';
 
-import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
 import { OptimizationRun, OptimizationStatus } from '../../optimization/entities/optimization-run.entity';
 
 type MockRepo<T extends ObjectLiteral> = Partial<jest.Mocked<Repository<T>>>;
@@ -18,6 +17,7 @@ const createMockQueryBuilder = () => {
     andWhere: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
     innerJoinAndSelect: jest.fn().mockReturnThis(),
+    leftJoin: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
     addGroupBy: jest.fn().mockReturnThis(),
     having: jest.fn().mockReturnThis(),
@@ -40,7 +40,6 @@ const createMockQueryBuilder = () => {
 describe('OptimizationAnalyticsService', () => {
   let service: OptimizationAnalyticsService;
   let optimizationRunRepo: MockRepo<OptimizationRun>;
-  let optimizationResultRepo: MockRepo<OptimizationResult>;
   let mockQueryBuilder: SelectQueryBuilder<any>;
 
   beforeEach(async () => {
@@ -50,13 +49,11 @@ describe('OptimizationAnalyticsService', () => {
       createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
       count: jest.fn().mockResolvedValue(0)
     };
-    optimizationResultRepo = { createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OptimizationAnalyticsService,
-        { provide: getRepositoryToken(OptimizationRun), useValue: optimizationRunRepo },
-        { provide: getRepositoryToken(OptimizationResult), useValue: optimizationResultRepo }
+        { provide: getRepositoryToken(OptimizationRun), useValue: optimizationRunRepo }
       ]
     }).compile();
 
@@ -95,13 +92,11 @@ describe('OptimizationAnalyticsService', () => {
           avg_improvement: '1.25',
           avg_best_score: '0.82',
           avg_combinations_tested: '100',
-          result_summary: JSON.stringify({
-            avgTrainScore: 0.6,
-            avgTestScore: 0.55,
-            avgDegradation: 0.08,
-            avgConsistency: 0.7,
-            overfittingRate: 0.1
-          })
+          avg_train_score: '0.6',
+          avg_test_score: '0.55',
+          avg_degradation: '0.08',
+          avg_consistency: '0.7',
+          overfitting_rate: '0.1'
         })
         .mockResolvedValueOnce({ last24h: '1', last7d: '3', last30d: '7' });
 

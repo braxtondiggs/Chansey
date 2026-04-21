@@ -20,14 +20,17 @@ import { TradingStateService } from './trading-state/trading-state.service';
 import { AuditModule } from '../audit/audit.module';
 import { Coin } from '../coin/coin.entity';
 import { OptimizationResult } from '../optimization/entities/optimization-result.entity';
+import { OptimizationRunSummary } from '../optimization/entities/optimization-run-summary.entity';
 import { OptimizationRun } from '../optimization/entities/optimization-run.entity';
 import { BacktestSignal } from '../order/backtest/backtest-signal.entity';
+import { BacktestSummary } from '../order/backtest/backtest-summary.entity';
 import { BacktestTrade } from '../order/backtest/backtest-trade.entity';
 import { Backtest } from '../order/backtest/backtest.entity';
 import { SimulatedOrderFill } from '../order/backtest/simulated-order-fill.entity';
 import { Order } from '../order/order.entity';
 import { OrderModule } from '../order/order.module';
 import { PaperTradingOrder } from '../order/paper-trading/entities/paper-trading-order.entity';
+import { PaperTradingSessionSummary } from '../order/paper-trading/entities/paper-trading-session-summary.entity';
 import { PaperTradingSession } from '../order/paper-trading/entities/paper-trading-session.entity';
 import { PaperTradingSignal } from '../order/paper-trading/entities/paper-trading-signal.entity';
 import { LiveTradingSignal } from '../strategy/entities/live-trading-signal.entity';
@@ -53,10 +56,13 @@ import { TasksModule } from '../tasks/tasks.module';
       Backtest,
       BacktestTrade,
       BacktestSignal,
+      BacktestSummary,
       SimulatedOrderFill,
       OptimizationRun,
       OptimizationResult,
+      OptimizationRunSummary,
       PaperTradingSession,
+      PaperTradingSessionSummary,
       PaperTradingOrder,
       PaperTradingSignal,
       LiveTradingSignal

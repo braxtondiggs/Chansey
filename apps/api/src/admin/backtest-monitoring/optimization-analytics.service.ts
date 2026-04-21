@@ -11,19 +11,14 @@ import {
 } from './dto/optimization-analytics.dto';
 import { countRecentActivity } from './monitoring-shared.util';
 
-import { OptimizationResult } from '../../optimization/entities/optimization-result.entity';
+import { OptimizationRunSummary } from '../../optimization/entities/optimization-run-summary.entity';
 import { OptimizationRun, OptimizationStatus } from '../../optimization/entities/optimization-run.entity';
 
 type DateRange = { start: Date; end: Date } | null;
 
 @Injectable()
 export class OptimizationAnalyticsService {
-  constructor(
-    @InjectRepository(OptimizationRun) private readonly optimizationRunRepo: Repository<OptimizationRun>,
-    // Retained for DI wiring consistency; optimization_results aggregates are now pulled
-    // inline via a scalar subquery from the run repo to save a connection.
-    @InjectRepository(OptimizationResult) private readonly _optimizationResultRepo: Repository<OptimizationResult>
-  ) {}
+  constructor(@InjectRepository(OptimizationRun) private readonly optimizationRunRepo: Repository<OptimizationRun>) {}
 
   /**
    * Get optimization analytics for the admin dashboard
@@ -123,11 +118,10 @@ export class OptimizationAnalyticsService {
   }
 
   /**
-   * Fan-in of statusCounts + totalRuns + avgMetrics + resultSummary into a single SQL
-   * round trip using conditional aggregates and a scalar subquery for the
-   * optimization_results summary. `recentActivity` is fetched separately via
-   * `countRecentActivity` because it must be relative to NOW, not the dashboard's
-   * dateRange filter.
+   * Fan-in statusCounts + totalRuns + avgMetrics + resultSummary by joining the
+   * optimization_run_summaries table. Per-COMBO aggregates are pre-rolled per-run
+   * and then cross-run averaged here, weighted by resultCount so that short runs
+   * don't skew the dashboard toward their mean.
    */
   private async getOptAggregate(
     filters: OptimizationFiltersDto,
@@ -140,44 +134,50 @@ export class OptimizationAnalyticsService {
     avgCombinationsTested: number;
     resultSummary: OptimizationAnalyticsDto['resultSummary'];
   }> {
-    const statusFilter = filters.status ? ' AND r.status = :totalStatusFilter' : '';
+    const qb = this.optimizationRunRepo
+      .createQueryBuilder('r')
+      .leftJoin(OptimizationRunSummary, 'rs', 'rs."optimizationRunId" = r.id');
 
-    // Scalar subquery selects aggregates over optimization_results scoped to COMPLETED runs
-    // inside the configured date range.
-    const resultSummarySubquery = `(
-      SELECT jsonb_build_object(
-        'avgTrainScore', COALESCE(AVG(res."avgTrainScore"), 0),
-        'avgTestScore', COALESCE(AVG(res."avgTestScore"), 0),
-        'avgDegradation', COALESCE(AVG(res."avgDegradation"), 0),
-        'avgConsistency', COALESCE(AVG(res."consistencyScore"), 0),
-        'overfittingRate', COALESCE(AVG(CASE WHEN res."overfittingWindows" > 0 THEN 1.0 ELSE 0.0 END), 0)
-      )
-      FROM optimization_results res
-      WHERE res."optimizationRunId" IN (
-        SELECT rs.id FROM optimization_runs rs
-        WHERE rs.status = :completedStatus${dateRange ? ' AND rs."createdAt" BETWEEN :start AND :end' : ''}
-      )
-    )`;
-
-    const qb = this.optimizationRunRepo.createQueryBuilder('r');
     qb.setParameter('completedStatus', OptimizationStatus.COMPLETED);
+
+    const statusFilter = filters.status ? ' AND r.status = :totalStatusFilter' : '';
     if (filters.status) qb.setParameter('totalStatusFilter', filters.status);
 
     const selects: Array<[string, string]> = [];
-    // Status counts (status filter omitted — full breakdown)
     for (const status of Object.values(OptimizationStatus)) {
       const paramKey = `optStatusVal_${status}`;
       qb.setParameter(paramKey, status);
       selects.push([`COUNT(*) FILTER (WHERE r.status = :${paramKey})`, `status_${status}`]);
     }
-    // Total runs (status filter applied)
     selects.push([statusFilter ? `COUNT(*) FILTER (WHERE 1=1 ${statusFilter})` : 'COUNT(*)', 'total_runs']);
-    // Avg metrics (COMPLETED only)
     selects.push([`AVG(r.improvement) FILTER (WHERE r.status = :completedStatus)`, 'avg_improvement']);
     selects.push([`AVG(r."bestScore") FILTER (WHERE r.status = :completedStatus)`, 'avg_best_score']);
     selects.push([`AVG(r."combinationsTested") FILTER (WHERE r.status = :completedStatus)`, 'avg_combinations_tested']);
-    // Result summary (scalar subquery — runs in same round trip)
-    selects.push([resultSummarySubquery, 'result_summary']);
+
+    // Weighted averages across completed runs using per-run resultCount. Falls back
+    // to unweighted AVG of summary.avg* when resultCount is 0 (shouldn't happen,
+    // but keep the numerator safe).
+    const weightedCompleted = `(rs.id IS NOT NULL AND r.status = :completedStatus)`;
+    selects.push([
+      `SUM(CASE WHEN ${weightedCompleted} THEN rs."avgTrainScore" * rs."resultCount" ELSE 0 END) / NULLIF(SUM(CASE WHEN ${weightedCompleted} THEN rs."resultCount" ELSE 0 END), 0)`,
+      'avg_train_score'
+    ]);
+    selects.push([
+      `SUM(CASE WHEN ${weightedCompleted} THEN rs."avgTestScore" * rs."resultCount" ELSE 0 END) / NULLIF(SUM(CASE WHEN ${weightedCompleted} THEN rs."resultCount" ELSE 0 END), 0)`,
+      'avg_test_score'
+    ]);
+    selects.push([
+      `SUM(CASE WHEN ${weightedCompleted} THEN rs."avgDegradation" * rs."resultCount" ELSE 0 END) / NULLIF(SUM(CASE WHEN ${weightedCompleted} THEN rs."resultCount" ELSE 0 END), 0)`,
+      'avg_degradation'
+    ]);
+    selects.push([
+      `SUM(CASE WHEN ${weightedCompleted} THEN rs."avgConsistency" * rs."resultCount" ELSE 0 END) / NULLIF(SUM(CASE WHEN ${weightedCompleted} THEN rs."resultCount" ELSE 0 END), 0)`,
+      'avg_consistency'
+    ]);
+    selects.push([
+      `SUM(CASE WHEN ${weightedCompleted} THEN rs."overfittingCount" ELSE 0 END)::decimal / NULLIF(SUM(CASE WHEN ${weightedCompleted} THEN rs."resultCount" ELSE 0 END), 0)`,
+      'overfitting_rate'
+    ]);
 
     qb.select(selects[0][0], selects[0][1]);
     for (let i = 1; i < selects.length; i++) {
@@ -198,28 +198,19 @@ export class OptimizationAnalyticsService {
       {} as Record<OptimizationStatus, number>
     );
 
-    const resultSummaryRaw = row.result_summary as unknown;
-    const resultSummary = this.normaliseResultSummary(resultSummaryRaw);
-
     return {
       statusCounts,
       totalRuns: parseInt(row.total_runs ?? '0', 10) || 0,
       avgImprovement: parseFloat(row.avg_improvement ?? '0') || 0,
       avgBestScore: parseFloat(row.avg_best_score ?? '0') || 0,
       avgCombinationsTested: parseFloat(row.avg_combinations_tested ?? '0') || 0,
-      resultSummary
-    };
-  }
-
-  private normaliseResultSummary(raw: unknown): OptimizationAnalyticsDto['resultSummary'] {
-    const parsed: Record<string, unknown> =
-      typeof raw === 'string' ? JSON.parse(raw) : ((raw as Record<string, unknown>) ?? {});
-    return {
-      avgTrainScore: Number(parsed.avgTrainScore) || 0,
-      avgTestScore: Number(parsed.avgTestScore) || 0,
-      avgDegradation: Number(parsed.avgDegradation) || 0,
-      avgConsistency: Number(parsed.avgConsistency) || 0,
-      overfittingRate: Number(parsed.overfittingRate) || 0
+      resultSummary: {
+        avgTrainScore: parseFloat(row.avg_train_score ?? '0') || 0,
+        avgTestScore: parseFloat(row.avg_test_score ?? '0') || 0,
+        avgDegradation: parseFloat(row.avg_degradation ?? '0') || 0,
+        avgConsistency: parseFloat(row.avg_consistency ?? '0') || 0,
+        overfittingRate: parseFloat(row.overfitting_rate ?? '0') || 0
+      }
     };
   }
 

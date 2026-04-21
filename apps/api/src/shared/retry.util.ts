@@ -203,6 +203,36 @@ export function isClockSkewError(error: Error): boolean {
 }
 
 /**
+ * Binance client-error codes that are permanent — retrying them wastes request
+ * weight and keeps the circuit breaker oscillating open. These are 4xx-style
+ * responses from the exchange indicating the request itself is invalid:
+ *
+ * - `-1100` ILLEGAL_CHARS — parameter contains illegal characters
+ * - `-1102` MANDATORY_PARAM_EMPTY_OR_MALFORMED — the specific symbol we keep hitting
+ * - `-1104` UNKNOWN_PARAM — unexpected parameter
+ * - `-1111` BAD_PRECISION — precision exceeds market limit
+ * - `-1112` NO_DEPTH — empty order book
+ * - `-1121` BAD_SYMBOL — invalid symbol
+ * - `-1125` INVALID_LISTEN_KEY
+ * - `-2010` NEW_ORDER_REJECTED
+ * - `-2011` CANCEL_REJECTED
+ * - `-2013` ORDER_DOES_NOT_EXIST
+ *
+ * Excludes auth codes (-2014/-2015) because `isAuthenticationError` covers those
+ * via the CCXT error class name.
+ */
+export function isClientError(error: Error): boolean {
+  const message = error.message || '';
+  // Match `-1102` but not `-11020`, etc. Tolerates JSON (`"code":-1102`) and
+  // plain-text (`binanceus -1102 ...`) forms.
+  const patterns = [
+    /"code"\s*:\s*(-1100|-1102|-1104|-1111|-1112|-1121|-1125|-2010|-2011|-2013)\b/,
+    /(^|[^0-9-])(-1100|-1102|-1104|-1111|-1112|-1121|-1125|-2010|-2011|-2013)([^0-9]|$)/
+  ];
+  return patterns.some((re) => re.test(message));
+}
+
+/**
  * Extract a Retry-After hint from an error message (in milliseconds).
  * Parses numeric seconds from patterns like "Retry-After: 5" or "retry after 10 seconds".
  * Bounds result to 1000ms–120000ms.

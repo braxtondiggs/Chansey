@@ -7,6 +7,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { PaperTradingOrder, PaperTradingSession, PaperTradingStatus } from './entities';
 import { PaperTradingEngineService } from './paper-trading-engine.service';
 import { PaperTradingJobService } from './paper-trading-job.service';
+import { PaperTradingSessionSummaryService } from './paper-trading-session-summary.service';
 import { PaperTradingJobType } from './paper-trading.job-data';
 
 import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
@@ -25,6 +26,7 @@ describe('PaperTradingJobService', () => {
   let paperTradingQueue: any;
   let eventEmitter: any;
   let engineService: any;
+  let summaryService: any;
 
   beforeEach(async () => {
     sessionRepository = {
@@ -52,6 +54,10 @@ describe('PaperTradingJobService', () => {
       clearExitTracker: jest.fn()
     };
 
+    summaryService = {
+      computeAndPersist: jest.fn().mockResolvedValue(undefined)
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaperTradingJobService,
@@ -59,7 +65,8 @@ describe('PaperTradingJobService', () => {
         { provide: getRepositoryToken(PaperTradingOrder), useValue: orderRepository },
         { provide: getQueueToken('paper-trading'), useValue: paperTradingQueue },
         { provide: EventEmitter2, useValue: eventEmitter },
-        { provide: PaperTradingEngineService, useValue: engineService }
+        { provide: PaperTradingEngineService, useValue: engineService },
+        { provide: PaperTradingSessionSummaryService, useValue: summaryService }
       ]
     }).compile();
 
