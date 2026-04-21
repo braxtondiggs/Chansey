@@ -15,6 +15,7 @@ import { ListingTrackerService } from '../services/listing-tracker.service';
 
 export const LISTING_SCORE_QUEUE = 'listing-score';
 const SCORE_JOB_NAME = 'listing-score-run';
+const SCORE_CRON = '30 2 * * *';
 
 @Processor(LISTING_SCORE_QUEUE)
 @Injectable()
@@ -58,19 +59,18 @@ export class ListingScoreTask extends FailSafeWorkerHost implements OnModuleInit
       return;
     }
 
-    const cron = this.config.get<string>('LISTING_SCORE_CRON') ?? '30 2 * * *';
     await this.queue.add(
       SCORE_JOB_NAME,
       { scheduledAt: new Date().toISOString() },
       {
-        repeat: { pattern: cron },
+        repeat: { pattern: SCORE_CRON },
         attempts: 2,
         backoff: { type: 'exponential', delay: 10_000 },
         removeOnComplete: 20,
         removeOnFail: 20
       }
     );
-    this.logger.log(`Listing score scheduled with cron '${cron}'`);
+    this.logger.log(`Listing score scheduled with cron '${SCORE_CRON}'`);
   }
 
   async process(job: Job) {

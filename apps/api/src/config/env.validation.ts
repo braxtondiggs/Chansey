@@ -115,7 +115,7 @@ const envSchema = z.object({
   LISTING_TRACKER_ENABLED: z.string().optional().default('false'),
   LISTING_TRACKER_POLL_INTERVAL_SECONDS: z.coerce.number().min(10).max(600).default(30),
   LISTING_SCORE_THRESHOLD: z.coerce.number().min(0).max(100).default(70),
-  LISTING_SCORE_CRON: z.string().default('30 2 * * *'),
+  LISTING_SCORER_MIN_TARGET_EXCHANGES: z.coerce.number().int().min(1).default(3),
   DEFILLAMA_BASE_URL: z.string().url().default('https://api.llama.fi'),
 
   // Data Retention (DataRetentionTask — daily at 04:15 UTC)

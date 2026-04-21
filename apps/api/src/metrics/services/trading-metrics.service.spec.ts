@@ -23,7 +23,8 @@ const buildService = () => {
     drawdownGateBlocksTotal: createCounterMock(),
     dailyLossGateBlocksTotal: createCounterMock(),
     concentrationGateBlocksTotal: createCounterMock(),
-    liveOrdersPlacedTotal: createCounterMock()
+    liveOrdersPlacedTotal: createCounterMock(),
+    listingTrackerUnmatchedTotal: createCounterMock()
   };
 
   const service = new TradingMetricsService(
@@ -44,7 +45,8 @@ const buildService = () => {
     mocks.drawdownGateBlocksTotal,
     mocks.dailyLossGateBlocksTotal,
     mocks.concentrationGateBlocksTotal,
-    mocks.liveOrdersPlacedTotal
+    mocks.liveOrdersPlacedTotal,
+    mocks.listingTrackerUnmatchedTotal
   );
 
   return { service, mocks };
@@ -139,5 +141,12 @@ describe('TradingMetricsService', () => {
 
     service.recordSignalThrottlePassed('confluence-001', 'buy');
     expect(mocks.signalThrottlePassedTotal.inc).toHaveBeenCalledWith({ strategy: 'confluence-001', action: 'buy' });
+  });
+
+  it('records listing tracker unmatched symbols by exchange', () => {
+    const { service, mocks } = buildService();
+
+    service.recordListingTrackerUnmatched('kraken');
+    expect(mocks.listingTrackerUnmatchedTotal.inc).toHaveBeenCalledWith({ exchange_slug: 'kraken' });
   });
 });

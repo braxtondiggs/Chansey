@@ -6,6 +6,7 @@ import * as ccxt from 'ccxt';
 import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { User } from '../../users/users.entity';
 import { BaseExchangeService } from '../base-exchange.service';
+import { KRAKEN_BASE_ALIASES, KRAKEN_QUOTE_ALIASES } from '../constants';
 import { ExchangeKeyService } from '../exchange-key/exchange-key.service';
 import { ExchangeService } from '../exchange.service';
 
@@ -40,6 +41,6 @@ export class KrakenService extends BaseExchangeService {
   }
 
   protected override normalizeAssetName(asset: string): string {
-    return asset === 'ZUSD' ? 'USD' : asset;
+    return KRAKEN_QUOTE_ALIASES[asset] ?? KRAKEN_BASE_ALIASES[asset] ?? asset;
   }
 }

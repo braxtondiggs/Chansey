@@ -29,6 +29,7 @@ const DEFAULT_WEIGHTS: ScoreWeights = {
 
 const KRAKEN_MULTIPLIER = 1.5;
 const DEFAULT_THRESHOLD = 70;
+const DEFAULT_MIN_TARGET_EXCHANGES = 3;
 
 /** Exchanges excluded from cross-listing scoring — candidates must NOT appear on these */
 const MAJOR_EXCHANGES = new Set(['binance', 'binance_us', 'coinbase', 'gdax']);
@@ -48,6 +49,7 @@ export interface ScoreCoinResult {
 export class CrossListingScorerService {
   private readonly logger = new Logger(CrossListingScorerService.name);
   private readonly scoreThreshold: number;
+  private readonly minTargetExchanges: number;
 
   constructor(
     @InjectRepository(Coin) private readonly coinRepo: Repository<Coin>,
@@ -60,6 +62,13 @@ export class CrossListingScorerService {
     const parsed = typeof rawThreshold === 'string' ? parseFloat(rawThreshold) : rawThreshold;
     this.scoreThreshold =
       typeof parsed === 'number' && Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_THRESHOLD;
+
+    const rawMin = configService?.get<string | number>('LISTING_SCORER_MIN_TARGET_EXCHANGES');
+    const parsedMin = typeof rawMin === 'string' ? parseInt(rawMin, 10) : rawMin;
+    this.minTargetExchanges =
+      typeof parsedMin === 'number' && Number.isFinite(parsedMin) && parsedMin >= 1
+        ? Math.floor(parsedMin)
+        : DEFAULT_MIN_TARGET_EXCHANGES;
   }
 
   /**
@@ -112,8 +121,8 @@ export class CrossListingScorerService {
     }
 
     const targetsPresent = [...TARGET_EXCHANGES].filter((slug) => slugs.has(slug));
-    // Need at least 3 cross-listings on smaller exchanges
-    if (targetsPresent.length < 3) return null;
+    // Need at least `minTargetExchanges` cross-listings on smaller exchanges (env-configurable safety valve).
+    if (targetsPresent.length < this.minTargetExchanges) return null;
     const krakenListed = slugs.has('kraken');
 
     const tvlGrowthPctRaw = (await this.defiLlama.getTvlGrowthPercent(coin.symbol)) ?? 0;
@@ -248,5 +257,9 @@ export class CrossListingScorerService {
 
   get threshold(): number {
     return this.scoreThreshold;
+  }
+
+  get minTargets(): number {
+    return this.minTargetExchanges;
   }
 }

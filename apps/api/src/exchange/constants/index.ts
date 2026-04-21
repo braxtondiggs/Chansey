@@ -1,4 +1,10 @@
 export {
+  KRAKEN_BASE_ALIASES,
+  KRAKEN_BASE_ALIASES_INVERSE,
+  KRAKEN_QUOTE_ALIASES,
+  KRAKEN_QUOTE_ALIASES_INVERSE
+} from './kraken-aliases.constants';
+export {
   DEFAULT_QUOTE_CURRENCY,
   EXCHANGE_QUOTE_CURRENCY,
   getQuoteCurrency,

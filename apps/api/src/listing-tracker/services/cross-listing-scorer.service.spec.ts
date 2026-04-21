@@ -71,14 +71,19 @@ describe('CrossListingScorerService', () => {
     defiLlama = { getTvlGrowthPercent: jest.fn().mockResolvedValue(10) } as any;
   });
 
-  function makeService(tickers: TickerPairs[], threshold = 0) {
+  function makeService(tickers: TickerPairs[], threshold = 0, minTargets?: number) {
     const { coinRepo, tickerRepo, candidateRepo } = makeRepos(tickers);
+    const configGet = jest.fn().mockImplementation((key: string) => {
+      if (key === 'LISTING_SCORE_THRESHOLD') return String(threshold);
+      if (key === 'LISTING_SCORER_MIN_TARGET_EXCHANGES' && minTargets !== undefined) return String(minTargets);
+      return undefined;
+    });
     const service = new CrossListingScorerService(
       coinRepo as any,
       tickerRepo as any,
       candidateRepo as any,
       defiLlama as any,
-      { get: jest.fn().mockReturnValue(String(threshold)) } as any
+      { get: configGet } as any
     );
     return { service, coinRepo, tickerRepo, candidateRepo };
   }
@@ -90,10 +95,18 @@ describe('CrossListingScorerService', () => {
     expect(result).toBeNull();
   });
 
-  it('returns null when fewer than 3 target exchanges are present', async () => {
+  it('returns null when fewer than 3 target exchanges are present (default gate)', async () => {
     const tickers = [buildTicker('kucoin'), buildTicker('gate')];
     const { service } = makeService(tickers);
     expect(await service.scoreCoin(buildCoin())).toBeNull();
+  });
+
+  it('honors LISTING_SCORER_MIN_TARGET_EXCHANGES override (emergency safety valve)', async () => {
+    const tickers = [buildTicker('kraken')];
+    const { service } = makeService(tickers, 0, 1);
+    const result = await service.scoreCoin(buildCoin());
+    expect(result).not.toBeNull();
+    expect(service.minTargets).toBe(1);
   });
 
   it('applies Kraken 1.5x multiplier when present', async () => {

@@ -9,7 +9,8 @@ export const LOCK_KEYS = {
   COIN_METADATA_SYNC: 'coin-metadata-sync:lock',
   TICKER_PAIRS_SYNC: 'ticker-pairs-sync:lock',
   CATEGORY_SYNC: 'category-sync:lock',
-  EXCHANGE_SYNC: 'exchange-sync:lock'
+  EXCHANGE_SYNC: 'exchange-sync:lock',
+  LISTING_CROSS_LISTING_SEED: 'listing-cross-listing-seed:lock'
 } as const;
 
 // INVARIANT: Distributed-lock TTLs here are INDEPENDENT of BullMQ `lockDuration`.
@@ -29,6 +30,7 @@ export const LOCK_DEFAULTS = {
   TICKER_PAIRS_SYNC_TTL_MS: 30 * 60 * 1000, // 30 minutes — paginated ticker fetching, 1s between pages
   CATEGORY_SYNC_TTL_MS: 2 * 60 * 1000, // 2 minutes — single API call with retry
   EXCHANGE_SYNC_TTL_MS: 10 * 60 * 1000, // 10 minutes — observed ~5.3 min, ~90% buffer
+  LISTING_CROSS_LISTING_SEED_TTL_MS: 15 * 60 * 1000, // 15 minutes — per-exchange paginated fetch (cache hit: seconds; miss: ≤3 exchanges × pagination budget)
   DEFAULT_RETRY_DELAY_MS: 100,
   DEFAULT_MAX_RETRIES: 0
 } as const;

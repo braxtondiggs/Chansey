@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { Coin } from '../../coin/coin.entity';
 import { FailSafeWorkerHost } from '../../failed-jobs/fail-safe-worker-host';
 import { FailedJobService } from '../../failed-jobs/failed-job.service';
+import { TradingMetricsService } from '../../metrics/services/trading-metrics.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { ListingAnnouncement } from '../entities/listing-announcement.entity';
 import { AnnouncementPollerService } from '../services/announcement-poller.service';
@@ -29,6 +30,7 @@ export class AnnouncementPollTask extends FailSafeWorkerHost implements OnModule
     private readonly poller: AnnouncementPollerService,
     private readonly tracker: ListingTrackerService,
     private readonly config: ConfigService,
+    private readonly metrics: TradingMetricsService,
     failedJobService: FailedJobService
   ) {
     super(failedJobService);
@@ -104,9 +106,10 @@ export class AnnouncementPollTask extends FailSafeWorkerHost implements OnModule
 
   private async dispatchAnnouncement(announcement: ListingAnnouncement): Promise<void> {
     if (!announcement.coinId) {
-      this.logger.debug(
-        `Skipping announcement ${announcement.id}: no matching coin for ${announcement.announcedSymbol}`
+      this.logger.warn(
+        `Skipping announcement ${announcement.id}: no-coin-mapping for ${announcement.exchangeSlug} symbol ${announcement.announcedSymbol}`
       );
+      this.metrics.recordListingTrackerUnmatched(announcement.exchangeSlug);
       return;
     }
     const coin = await this.coinRepo.findOne({ where: { id: announcement.coinId } });

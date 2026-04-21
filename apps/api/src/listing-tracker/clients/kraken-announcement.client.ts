@@ -8,6 +8,7 @@ import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { LOCK_REDIS } from '../../shared/lock-redis.provider';
 import { ListingAnnouncementType } from '../entities/listing-announcement.entity';
+import { normalizeBaseSymbol } from '../utils/symbol-normalization';
 
 const KRAKEN_ASSET_PAIRS_ENDPOINT = 'https://api.kraken.com/0/public/AssetPairs';
 // Match against the user-facing quote (parsed from `wsname`) rather than Kraken's native `ZUSD` codes.
@@ -17,9 +18,6 @@ const LAST_SEEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 // Must match `AnnouncementPollerService.LAST_SEEN_KEY()` — bootstrap seeds the same set the poller reads.
 const POLLER_LAST_SEEN_KEY = (slug: string) => `listing-tracker:last-seen:${slug}`;
 const BOOTSTRAP_SENTINEL_KEY = 'listing-tracker:kraken:seeded';
-// Kraken's `wsname` yields the user-facing symbol (e.g. `XBT/USD`), but a few bases still use legacy short codes.
-const KRAKEN_SYMBOL_ALIASES: Record<string, string> = { XBT: 'BTC', XDG: 'DOGE' };
-
 interface KrakenAssetPair {
   altname?: string;
   wsname?: string;
@@ -120,13 +118,17 @@ export class KrakenAnnouncementClient implements AnnouncementClient, OnModuleIni
     for (const pair of pairs) {
       if (pair.status !== 'online') continue;
 
-      const [wsBase, wsQuote] = pair.wsname ? pair.wsname.split('/') : [undefined, undefined];
-      const quote = (wsQuote ?? pair.quote).toUpperCase();
+      // Without `wsname` the pair's base/quote boundary is ambiguous (e.g. altname `APXUSD`
+      // where `base` is also `APXUSD`). Skip rather than mis-parse — a single bad symbol
+      // pollutes the whole day's signal pipeline.
+      if (!pair.wsname) continue;
+
+      const [wsBase, wsQuote] = pair.wsname.split('/');
+      if (!wsBase || !wsQuote) continue;
+      const quote = wsQuote.toUpperCase();
       if (!ELIGIBLE_QUOTE_ASSETS.has(quote)) continue;
 
-      const rawBase = (wsBase ?? pair.base).toUpperCase();
-      const normalized = KRAKEN_SYMBOL_ALIASES[rawBase] ?? rawBase;
-      bases.add(normalized);
+      bases.add(normalizeBaseSymbol(wsBase));
     }
     return [...bases].sort();
   }
