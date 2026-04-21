@@ -4,6 +4,7 @@ import {
   exchangeAwareDelay,
   extractRetryAfterMs,
   isAuthenticationError,
+  isClientError,
   isClockSkewError,
   isRateLimitError,
   isTransientError,
@@ -608,6 +609,48 @@ describe('retry.util', () => {
     it('does not match generic rate-limit messages', () => {
       expect(isWeightLimitError(new Error('rate limit exceeded'))).toBe(false);
       expect(isWeightLimitError(new Error('HTTP 429'))).toBe(false);
+    });
+  });
+
+  describe('isClientError', () => {
+    it('matches Binance -1102 MANDATORY_PARAM_EMPTY_OR_MALFORMED (JSON form)', () => {
+      expect(
+        isClientError(
+          new Error(
+            'binanceus 400 Bad Request {"code":-1102,"msg":"Mandatory parameter \'symbols\' was not sent, was empty/null, or malformed."}'
+          )
+        )
+      ).toBe(true);
+    });
+
+    it('matches Binance -1100 ILLEGAL_CHARS', () => {
+      expect(isClientError(new Error('{"code":-1100,"msg":"Illegal characters found in parameter"}'))).toBe(true);
+    });
+
+    it('matches Binance -1121 BAD_SYMBOL', () => {
+      expect(isClientError(new Error('{"code":-1121,"msg":"Invalid symbol."}'))).toBe(true);
+    });
+
+    it('matches plain-text occurrences on a word boundary', () => {
+      expect(isClientError(new Error('binanceus -1102 Mandatory parameter was malformed'))).toBe(true);
+    });
+
+    it('does not match -11020 or other numbers that merely contain the digits', () => {
+      expect(isClientError(new Error('error code -11020'))).toBe(false);
+      expect(isClientError(new Error('reference id 11102'))).toBe(false);
+    });
+
+    it('does not match weight-limit or generic rate-limit codes', () => {
+      expect(isClientError(new Error('{"code":-1003,"msg":"request weight"}'))).toBe(false);
+      expect(isClientError(new Error('rate limit exceeded'))).toBe(false);
+      expect(isClientError(new Error('HTTP 429'))).toBe(false);
+    });
+
+    it('does not match clock-skew code -1021', () => {
+      // -1021 is transient (clock drift) — retry with a tiny delay, do not treat as client error
+      expect(
+        isClientError(new Error('{"code":-1021,"msg":"Timestamp for this request is outside of the recvWindow."}'))
+      ).toBe(false);
     });
   });
 

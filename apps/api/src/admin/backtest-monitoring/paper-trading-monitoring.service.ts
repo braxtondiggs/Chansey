@@ -12,15 +12,14 @@ import {
 import { calculatePaperTradingProgress, countRecentActivity } from './monitoring-shared.util';
 
 import {
-  PaperTradingOrder,
-  PaperTradingOrderSide
-} from '../../order/paper-trading/entities/paper-trading-order.entity';
+  PaperTradingSessionSummary,
+  PaperTradingSymbolBreakdown
+} from '../../order/paper-trading/entities/paper-trading-session-summary.entity';
 import {
   PaperTradingSession,
   PaperTradingStatus
 } from '../../order/paper-trading/entities/paper-trading-session.entity';
 import {
-  PaperTradingSignal,
   PaperTradingSignalDirection,
   PaperTradingSignalType
 } from '../../order/paper-trading/entities/paper-trading-signal.entity';
@@ -31,25 +30,24 @@ type DateRange = { start: Date; end: Date } | null;
 export class PaperTradingMonitoringService {
   constructor(
     @InjectRepository(PaperTradingSession) private readonly paperSessionRepo: Repository<PaperTradingSession>,
-    @InjectRepository(PaperTradingOrder) private readonly paperOrderRepo: Repository<PaperTradingOrder>,
-    @InjectRepository(PaperTradingSignal) private readonly paperSignalRepo: Repository<PaperTradingSignal>
+    @InjectRepository(PaperTradingSessionSummary)
+    private readonly summaryRepo: Repository<PaperTradingSessionSummary>
   ) {}
 
   /**
    * Get paper trading monitoring analytics for the admin dashboard.
    *
-   * Fans the previously 7 parallel queries (sessions × 4, orders × 2, signals × 3) into
-   * 3 round trips — one per physical table — by using conditional aggregates and scalar
-   * subqueries within each query. This collapses the admin dashboard's Promise.all
-   * connection footprint from ≥8 → 3.
+   * Session-level aggregates (statusCounts, totalSessions, avgMetrics, topAlgorithms)
+   * are still computed on the small indexed sessions table. Order + signal
+   * analytics are computed over the per-session summary rows instead of scanning
+   * paper_trading_orders / paper_trading_signals on every tab load.
    */
   async getPaperTradingMonitoring(filters: PaperTradingFiltersDto): Promise<PaperTradingMonitoringDto> {
     const dateRange = this.getPtDateRange(filters);
 
-    const [sessionAggregate, orderAnalytics, signalAnalytics, recentActivity] = await Promise.all([
+    const [sessionAggregate, summaryAggregate, recentActivity] = await Promise.all([
       this.getPtSessionAggregate(filters, dateRange),
-      this.getPtOrderAnalytics(filters, dateRange),
-      this.getPtSignalAnalytics(filters, dateRange),
+      this.getPtSummaryAggregate(filters, dateRange),
       countRecentActivity(this.paperSessionRepo)
     ]);
 
@@ -59,8 +57,8 @@ export class PaperTradingMonitoringService {
       recentActivity,
       avgMetrics: sessionAggregate.avgMetrics,
       topAlgorithms: sessionAggregate.topAlgorithms,
-      orderAnalytics,
-      signalAnalytics
+      orderAnalytics: summaryAggregate.orderAnalytics,
+      signalAnalytics: summaryAggregate.signalAnalytics
     };
   }
 
@@ -129,13 +127,6 @@ export class PaperTradingMonitoringService {
     }
   }
 
-  /**
-   * Fan-in of statusCounts + totalSessions + avgMetrics + topAlgorithms into a single
-   * query using conditional aggregates and a scalar subquery for top algorithms
-   * (GROUP BY + ORDER BY + LIMIT, can't be a plain FILTER clause). `recentActivity`
-   * is fetched separately via `countRecentActivity` because it must be relative to
-   * NOW, not the dashboard's dateRange / algorithmId filters.
-   */
   private async getPtSessionAggregate(
     filters: PaperTradingFiltersDto,
     dateRange: DateRange
@@ -147,7 +138,6 @@ export class PaperTradingMonitoringService {
   }> {
     const qb = this.paperSessionRepo.createQueryBuilder('s');
 
-    // Status values for FILTER conditionals
     for (const st of Object.values(PaperTradingStatus)) {
       qb.setParameter(`ptStatusVal_${st}`, st);
     }
@@ -157,8 +147,6 @@ export class PaperTradingMonitoringService {
     const statusFilter = filters.status ? ' AND s.status = :totalStatusFilter' : '';
     if (filters.status) qb.setParameter('totalStatusFilter', filters.status);
 
-    // Derive the scope string for the top-algorithms scalar subquery.
-    // Uses the SAME filter semantics as getPtTopAlgorithms (ignores filters.status).
     const topAlgoScopeParts: string[] = ['s2."algorithmId" IS NOT NULL'];
     topAlgoScopeParts.push(`s2.status IN (:ptCompleted, :ptActive)`);
     if (dateRange) {
@@ -183,19 +171,15 @@ export class PaperTradingMonitoringService {
     ), '[]'::jsonb)`;
 
     const selects: Array<[string, string]> = [];
-    // Status counts (status filter omitted)
     for (const st of Object.values(PaperTradingStatus)) {
       selects.push([`COUNT(*) FILTER (WHERE s.status = :ptStatusVal_${st})`, `status_${st}`]);
     }
-    // Total sessions (all filters)
     selects.push([statusFilter ? `COUNT(*) FILTER (WHERE 1=1 ${statusFilter})` : 'COUNT(*)', 'total_sessions']);
-    // Avg metrics (COMPLETED or ACTIVE)
     const metricsFilter = `s.status IN (:ptCompleted, :ptActive)`;
     selects.push([`AVG(s.sharpeRatio) FILTER (WHERE ${metricsFilter})`, 'avg_sharpe']);
     selects.push([`AVG(s.totalReturn) FILTER (WHERE ${metricsFilter})`, 'avg_return']);
     selects.push([`AVG(s.maxDrawdown) FILTER (WHERE ${metricsFilter})`, 'avg_drawdown']);
     selects.push([`AVG(s.winRate) FILTER (WHERE ${metricsFilter})`, 'avg_win_rate']);
-    // Top algorithms (scalar subquery)
     selects.push([topAlgorithmsSubquery, 'top_algorithms']);
 
     qb.select(selects[0][0], selects[0][1]);
@@ -249,156 +233,145 @@ export class PaperTradingMonitoringService {
   }
 
   /**
-   * Fan-in orders summary + bySymbol into one round trip using a scalar subquery for
-   * the per-symbol breakdown. The session scope filter is applied once and reused via
-   * a shared parameter bag.
+   * Load per-session summaries constrained to the filtered session scope and
+   * merge in-memory into the order + signal analytics DTOs. Fills the same
+   * output shape as the previous cross-table scalar subqueries.
    */
-  private async getPtOrderAnalytics(
+  private async getPtSummaryAggregate(
     filters: PaperTradingFiltersDto,
     dateRange: DateRange
-  ): Promise<PaperTradingMonitoringDto['orderAnalytics']> {
-    const sessionSubQuery = this.paperSessionRepo.createQueryBuilder('s').select('s.id');
-    this.applyPtFilters(sessionSubQuery, filters, dateRange);
+  ): Promise<Pick<PaperTradingMonitoringDto, 'orderAnalytics' | 'signalAnalytics'>> {
+    const sessionScopeQb = this.paperSessionRepo.createQueryBuilder('s').select('s.id');
+    this.applyPtFilters(sessionScopeQb, filters, dateRange);
 
-    const subSql = sessionSubQuery.getQuery();
-    const subParams = sessionSubQuery.getParameters();
+    // Skip the summary query entirely when no sessions match. Counting is cheaper
+    // than materializing ids, and it sidesteps the 65k parameter cap that an
+    // `IN (:...sessionIds)` expansion would hit on large admin filters.
+    const sessionCount = await sessionScopeQb.clone().getCount();
+    if (sessionCount === 0) {
+      return {
+        orderAnalytics: {
+          totalOrders: 0,
+          buyCount: 0,
+          sellCount: 0,
+          totalVolume: 0,
+          totalFees: 0,
+          avgSlippageBps: 0,
+          totalPnL: 0,
+          bySymbol: []
+        },
+        signalAnalytics: {
+          totalSignals: 0,
+          processedRate: 0,
+          avgConfidence: 0,
+          byType: Object.values(PaperTradingSignalType).reduce(
+            (acc, t) => {
+              acc[t] = 0;
+              return acc;
+            },
+            {} as Record<PaperTradingSignalType, number>
+          ),
+          byDirection: Object.values(PaperTradingSignalDirection).reduce(
+            (acc, d) => {
+              acc[d] = 0;
+              return acc;
+            },
+            {} as Record<PaperTradingSignalDirection, number>
+          )
+        }
+      };
+    }
 
-    const bySymbolSubquery = `COALESCE((
-      SELECT jsonb_agg(row_to_json(t) ORDER BY t."totalVolume" DESC)
-      FROM (
-        SELECT o2.symbol AS "symbol",
-               COUNT(*)::int AS "orderCount",
-               COALESCE(SUM(o2."totalValue"), 0) AS "totalVolume",
-               COALESCE(SUM(o2."realizedPnL"), 0) AS "totalPnL"
-        FROM paper_trading_orders o2
-        WHERE o2."sessionId" IN (${subSql})
-        GROUP BY o2.symbol
-        ORDER BY COALESCE(SUM(o2."totalValue"), 0) DESC
-        LIMIT 10
-      ) t
-    ), '[]'::jsonb)`;
+    const summaries = await this.summaryRepo
+      .createQueryBuilder('ps')
+      .where(`ps."sessionId" IN (${sessionScopeQb.getQuery()})`)
+      .setParameters(sessionScopeQb.getParameters())
+      .getMany();
 
-    const summary = await this.paperOrderRepo
-      .createQueryBuilder('o')
-      .select('COUNT(*)', 'totalOrders')
-      .addSelect(`COUNT(*) FILTER (WHERE o.side = :buySide)`, 'buyCount')
-      .addSelect(`COUNT(*) FILTER (WHERE o.side = :sellSide)`, 'sellCount')
-      .addSelect('COALESCE(SUM(o.totalValue), 0)', 'totalVolume')
-      .addSelect('COALESCE(SUM(o.fee), 0)', 'totalFees')
-      .addSelect('AVG(o.slippageBps)', 'avgSlippageBps')
-      .addSelect('COALESCE(SUM(o.realizedPnL), 0)', 'totalPnL')
-      .addSelect(bySymbolSubquery, 'bySymbol')
-      .where(`o.sessionId IN (${subSql})`)
-      .setParameters(subParams)
-      .setParameter('buySide', PaperTradingOrderSide.BUY)
-      .setParameter('sellSide', PaperTradingOrderSide.SELL)
-      .getRawOne<Record<string, string | null>>();
+    let totalOrders = 0;
+    let buyCount = 0;
+    let sellCount = 0;
+    let totalVolume = 0;
+    let totalFees = 0;
+    let totalPnL = 0;
+    let slippageSum = 0;
+    let slippageCount = 0;
+    const symbolMap = new Map<string, PaperTradingSymbolBreakdown>();
 
-    const rawBySymbol = summary?.bySymbol;
-    const parsedBySymbol: Array<{ symbol: string; orderCount: number; totalVolume: number; totalPnL: number }> =
-      (() => {
-        if (!rawBySymbol) return [];
-        const parsed = typeof rawBySymbol === 'string' ? JSON.parse(rawBySymbol) : rawBySymbol;
-        if (!Array.isArray(parsed)) return [];
-        return parsed.map((r: Record<string, unknown>) => ({
-          symbol: String(r.symbol),
-          orderCount: Number(r.orderCount) || 0,
-          totalVolume: Number(r.totalVolume) || 0,
-          totalPnL: Number(r.totalPnL) || 0
-        }));
-      })();
+    let totalSignals = 0;
+    let processedCount = 0;
+    let confidenceSum = 0;
+    let confidenceCount = 0;
+    const byType: Record<string, number> = {};
+    const byDirection: Record<string, number> = {};
 
-    return {
-      totalOrders: parseInt(summary?.totalOrders ?? '0', 10) || 0,
-      buyCount: parseInt(summary?.buyCount ?? '0', 10) || 0,
-      sellCount: parseInt(summary?.sellCount ?? '0', 10) || 0,
-      totalVolume: parseFloat(summary?.totalVolume ?? '0') || 0,
-      totalFees: parseFloat(summary?.totalFees ?? '0') || 0,
-      avgSlippageBps: parseFloat(summary?.avgSlippageBps ?? '0') || 0,
-      totalPnL: parseFloat(summary?.totalPnL ?? '0') || 0,
-      bySymbol: parsedBySymbol
-    };
-  }
+    for (const s of summaries) {
+      totalOrders += s.totalOrders;
+      buyCount += s.buyCount;
+      sellCount += s.sellCount;
+      totalVolume += Number(s.totalVolume) || 0;
+      totalFees += Number(s.totalFees) || 0;
+      totalPnL += Number(s.totalPnL) || 0;
+      slippageSum += Number(s.slippageSumBps) || 0;
+      slippageCount += s.slippageCount;
 
-  /**
-   * Fan-in signals overall + byType + byDirection into one round trip via scalar
-   * subqueries for the two grouped breakdowns.
-   */
-  private async getPtSignalAnalytics(
-    filters: PaperTradingFiltersDto,
-    dateRange: DateRange
-  ): Promise<PaperTradingMonitoringDto['signalAnalytics']> {
-    const sessionSubQuery = this.paperSessionRepo.createQueryBuilder('s').select('s.id');
-    this.applyPtFilters(sessionSubQuery, filters, dateRange);
+      for (const sym of s.ordersBySymbol ?? []) {
+        let target = symbolMap.get(sym.symbol);
+        if (!target) {
+          target = { symbol: sym.symbol, orderCount: 0, totalVolume: 0, totalPnL: 0 };
+          symbolMap.set(sym.symbol, target);
+        }
+        target.orderCount += sym.orderCount;
+        target.totalVolume += sym.totalVolume;
+        target.totalPnL += sym.totalPnL;
+      }
 
-    const subSql = sessionSubQuery.getQuery();
-    const subParams = sessionSubQuery.getParameters();
+      totalSignals += s.totalSignals;
+      processedCount += s.processedCount;
+      confidenceSum += Number(s.confidenceSum) || 0;
+      confidenceCount += s.confidenceCount;
+      for (const k of Object.keys(s.signalsByType ?? {})) {
+        byType[k] = (byType[k] ?? 0) + (s.signalsByType[k] ?? 0);
+      }
+      for (const k of Object.keys(s.signalsByDirection ?? {})) {
+        byDirection[k] = (byDirection[k] ?? 0) + (s.signalsByDirection[k] ?? 0);
+      }
+    }
 
-    const byTypeSubquery = `COALESCE((
-      SELECT jsonb_object_agg("signalType", cnt)
-      FROM (
-        SELECT sig2."signalType" AS "signalType", COUNT(*)::int AS cnt
-        FROM paper_trading_signals sig2
-        WHERE sig2."sessionId" IN (${subSql})
-        GROUP BY sig2."signalType"
-      ) t
-    ), '{}'::jsonb)`;
-
-    const byDirectionSubquery = `COALESCE((
-      SELECT jsonb_object_agg(direction, cnt)
-      FROM (
-        SELECT sig3.direction AS direction, COUNT(*)::int AS cnt
-        FROM paper_trading_signals sig3
-        WHERE sig3."sessionId" IN (${subSql})
-        GROUP BY sig3.direction
-      ) t
-    ), '{}'::jsonb)`;
-
-    const row = await this.paperSignalRepo
-      .createQueryBuilder('sig')
-      .select('COUNT(*)', 'totalSignals')
-      .addSelect('AVG(CASE WHEN sig.processed = true THEN 1.0 ELSE 0.0 END)', 'processedRate')
-      .addSelect('AVG(sig.confidence)', 'avgConfidence')
-      .addSelect(byTypeSubquery, 'byType')
-      .addSelect(byDirectionSubquery, 'byDirection')
-      .where(`sig.sessionId IN (${subSql})`)
-      .setParameters(subParams)
-      .getRawOne<Record<string, string | null>>();
-
-    const parsedByType: Record<string, number> = (() => {
-      const raw = row?.byType;
-      if (!raw) return {};
-      return typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, number>);
-    })();
-
-    const parsedByDirection: Record<string, number> = (() => {
-      const raw = row?.byDirection;
-      if (!raw) return {};
-      return typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, number>);
-    })();
-
-    const byType = Object.values(PaperTradingSignalType).reduce(
-      (acc, t) => {
-        acc[t] = Number(parsedByType[t]) || 0;
-        return acc;
-      },
-      {} as Record<PaperTradingSignalType, number>
-    );
-
-    const byDirection = Object.values(PaperTradingSignalDirection).reduce(
-      (acc, d) => {
-        acc[d] = Number(parsedByDirection[d]) || 0;
-        return acc;
-      },
-      {} as Record<PaperTradingSignalDirection, number>
-    );
+    const bySymbol = Array.from(symbolMap.values())
+      .sort((a, b) => b.totalVolume - a.totalVolume)
+      .slice(0, 10);
 
     return {
-      totalSignals: parseInt(row?.totalSignals ?? '0', 10) || 0,
-      processedRate: parseFloat(row?.processedRate ?? '0') || 0,
-      avgConfidence: parseFloat(row?.avgConfidence ?? '0') || 0,
-      byType,
-      byDirection
+      orderAnalytics: {
+        totalOrders,
+        buyCount,
+        sellCount,
+        totalVolume,
+        totalFees,
+        avgSlippageBps: slippageCount > 0 ? slippageSum / slippageCount : 0,
+        totalPnL,
+        bySymbol
+      },
+      signalAnalytics: {
+        totalSignals,
+        processedRate: totalSignals > 0 ? processedCount / totalSignals : 0,
+        avgConfidence: confidenceCount > 0 ? confidenceSum / confidenceCount : 0,
+        byType: Object.values(PaperTradingSignalType).reduce(
+          (acc, t) => {
+            acc[t] = Number(byType[t]) || 0;
+            return acc;
+          },
+          {} as Record<PaperTradingSignalType, number>
+        ),
+        byDirection: Object.values(PaperTradingSignalDirection).reduce(
+          (acc, d) => {
+            acc[d] = Number(byDirection[d]) || 0;
+            return acc;
+          },
+          {} as Record<PaperTradingSignalDirection, number>
+        )
+      }
     };
   }
 }

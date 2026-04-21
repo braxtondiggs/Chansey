@@ -10,9 +10,11 @@ import { SessionStatusResponse } from '@chansey/api-interfaces';
 
 import { PaperTradingOrder, PaperTradingSession, PaperTradingStatus } from './entities';
 import { PaperTradingEngineService } from './paper-trading-engine.service';
+import { PaperTradingSessionSummaryService } from './paper-trading-session-summary.service';
 import { PaperTradingJobType, RetryTickJobData } from './paper-trading.job-data';
 
 import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
+import { toErrorInfo } from '../../shared/error.util';
 import { forceRemoveJob } from '../../shared/queue.util';
 
 @Injectable()
@@ -27,7 +29,8 @@ export class PaperTradingJobService {
     @InjectQueue('paper-trading')
     private readonly paperTradingQueue: Queue,
     private readonly eventEmitter: EventEmitter2,
-    private readonly engineService: PaperTradingEngineService
+    private readonly engineService: PaperTradingEngineService,
+    private readonly summaryService: PaperTradingSessionSummaryService
   ) {}
 
   /**
@@ -165,6 +168,15 @@ export class PaperTradingJobService {
     await this.sessionRepository.save(session);
 
     await this.cleanupSession(sessionId);
+
+    // Compute analytics summary for admin dashboard reads. Non-blocking — failure
+    // must not prevent the pipeline from advancing.
+    try {
+      await this.summaryService.computeAndPersist(sessionId);
+    } catch (err: unknown) {
+      const info = toErrorInfo(err);
+      this.logger.error(`Failed to compute summary for session ${sessionId}: ${info.message}`, info.stack);
+    }
 
     // Emit event for pipeline orchestrator
     if (session.pipelineId) {

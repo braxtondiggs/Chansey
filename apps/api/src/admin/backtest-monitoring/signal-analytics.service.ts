@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { BacktestFiltersDto } from './dto/overview.dto';
 import {
@@ -12,29 +12,49 @@ import {
   SignalOverallStatsDto,
   SignalTypeMetricsDto
 } from './dto/signal-analytics.dto';
-import {
-  getDateRange,
-  getEmptySignalAnalytics,
-  getFilteredBacktestIds,
-  resolveInstrumentSymbols
-} from './monitoring-shared.util';
+import { getDateRange, getEmptySignalAnalytics, getFilteredBacktestIds } from './monitoring-shared.util';
 
-import { Coin } from '../../coin/coin.entity';
-import { BacktestSignal, SignalDirection, SignalType } from '../../order/backtest/backtest-signal.entity';
-import { BacktestTrade, TradeType } from '../../order/backtest/backtest-trade.entity';
+import { SignalDirection, SignalType } from '../../order/backtest/backtest-signal.entity';
+import {
+  BacktestSummary,
+  ConfidenceBucketBreakdown,
+  InstrumentSignalBreakdown,
+  SignalOutcomeBucket
+} from '../../order/backtest/backtest-summary.entity';
 import { Backtest } from '../../order/backtest/backtest.entity';
+
+const CONFIDENCE_BUCKET_ORDER = ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%'];
+
+function emptyOutcome(): SignalOutcomeBucket {
+  return { count: 0, wins: 0, losses: 0, returnSum: 0, returnCount: 0 };
+}
+
+function mergeOutcome(a: SignalOutcomeBucket, b: SignalOutcomeBucket): SignalOutcomeBucket {
+  return {
+    count: a.count + b.count,
+    wins: a.wins + b.wins,
+    losses: a.losses + b.losses,
+    returnSum: a.returnSum + b.returnSum,
+    returnCount: a.returnCount + b.returnCount
+  };
+}
+
+function outcomeSuccessRate(o: SignalOutcomeBucket): number {
+  const resolved = o.wins + o.losses;
+  return resolved > 0 ? o.wins / resolved : 0;
+}
+
+function outcomeAvgReturn(o: SignalOutcomeBucket): number {
+  return o.returnCount > 0 ? o.returnSum / o.returnCount : 0;
+}
 
 @Injectable()
 export class SignalAnalyticsService {
   constructor(
     @InjectRepository(Backtest) private readonly backtestRepo: Repository<Backtest>,
-    @InjectRepository(BacktestSignal) private readonly signalRepo: Repository<BacktestSignal>,
-    @InjectRepository(Coin) private readonly coinRepo: Repository<Coin>
+    @InjectRepository(BacktestSummary) private readonly summaryRepo: Repository<BacktestSummary>
   ) {}
 
-  /**
-   * Get signal analytics
-   */
   async getSignalAnalytics(filters: BacktestFiltersDto): Promise<SignalAnalyticsDto> {
     const dateRange = getDateRange(filters);
     const backtestIds = await getFilteredBacktestIds(this.backtestRepo, filters, dateRange);
@@ -43,222 +63,158 @@ export class SignalAnalyticsService {
       return getEmptySignalAnalytics();
     }
 
-    const [overall, byConfidenceBucket, bySignalType, byDirection, byInstrument] = await Promise.all([
-      this.getSignalOverallStats(backtestIds),
-      this.getSignalsByConfidenceBucket(backtestIds),
-      this.getSignalsByType(backtestIds),
-      this.getSignalsByDirection(backtestIds),
-      this.getSignalsByInstrument(backtestIds)
-    ]);
+    const summaries = await this.summaryRepo.find({
+      where: { backtestId: In(backtestIds) }
+    });
+
+    if (summaries.length === 0) {
+      return getEmptySignalAnalytics();
+    }
 
     return {
-      overall,
-      byConfidenceBucket,
-      bySignalType,
-      byDirection,
-      byInstrument
+      overall: this.aggregateOverall(summaries),
+      byConfidenceBucket: this.aggregateByConfidenceBucket(summaries),
+      bySignalType: this.aggregateBySignalType(summaries),
+      byDirection: this.aggregateByDirection(summaries),
+      byInstrument: this.aggregateByInstrument(summaries)
     };
   }
 
-  private async getSignalOverallStats(backtestIds: string[]): Promise<SignalOverallStatsDto> {
-    const qb = this.signalRepo
-      .createQueryBuilder('s')
-      .select('COUNT(*)', 'totalSignals')
-      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = :entryType)`, 'entryCount')
-      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = :exitType)`, 'exitCount')
-      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = :adjustmentType)`, 'adjustmentCount')
-      .addSelect(`COUNT(*) FILTER (WHERE s.signalType = :riskControlType)`, 'riskControlCount')
-      .addSelect('AVG(s.confidence)', 'avgConfidence')
-      .where('s.backtestId IN (:...backtestIds)', { backtestIds })
-      .setParameter('entryType', SignalType.ENTRY)
-      .setParameter('exitType', SignalType.EXIT)
-      .setParameter('adjustmentType', SignalType.ADJUSTMENT)
-      .setParameter('riskControlType', SignalType.RISK_CONTROL);
+  private aggregateOverall(summaries: BacktestSummary[]): SignalOverallStatsDto {
+    let totalSignals = 0;
+    let entryCount = 0;
+    let exitCount = 0;
+    let adjustmentCount = 0;
+    let riskControlCount = 0;
+    let confidenceSumAgg = 0;
+    let confidenceCountAgg = 0;
 
-    const result = await qb.getRawOne();
+    for (const s of summaries) {
+      totalSignals += s.totalSignals;
+      entryCount += s.entryCount;
+      exitCount += s.exitCount;
+      adjustmentCount += s.adjustmentCount;
+      riskControlCount += s.riskControlCount;
+      confidenceSumAgg += Number(s.confidenceSum) || 0;
+      confidenceCountAgg += s.confidenceCount || 0;
+    }
 
     return {
-      totalSignals: parseInt(result?.totalSignals, 10) || 0,
-      entryCount: parseInt(result?.entryCount, 10) || 0,
-      exitCount: parseInt(result?.exitCount, 10) || 0,
-      adjustmentCount: parseInt(result?.adjustmentCount, 10) || 0,
-      riskControlCount: parseInt(result?.riskControlCount, 10) || 0,
-      avgConfidence: parseFloat(result?.avgConfidence) || 0
+      totalSignals,
+      entryCount,
+      exitCount,
+      adjustmentCount,
+      riskControlCount,
+      avgConfidence: confidenceCountAgg > 0 ? confidenceSumAgg / confidenceCountAgg : 0
     };
   }
 
-  private async getSignalsByConfidenceBucket(backtestIds: string[]): Promise<ConfidenceBucketDto[]> {
-    const qb = this.signalRepo
-      .createQueryBuilder('s')
-      .select(
-        `CASE
-        WHEN s.confidence < 0.2 THEN '0-20%'
-        WHEN s.confidence < 0.4 THEN '20-40%'
-        WHEN s.confidence < 0.6 THEN '40-60%'
-        WHEN s.confidence < 0.8 THEN '60-80%'
-        ELSE '80-100%'
-      END`,
-        'bucket'
-      )
-      .addSelect('COUNT(*)', 'signalCount')
-      .addSelect(
-        `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
-        'successRate'
-      )
-      .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
-      .leftJoin(
-        (subQuery) =>
-          subQuery
-            .select('t2.id', 'id')
-            .addSelect('t2.backtestId', 'backtestId')
-            .addSelect('t2.realizedPnL', 'realizedPnL')
-            .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
-            .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('CAST(bc.id AS text)', 'instrument')
-            .from(BacktestTrade, 't2')
-            .leftJoin('t2.baseCoin', 'bc')
-            .where('t2.type = :sellType', { sellType: TradeType.SELL }),
-        't',
-        't."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp AND t.instrument = s.instrument'
-      )
-      .where('s.backtestId IN (:...backtestIds)', { backtestIds })
-      .andWhere('s.confidence IS NOT NULL')
-      .groupBy('bucket')
-      .orderBy('bucket', 'ASC');
-
-    const results = await qb.getRawMany();
-
-    const bucketOrder = ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%'];
-    const bucketMap = new Map(results.map((r) => [r.bucket, r]));
-
-    return bucketOrder.map((bucket) => {
-      const data = bucketMap.get(bucket);
+  private aggregateByConfidenceBucket(summaries: BacktestSummary[]): ConfidenceBucketDto[] {
+    const merged = new Map<string, ConfidenceBucketBreakdown>();
+    for (const label of CONFIDENCE_BUCKET_ORDER) {
+      merged.set(label, { bucket: label, signalCount: 0, wins: 0, losses: 0, returnSum: 0, returnCount: 0 });
+    }
+    for (const s of summaries) {
+      for (const bucket of s.signalsByConfidenceBucket ?? []) {
+        const target = merged.get(bucket.bucket);
+        if (!target) continue;
+        target.signalCount += bucket.signalCount;
+        target.wins += bucket.wins;
+        target.losses += bucket.losses;
+        target.returnSum += bucket.returnSum;
+        target.returnCount += bucket.returnCount;
+      }
+    }
+    return CONFIDENCE_BUCKET_ORDER.map((label) => {
+      const b = merged.get(label) as ConfidenceBucketBreakdown;
+      const resolved = b.wins + b.losses;
       return {
-        bucket,
-        signalCount: parseInt(data?.signalCount, 10) || 0,
-        successRate: parseFloat(data?.successRate) || 0,
-        avgReturn: parseFloat(data?.avgReturn) || 0
+        bucket: label,
+        signalCount: b.signalCount,
+        successRate: resolved > 0 ? b.wins / resolved : 0,
+        avgReturn: b.returnCount > 0 ? b.returnSum / b.returnCount : 0
       };
     });
   }
 
-  private async getSignalsByType(backtestIds: string[]): Promise<SignalTypeMetricsDto[]> {
-    const qb = this.signalRepo
-      .createQueryBuilder('s')
-      .select('s.signalType', 'type')
-      .addSelect('COUNT(*)', 'count')
-      .addSelect(
-        `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
-        'successRate'
-      )
-      .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
-      .leftJoin(
-        (subQuery) =>
-          subQuery
-            .select('t2.id', 'id')
-            .addSelect('t2.backtestId', 'backtestId')
-            .addSelect('t2.realizedPnL', 'realizedPnL')
-            .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
-            .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('CAST(bc.id AS text)', 'instrument')
-            .from(BacktestTrade, 't2')
-            .leftJoin('t2.baseCoin', 'bc')
-            .where('t2.type = :sellType', { sellType: TradeType.SELL }),
-        't',
-        't.instrument = s.instrument AND t."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp'
-      )
-      .where('s.backtestId IN (:...backtestIds)', { backtestIds })
-      .groupBy('s.signalType');
-
-    const results = await qb.getRawMany();
-
-    return results.map((r) => ({
-      type: r.type as SignalType,
-      count: parseInt(r.count, 10) || 0,
-      successRate: parseFloat(r.successRate) || 0,
-      avgReturn: parseFloat(r.avgReturn) || 0
-    }));
+  private aggregateBySignalType(summaries: BacktestSummary[]): SignalTypeMetricsDto[] {
+    const merged: Record<string, SignalOutcomeBucket> = {};
+    for (const s of summaries) {
+      const byType = s.signalsByType ?? {};
+      for (const typeKey of Object.keys(byType)) {
+        merged[typeKey] = mergeOutcome(merged[typeKey] ?? emptyOutcome(), byType[typeKey]);
+      }
+    }
+    return Object.values(SignalType)
+      .map((type) => {
+        const o = merged[type];
+        if (!o) return null;
+        return {
+          type,
+          count: o.count,
+          successRate: outcomeSuccessRate(o),
+          avgReturn: outcomeAvgReturn(o)
+        } satisfies SignalTypeMetricsDto;
+      })
+      .filter((v): v is SignalTypeMetricsDto => v !== null);
   }
 
-  private async getSignalsByDirection(backtestIds: string[]): Promise<SignalDirectionMetricsDto[]> {
-    const qb = this.signalRepo
-      .createQueryBuilder('s')
-      .select('s.direction', 'direction')
-      .addSelect('COUNT(*)', 'count')
-      .addSelect(
-        `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
-        'successRate'
-      )
-      .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
-      .leftJoin(
-        (subQuery) =>
-          subQuery
-            .select('t2.id', 'id')
-            .addSelect('t2.backtestId', 'backtestId')
-            .addSelect('t2.realizedPnL', 'realizedPnL')
-            .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
-            .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('CAST(bc.id AS text)', 'instrument')
-            .from(BacktestTrade, 't2')
-            .leftJoin('t2.baseCoin', 'bc')
-            .where('t2.type = :sellType', { sellType: TradeType.SELL }),
-        't',
-        't.instrument = s.instrument AND t."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp'
-      )
-      .where('s.backtestId IN (:...backtestIds)', { backtestIds })
-      .groupBy('s.direction');
-
-    const results = await qb.getRawMany();
-
-    return results.map((r) => ({
-      direction: r.direction as SignalDirection,
-      count: parseInt(r.count, 10) || 0,
-      successRate: parseFloat(r.successRate) || 0,
-      avgReturn: parseFloat(r.avgReturn) || 0
-    }));
+  private aggregateByDirection(summaries: BacktestSummary[]): SignalDirectionMetricsDto[] {
+    const merged: Record<string, SignalOutcomeBucket> = {};
+    for (const s of summaries) {
+      const byDir = s.signalsByDirection ?? {};
+      for (const dirKey of Object.keys(byDir)) {
+        merged[dirKey] = mergeOutcome(merged[dirKey] ?? emptyOutcome(), byDir[dirKey]);
+      }
+    }
+    return Object.values(SignalDirection)
+      .map((direction) => {
+        const o = merged[direction];
+        if (!o) return null;
+        return {
+          direction,
+          count: o.count,
+          successRate: outcomeSuccessRate(o),
+          avgReturn: outcomeAvgReturn(o)
+        } satisfies SignalDirectionMetricsDto;
+      })
+      .filter((v): v is SignalDirectionMetricsDto => v !== null);
   }
 
-  private async getSignalsByInstrument(backtestIds: string[]): Promise<SignalInstrumentMetricsDto[]> {
-    const qb = this.signalRepo
-      .createQueryBuilder('s')
-      .select('UPPER(s.instrument)', 'instrument')
-      .addSelect('COUNT(*)', 'count')
-      .addSelect(
-        `AVG(CASE WHEN t."realizedPnL" > 0 THEN 1.0 WHEN t."realizedPnL" < 0 THEN 0.0 ELSE NULL END)`,
-        'successRate'
-      )
-      .addSelect('AVG(t."realizedPnLPercent")', 'avgReturn')
-      .leftJoin(
-        (subQuery) =>
-          subQuery
-            .select('t2.id', 'id')
-            .addSelect('t2.backtestId', 'backtestId')
-            .addSelect('t2.realizedPnL', 'realizedPnL')
-            .addSelect('t2.realizedPnLPercent', 'realizedPnLPercent')
-            .addSelect('t2.executedAt', 'executedAt')
-            .addSelect('CAST(bc.id AS text)', 'instrument')
-            .from(BacktestTrade, 't2')
-            .leftJoin('t2.baseCoin', 'bc')
-            .where('t2.type = :sellType', { sellType: TradeType.SELL }),
-        't',
-        't.instrument = s.instrument AND t."backtestId" = s."backtestId" AND t."executedAt" >= s.timestamp'
-      )
-      .where('s.backtestId IN (:...backtestIds)', { backtestIds })
-      .groupBy('s.instrument')
-      .orderBy('COUNT(*)', 'DESC')
-      .limit(10);
-
-    const results = await qb.getRawMany();
-
-    // Resolve instrument UUIDs to coin symbols
-    const instrumentSet = new Set(results.map((r) => r.instrument as string).filter(Boolean));
-    const resolver = await resolveInstrumentSymbols(this.coinRepo, instrumentSet);
-
-    return results.map((r) => ({
-      instrument: resolver.resolve(r.instrument as string) ?? r.instrument,
-      count: parseInt(r.count, 10) || 0,
-      successRate: parseFloat(r.successRate) || 0,
-      avgReturn: parseFloat(r.avgReturn) || 0
-    }));
+  private aggregateByInstrument(summaries: BacktestSummary[]): SignalInstrumentMetricsDto[] {
+    const merged = new Map<string, InstrumentSignalBreakdown>();
+    for (const s of summaries) {
+      for (const row of s.signalsByInstrument ?? []) {
+        let target = merged.get(row.instrument);
+        if (!target) {
+          target = {
+            instrument: row.instrument,
+            count: 0,
+            wins: 0,
+            losses: 0,
+            returnSum: 0,
+            returnCount: 0
+          };
+          merged.set(row.instrument, target);
+        }
+        target.count += row.count;
+        target.wins += row.wins;
+        target.losses += row.losses;
+        target.returnSum += row.returnSum;
+        target.returnCount += row.returnCount;
+      }
+    }
+    return Array.from(merged.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+      .map((o) => {
+        const resolved = o.wins + o.losses;
+        return {
+          instrument: o.instrument,
+          count: o.count,
+          successRate: resolved > 0 ? o.wins / resolved : 0,
+          avgReturn: o.returnCount > 0 ? o.returnSum / o.returnCount : 0
+        };
+      });
   }
 }

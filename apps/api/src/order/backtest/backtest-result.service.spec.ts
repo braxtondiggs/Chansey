@@ -8,6 +8,7 @@ import { BacktestPerformanceSnapshot } from './backtest-performance-snapshot.ent
 import { type BacktestFinalMetrics, BacktestResultService } from './backtest-result.service';
 import { BacktestSignal } from './backtest-signal.entity';
 import { BacktestStreamService } from './backtest-stream.service';
+import { BacktestSummaryService } from './backtest-summary.service';
 import { BacktestTrade } from './backtest-trade.entity';
 import { Backtest, BacktestStatus, BacktestType } from './backtest.entity';
 import { SimulatedOrderFill } from './simulated-order-fill.entity';
@@ -66,6 +67,10 @@ describe('BacktestResultService', () => {
     emit: jest.fn()
   };
 
+  const mockBacktestSummaryService = {
+    computeAndPersist: jest.fn().mockResolvedValue(undefined)
+  };
+
   // Mock QueryRunner for transaction testing
   const mockQueryRunner = {
     connect: jest.fn(),
@@ -101,6 +106,7 @@ describe('BacktestResultService', () => {
         { provide: DataSource, useValue: mockDataSource },
         { provide: BacktestStreamService, useValue: mockBacktestStreamService },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: BacktestSummaryService, useValue: mockBacktestSummaryService },
         { provide: MetricsService, useValue: mockMetricsService }
       ]
     }).compile();
@@ -335,6 +341,20 @@ describe('BacktestResultService', () => {
       await service.persistSuccess(backtest, mockResults);
 
       expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(PIPELINE_EVENTS.BACKTEST_COMPLETED, expect.any(Object));
+    });
+
+    it('still emits BACKTEST_COMPLETED when summary computation throws (non-blocking)', async () => {
+      mockMetricsService.startPersistenceTimer.mockReturnValue(jest.fn());
+      mockQueryRunner.manager.save.mockResolvedValue({});
+      mockQueryRunner.manager.update.mockResolvedValue({});
+      mockBacktestSummaryService.computeAndPersist.mockRejectedValueOnce(new Error('boom'));
+
+      const backtest = { ...mockBacktest, type: 'HISTORICAL' } as Backtest;
+
+      await expect(service.persistSuccess(backtest, mockResults)).resolves.not.toThrow();
+
+      expect(mockBacktestSummaryService.computeAndPersist).toHaveBeenCalledWith('backtest-123');
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.BACKTEST_COMPLETED, expect.any(Object));
     });
   });
 

@@ -276,9 +276,7 @@ export class PaperTradingMarketDataService {
           marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
         } catch (error: unknown) {
           const err = toErrorInfo(error);
-          this.logger.warn(
-            `loadMarkets(${exchangeSlug}) failed, proceeding without symbol validation: ${err.message}`
-          );
+          this.logger.warn(`loadMarkets(${exchangeSlug}) failed, proceeding without symbol validation: ${err.message}`);
         }
       }
 

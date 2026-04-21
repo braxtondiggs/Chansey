@@ -16,6 +16,8 @@ import { BacktestRecoveryService } from './backtest/backtest-recovery.service';
 import { BacktestResultService } from './backtest/backtest-result.service';
 import { BacktestSignal } from './backtest/backtest-signal.entity';
 import { BacktestStreamService } from './backtest/backtest-stream.service';
+import { BacktestSummary } from './backtest/backtest-summary.entity';
+import { BacktestSummaryService } from './backtest/backtest-summary.service';
 import { BacktestTrade } from './backtest/backtest-trade.entity';
 import { backtestConfig } from './backtest/backtest.config';
 import { BacktestController, ComparisonReportController } from './backtest/backtest.controller';
@@ -120,6 +122,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     OptimizationCoreService,
     BacktestStreamService,
     BacktestResultService,
+    BacktestSummaryService,
     SlippageAnalysisService,
     LiquidationMonitorService,
     PositionManagementService,
@@ -146,6 +149,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
       TickerPairs,
       Backtest,
       BacktestSignal,
+      BacktestSummary,
       SimulatedOrderFill,
       MarketDataSet,
       BacktestTrade,
@@ -200,6 +204,7 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestQueryService,
     BacktestStreamService,
     BacktestResultService,
+    BacktestSummaryService,
     BacktestGateway,
     CoinDailySnapshotService,
     CoinListingEventService,

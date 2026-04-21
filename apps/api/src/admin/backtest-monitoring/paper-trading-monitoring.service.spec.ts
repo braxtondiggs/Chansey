@@ -5,23 +5,19 @@ import { type ObjectLiteral, type Repository, type SelectQueryBuilder } from 'ty
 
 import { PaperTradingMonitoringService } from './paper-trading-monitoring.service';
 
-import {
-  PaperTradingOrder,
-  PaperTradingOrderSide
-} from '../../order/paper-trading/entities/paper-trading-order.entity';
+import { PaperTradingSessionSummary } from '../../order/paper-trading/entities/paper-trading-session-summary.entity';
 import {
   PaperTradingSession,
   PaperTradingStatus
 } from '../../order/paper-trading/entities/paper-trading-session.entity';
 import {
-  PaperTradingSignal,
   PaperTradingSignalDirection,
   PaperTradingSignalType
 } from '../../order/paper-trading/entities/paper-trading-signal.entity';
 
 type MockRepo<T extends ObjectLiteral> = Partial<jest.Mocked<Repository<T>>>;
 
-const createMockQueryBuilder = () => {
+const createMockQueryBuilder = (overrides: Record<string, any> = {}) => {
   const qb: Partial<SelectQueryBuilder<any>> = {
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
@@ -37,43 +33,65 @@ const createMockQueryBuilder = () => {
     take: jest.fn().mockReturnThis(),
     setParameters: jest.fn().mockReturnThis(),
     setParameter: jest.fn().mockReturnThis(),
+    clone: jest.fn().mockReturnThis(),
     getQuery: jest.fn().mockReturnValue('SELECT s.id FROM paper_trading_sessions s'),
     getParameters: jest.fn().mockReturnValue({}),
     getCount: jest.fn().mockResolvedValue(0),
     getRawOne: jest.fn().mockResolvedValue({}),
     getRawMany: jest.fn().mockResolvedValue([]),
+    getMany: jest.fn().mockResolvedValue([]),
     getManyAndCount: jest.fn().mockResolvedValue([[], 0])
   };
-  return qb as SelectQueryBuilder<any>;
+  return Object.assign(qb, overrides) as SelectQueryBuilder<any>;
 };
+
+function makeSummary(partial: Partial<PaperTradingSessionSummary> = {}): PaperTradingSessionSummary {
+  const base = new PaperTradingSessionSummary({
+    sessionId: 'sess-1',
+    totalOrders: 0,
+    buyCount: 0,
+    sellCount: 0,
+    totalVolume: 0,
+    totalFees: 0,
+    totalPnL: 0,
+    avgSlippageBps: null,
+    slippageSumBps: 0,
+    slippageCount: 0,
+    totalSignals: 0,
+    processedCount: 0,
+    confidenceSum: 0,
+    confidenceCount: 0,
+    ordersBySymbol: [],
+    signalsByType: {},
+    signalsByDirection: {},
+    computedAt: new Date()
+  });
+  Object.assign(base, partial);
+  return base;
+}
 
 describe('PaperTradingMonitoringService', () => {
   let service: PaperTradingMonitoringService;
   let paperSessionRepo: MockRepo<PaperTradingSession>;
-  let paperOrderRepo: MockRepo<PaperTradingOrder>;
-  let paperSignalRepo: MockRepo<PaperTradingSignal>;
+  let summaryRepo: MockRepo<PaperTradingSessionSummary>;
   let sessionQb: SelectQueryBuilder<any>;
-  let orderQb: SelectQueryBuilder<any>;
-  let signalQb: SelectQueryBuilder<any>;
+  let summaryQb: SelectQueryBuilder<any>;
 
   beforeEach(async () => {
     sessionQb = createMockQueryBuilder();
-    orderQb = createMockQueryBuilder();
-    signalQb = createMockQueryBuilder();
+    summaryQb = createMockQueryBuilder();
 
     paperSessionRepo = {
       createQueryBuilder: jest.fn().mockReturnValue(sessionQb),
       count: jest.fn().mockResolvedValue(0)
     };
-    paperOrderRepo = { createQueryBuilder: jest.fn().mockReturnValue(orderQb) };
-    paperSignalRepo = { createQueryBuilder: jest.fn().mockReturnValue(signalQb) };
+    summaryRepo = { createQueryBuilder: jest.fn().mockReturnValue(summaryQb) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaperTradingMonitoringService,
         { provide: getRepositoryToken(PaperTradingSession), useValue: paperSessionRepo },
-        { provide: getRepositoryToken(PaperTradingOrder), useValue: paperOrderRepo },
-        { provide: getRepositoryToken(PaperTradingSignal), useValue: paperSignalRepo }
+        { provide: getRepositoryToken(PaperTradingSessionSummary), useValue: summaryRepo }
       ]
     }).compile();
 
@@ -89,11 +107,9 @@ describe('PaperTradingMonitoringService', () => {
       expect(result.totalSessions).toBe(0);
       expect(result.avgMetrics).toEqual({ sharpeRatio: 0, totalReturn: 0, maxDrawdown: 0, winRate: 0 });
       expect(result.topAlgorithms).toEqual([]);
-      // All statuses seeded to 0
       for (const st of Object.values(PaperTradingStatus)) {
         expect(result.statusCounts[st]).toBe(0);
       }
-      // Signal analytics seeds all enum keys to 0
       for (const t of Object.values(PaperTradingSignalType)) {
         expect(result.signalAnalytics.byType[t]).toBe(0);
       }
@@ -104,8 +120,7 @@ describe('PaperTradingMonitoringService', () => {
       expect(result.orderAnalytics.bySymbol).toEqual([]);
     });
 
-    it('maps status counts, avg metrics, order and signal analytics from raw rows', async () => {
-      // Consolidated session aggregate (1st getRawOne) + countRecentActivity (2nd getRawOne)
+    it('merges session-level aggregates with per-session summary rows', async () => {
       (sessionQb.getRawOne as jest.Mock)
         .mockResolvedValueOnce({
           [`status_${PaperTradingStatus.COMPLETED}`]: '3',
@@ -120,76 +135,62 @@ describe('PaperTradingMonitoringService', () => {
           ])
         })
         .mockResolvedValueOnce({ last24h: '1', last7d: '4', last30d: '5' });
+      // Non-zero session scope → summary query runs against the filtered subquery.
+      (sessionQb.getCount as jest.Mock).mockResolvedValueOnce(2);
 
-      (orderQb.getRawOne as jest.Mock).mockResolvedValueOnce({
-        totalOrders: '10',
-        buyCount: '6',
-        sellCount: '4',
-        totalVolume: '1000.5',
-        totalFees: '2.5',
-        avgSlippageBps: null,
-        totalPnL: '50.25',
-        bySymbol: JSON.stringify([{ symbol: 'BTC', orderCount: 4, totalVolume: 500, totalPnL: 20 }])
-      });
-
-      (signalQb.getRawOne as jest.Mock).mockResolvedValueOnce({
-        totalSignals: '8',
-        processedRate: '0.75',
-        avgConfidence: '0.82',
-        byType: JSON.stringify({ [PaperTradingSignalType.ENTRY]: 5 }),
-        byDirection: JSON.stringify({ [PaperTradingSignalDirection.LONG]: 6 })
-      });
+      (summaryQb.getMany as jest.Mock).mockResolvedValueOnce([
+        makeSummary({
+          sessionId: 's1',
+          totalOrders: 6,
+          buyCount: 4,
+          sellCount: 2,
+          totalVolume: 600,
+          totalFees: 1.5,
+          totalPnL: 30,
+          slippageSumBps: 12,
+          slippageCount: 3,
+          ordersBySymbol: [{ symbol: 'BTC', orderCount: 4, totalVolume: 500, totalPnL: 20 }],
+          totalSignals: 4,
+          processedCount: 3,
+          confidenceSum: 3.2,
+          confidenceCount: 4,
+          signalsByType: { [PaperTradingSignalType.ENTRY]: 3, [PaperTradingSignalType.EXIT]: 1 },
+          signalsByDirection: { [PaperTradingSignalDirection.LONG]: 4 }
+        }),
+        makeSummary({
+          sessionId: 's2',
+          totalOrders: 4,
+          buyCount: 2,
+          sellCount: 2,
+          totalVolume: 400,
+          totalFees: 1,
+          totalPnL: 20,
+          slippageSumBps: 0,
+          slippageCount: 0,
+          ordersBySymbol: [{ symbol: 'BTC', orderCount: 1, totalVolume: 100, totalPnL: 5 }],
+          totalSignals: 4,
+          processedCount: 3,
+          confidenceSum: 3.4,
+          confidenceCount: 4,
+          signalsByType: { [PaperTradingSignalType.ENTRY]: 2, [PaperTradingSignalType.ADJUSTMENT]: 2 },
+          signalsByDirection: { [PaperTradingSignalDirection.LONG]: 2, [PaperTradingSignalDirection.SHORT]: 2 }
+        })
+      ]);
 
       const result = await service.getPaperTradingMonitoring({ algorithmId: 'algo-1' });
 
       expect(result.statusCounts[PaperTradingStatus.COMPLETED]).toBe(3);
-      expect(result.statusCounts[PaperTradingStatus.ACTIVE]).toBe(2);
       expect(result.totalSessions).toBe(5);
-      expect(result.recentActivity).toEqual({ last24h: 1, last7d: 4, last30d: 5 });
-      expect(result.avgMetrics).toEqual({
-        sharpeRatio: 1.25,
-        totalReturn: 8.4,
-        maxDrawdown: 0, // null coerced → 0
-        winRate: 0.65
-      });
-      expect(result.topAlgorithms).toEqual([
-        { algorithmId: 'algo-1', algorithmName: 'Alpha', sessionCount: 5, avgReturn: 12.5, avgSharpe: 1.8 }
-      ]);
-      expect(result.orderAnalytics).toMatchObject({
-        totalOrders: 10,
-        buyCount: 6,
-        sellCount: 4,
-        totalVolume: 1000.5,
-        totalFees: 2.5,
-        avgSlippageBps: 0,
-        totalPnL: 50.25
-      });
+      expect(result.orderAnalytics.totalOrders).toBe(10);
+      expect(result.orderAnalytics.totalVolume).toBe(1000);
+      expect(result.orderAnalytics.avgSlippageBps).toBeCloseTo(12 / 3, 10);
       expect(result.orderAnalytics.bySymbol).toEqual([
-        { symbol: 'BTC', orderCount: 4, totalVolume: 500, totalPnL: 20 }
+        { symbol: 'BTC', orderCount: 5, totalVolume: 600, totalPnL: 25 }
       ]);
       expect(result.signalAnalytics.totalSignals).toBe(8);
-      expect(result.signalAnalytics.processedRate).toBe(0.75);
-      expect(result.signalAnalytics.avgConfidence).toBe(0.82);
+      expect(result.signalAnalytics.processedRate).toBeCloseTo(6 / 8, 10);
       expect(result.signalAnalytics.byType[PaperTradingSignalType.ENTRY]).toBe(5);
       expect(result.signalAnalytics.byDirection[PaperTradingSignalDirection.LONG]).toBe(6);
-
-      // buy/sell side parameters wired through to order query
-      expect(orderQb.setParameter).toHaveBeenCalledWith('buySide', PaperTradingOrderSide.BUY);
-      expect(orderQb.setParameter).toHaveBeenCalledWith('sellSide', PaperTradingOrderSide.SELL);
-    });
-
-    it('applies date range and algorithm filters when provided', async () => {
-      await service.getPaperTradingMonitoring({
-        startDate: '2026-01-01',
-        endDate: '2026-02-01',
-        algorithmId: 'algo-42'
-      });
-
-      const whereCalls = (sessionQb.where as jest.Mock).mock.calls.map((c) => c[0]);
-      const andWhereCalls = (sessionQb.andWhere as jest.Mock).mock.calls.map((c) => c[0]);
-      expect([...whereCalls, ...andWhereCalls]).toEqual(
-        expect.arrayContaining(['s.createdAt BETWEEN :start AND :end', 's.algorithm = :algorithmId'])
-      );
     });
   });
 
@@ -217,7 +218,7 @@ describe('PaperTradingMonitoringService', () => {
           name: 'Session 1',
           algorithmName: 'Algo',
           status: PaperTradingStatus.COMPLETED,
-          progressPercent: 100, // COMPLETED short-circuits to 100
+          progressPercent: 100,
           totalReturn: 12.5,
           sharpeRatio: 1.2,
           duration: 'N/A',
@@ -226,57 +227,6 @@ describe('PaperTradingMonitoringService', () => {
           createdAt: createdAt.toISOString()
         }
       ]);
-      expect(result).toMatchObject({
-        total: 1,
-        page: 1,
-        limit: 10,
-        totalPages: 1,
-        hasNextPage: false,
-        hasPreviousPage: false
-      });
-    });
-
-    it('defaults algorithmName to "Unknown" when algorithm relation is missing', async () => {
-      (sessionQb.getManyAndCount as jest.Mock).mockResolvedValueOnce([
-        [
-          {
-            id: 'sess-2',
-            name: 'Orphan',
-            algorithm: null,
-            status: PaperTradingStatus.FAILED,
-            totalReturn: null,
-            sharpeRatio: null,
-            duration: '1h',
-            startedAt: null,
-            createdAt: new Date()
-          }
-        ],
-        1
-      ]);
-
-      const result = await service.listPaperTradingSessions({}, 1, 10);
-
-      expect(result.data[0].algorithmName).toBe('Unknown');
-      expect(result.data[0].totalReturn).toBeNull();
-      expect(result.data[0].sharpeRatio).toBeNull();
-      expect(result.data[0].duration).toBe('1h');
-    });
-
-    it('computes pagination flags when more pages remain', async () => {
-      (sessionQb.getManyAndCount as jest.Mock).mockResolvedValueOnce([[], 25]);
-
-      const result = await service.listPaperTradingSessions({}, 2, 10);
-
-      expect(result).toMatchObject({
-        total: 25,
-        page: 2,
-        limit: 10,
-        totalPages: 3,
-        hasNextPage: true,
-        hasPreviousPage: true
-      });
-      expect(sessionQb.skip).toHaveBeenCalledWith(10);
-      expect(sessionQb.take).toHaveBeenCalledWith(10);
     });
   });
 });

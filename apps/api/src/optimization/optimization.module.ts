@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { OptimizationResult } from './entities/optimization-result.entity';
+import { OptimizationRunSummary } from './entities/optimization-run-summary.entity';
 import { OptimizationRun } from './entities/optimization-run.entity';
 import { optimizationConfig } from './optimization.config';
 import { OptimizationProcessor } from './processors/optimization.processor';
@@ -12,6 +13,7 @@ import { OptimizationEvaluationService } from './services/optimization-evaluatio
 import { OptimizationOrchestratorService } from './services/optimization-orchestrator.service';
 import { OptimizationQueryService } from './services/optimization-query.service';
 import { OptimizationRecoveryService } from './services/optimization-recovery.service';
+import { OptimizationRunSummaryService } from './services/optimization-run-summary.service';
 
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { Coin } from '../coin/coin.entity';
@@ -23,7 +25,7 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
 @Module({
   imports: [
     ConfigModule.forFeature(optimizationConfig),
-    TypeOrmModule.forFeature([OptimizationRun, OptimizationResult, StrategyConfig, Coin]),
+    TypeOrmModule.forFeature([OptimizationRun, OptimizationResult, OptimizationRunSummary, StrategyConfig, Coin]),
     BullModule.registerQueue({ name: 'optimization' }),
     ScoringModule,
     forwardRef(() => OrderModule),
@@ -36,8 +38,9 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
     OptimizationOrchestratorService,
     OptimizationQueryService,
     OptimizationProcessor,
-    OptimizationRecoveryService
+    OptimizationRecoveryService,
+    OptimizationRunSummaryService
   ],
-  exports: [GridSearchService, OptimizationOrchestratorService]
+  exports: [GridSearchService, OptimizationOrchestratorService, OptimizationRunSummaryService]
 })
 export class OptimizationModule {}

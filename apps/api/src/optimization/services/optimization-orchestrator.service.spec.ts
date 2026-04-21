@@ -8,6 +8,7 @@ import { type GridSearchService } from './grid-search.service';
 import { type OptimizationEvaluationService } from './optimization-evaluation.service';
 import { OptimizationOrchestratorService } from './optimization-orchestrator.service';
 import { type OptimizationQueryService } from './optimization-query.service';
+import { type OptimizationRunSummaryService } from './optimization-run-summary.service';
 
 import { type AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { type StrategyConfig } from '../../strategy/entities/strategy-config.entity';
@@ -59,6 +60,7 @@ describe('OptimizationOrchestratorService', () => {
   let dataSource: jest.Mocked<DataSource>;
   let eventEmitter: jest.Mocked<EventEmitter2>;
   let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
+  let summaryService: jest.Mocked<OptimizationRunSummaryService>;
 
   beforeEach(() => {
     optimizationRunRepo = {
@@ -135,6 +137,10 @@ describe('OptimizationOrchestratorService', () => {
       getStrategyForAlgorithm: jest.fn().mockResolvedValue(undefined)
     } as unknown as jest.Mocked<AlgorithmRegistry>;
 
+    summaryService = {
+      computeAndPersist: jest.fn().mockResolvedValue(undefined)
+    } as unknown as jest.Mocked<OptimizationRunSummaryService>;
+
     service = new OptimizationOrchestratorService(
       optimizationRunRepo,
       optimizationResultRepo,
@@ -144,6 +150,7 @@ describe('OptimizationOrchestratorService', () => {
       queryService,
       dataSource,
       eventEmitter,
+      summaryService,
       algorithmRegistry
     );
   });
