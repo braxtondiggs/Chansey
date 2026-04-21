@@ -1,0 +1,1194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chansey · Strategy Validation Pipeline</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0b1020;
+        --bg-alt: #111830;
+        --surface: #161f3d;
+        --surface-2: #1c2648;
+        --border: rgba(255, 255, 255, 0.08);
+        --border-strong: rgba(255, 255, 255, 0.14);
+        --text: #e7ecff;
+        --text-dim: #a0a9cc;
+        --text-faint: #6b7598;
+
+        --accent-1: #5eead4; /* teal — OPTIMIZE */
+        --accent-2: #a78bfa; /* violet — HISTORICAL */
+        --accent-3: #60a5fa; /* blue — LIVE_REPLAY */
+        --accent-4: #fbbf24; /* amber — PAPER_TRADE */
+        --accent-5: #34d399; /* green — COMPLETED */
+
+        --gate: #f472b6;
+        --danger: #f87171;
+        --success: #34d399;
+
+        --radius-xl: 20px;
+        --radius-lg: 14px;
+        --radius-md: 10px;
+        --radius-sm: 6px;
+        --shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.5), 0 4px 16px -6px rgba(0, 0, 0, 0.3);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          'Inter',
+          -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+        background: radial-gradient(ellipse at top, #1a2446 0%, var(--bg) 40%, #060918 100%);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 48px 24px 96px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .page {
+        max-width: 1280px;
+        margin: 0 auto;
+      }
+
+      /* ——— Header ——— */
+      .header {
+        text-align: center;
+        margin-bottom: 56px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        padding: 6px 14px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.02);
+        margin-bottom: 20px;
+      }
+
+      .eyebrow::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 10px var(--success);
+      }
+
+      h1 {
+        font-size: 56px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        margin: 0 0 12px;
+        background: linear-gradient(135deg, #fff 0%, #a78bfa 50%, #5eead4 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .subtitle {
+        font-size: 18px;
+        color: var(--text-dim);
+        max-width: 680px;
+        margin: 0 auto;
+      }
+
+      /* ——— Section ——— */
+      section {
+        margin-bottom: 72px;
+      }
+
+      h2 {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--text-faint);
+        margin: 0 0 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      h2::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(to right, var(--border), transparent);
+      }
+
+      /* ——— Entry card ——— */
+      .entry {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 48px;
+      }
+
+      .entry-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 18px 20px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .entry-card::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(94, 234, 212, 0.04), transparent 50%);
+        pointer-events: none;
+      }
+
+      .entry-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--text-faint);
+        margin-bottom: 6px;
+      }
+
+      .entry-value {
+        font-size: 14px;
+        color: var(--text);
+        font-weight: 500;
+      }
+
+      .entry-detail {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-top: 4px;
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      /* ——— Pipeline stages ——— */
+      .pipeline {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        position: relative;
+      }
+
+      .stage {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        padding: 28px 32px;
+        display: grid;
+        grid-template-columns: 80px 1fr 220px;
+        gap: 24px;
+        align-items: center;
+        position: relative;
+        box-shadow: var(--shadow);
+      }
+
+      .stage::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+      }
+
+      .stage[data-accent='1']::before {
+        background: var(--accent-1);
+      }
+      .stage[data-accent='2']::before {
+        background: var(--accent-2);
+      }
+      .stage[data-accent='3']::before {
+        background: var(--accent-3);
+      }
+      .stage[data-accent='4']::before {
+        background: var(--accent-4);
+      }
+      .stage[data-accent='5']::before {
+        background: var(--accent-5);
+      }
+
+      .stage-num {
+        font-size: 48px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        font-family: 'JetBrains Mono', monospace;
+        opacity: 0.9;
+      }
+
+      .stage[data-accent='1'] .stage-num {
+        color: var(--accent-1);
+      }
+      .stage[data-accent='2'] .stage-num {
+        color: var(--accent-2);
+      }
+      .stage[data-accent='3'] .stage-num {
+        color: var(--accent-3);
+      }
+      .stage[data-accent='4'] .stage-num {
+        color: var(--accent-4);
+      }
+      .stage[data-accent='5'] .stage-num {
+        color: var(--accent-5);
+      }
+
+      .stage-body h3 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0 0 4px;
+        letter-spacing: -0.01em;
+      }
+
+      .stage-body .tagline {
+        font-size: 14px;
+        color: var(--text-dim);
+        margin-bottom: 14px;
+      }
+
+      .stage-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+      }
+
+      .chip strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .chip-queue {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+      }
+
+      .stage-output {
+        border-left: 1px solid var(--border);
+        padding-left: 20px;
+      }
+
+      .stage-output .label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--text-faint);
+        margin-bottom: 10px;
+      }
+
+      .stage-output ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        font-size: 12px;
+        color: var(--text-dim);
+      }
+
+      .stage-output li {
+        padding: 4px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .stage-output li::before {
+        content: '';
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--text-faint);
+      }
+
+      /* ——— Gate between stages ——— */
+      .gate {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 16px 24px;
+        margin: 0 auto;
+        width: fit-content;
+      }
+
+      .gate-line {
+        width: 2px;
+        height: 24px;
+        background: linear-gradient(to bottom, var(--accent-1), var(--gate));
+        border-radius: 2px;
+        margin: 0 auto;
+      }
+
+      .gate-badge {
+        background: var(--bg-alt);
+        border: 1px solid var(--gate);
+        border-radius: 999px;
+        padding: 8px 18px;
+        font-size: 12px;
+        color: var(--text);
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-family: 'JetBrains Mono', monospace;
+        box-shadow: 0 0 20px -8px var(--gate);
+      }
+
+      .gate-badge .lock {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--gate);
+        color: var(--bg);
+        font-size: 10px;
+        font-weight: 700;
+      }
+
+      /* ——— Risk matrix ——— */
+      .risk-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+      }
+
+      .risk-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 18px 16px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .risk-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+      }
+
+      .risk-card[data-level='1']::before {
+        background: #38bdf8;
+      }
+      .risk-card[data-level='2']::before {
+        background: #5eead4;
+      }
+      .risk-card[data-level='3']::before {
+        background: #a78bfa;
+      }
+      .risk-card[data-level='4']::before {
+        background: #fbbf24;
+      }
+      .risk-card[data-level='5']::before {
+        background: #f87171;
+      }
+
+      .risk-level {
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--text-faint);
+        margin-bottom: 4px;
+      }
+
+      .risk-name {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 14px;
+      }
+
+      .risk-stat {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        padding: 6px 0;
+        border-top: 1px dashed var(--border);
+      }
+
+      .risk-stat:first-of-type {
+        border-top: none;
+      }
+
+      .risk-stat-label {
+        color: var(--text-faint);
+      }
+
+      .risk-stat-value {
+        color: var(--text);
+        font-weight: 500;
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      /* ——— Event flow ——— */
+      .event-flow {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        padding: 32px;
+      }
+
+      .event-grid {
+        display: grid;
+        grid-template-columns: 1fr 80px 1fr 80px 1fr;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .event-node {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        text-align: center;
+      }
+
+      .event-node .title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 6px;
+      }
+
+      .event-node .detail {
+        font-size: 11px;
+        color: var(--text-dim);
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      .event-arrow {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        color: var(--text-faint);
+        font-size: 10px;
+      }
+
+      .event-arrow .arrow {
+        font-size: 20px;
+        color: var(--accent-2);
+      }
+
+      /* ——— Promotion gates ——— */
+      .promotion {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+      }
+
+      .promotion-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        padding: 28px 32px;
+      }
+
+      .promotion-card h3 {
+        margin: 0 0 4px;
+        font-size: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .promotion-card .subtitle-small {
+        font-size: 13px;
+        color: var(--text-dim);
+        margin-bottom: 20px;
+      }
+
+      .gates-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .gates-list li {
+        font-size: 13px;
+        padding: 10px 12px;
+        background: var(--surface-2);
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid var(--border);
+      }
+
+      .gates-list li::before {
+        content: '✓';
+        color: var(--success);
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      .lifecycle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+        padding: 20px;
+        background: var(--surface-2);
+        border-radius: var(--radius-lg);
+        margin-top: 12px;
+      }
+
+      .life-pill {
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      .life-pill.testing {
+        background: rgba(94, 234, 212, 0.12);
+        color: var(--accent-1);
+        border: 1px solid rgba(94, 234, 212, 0.3);
+      }
+      .life-pill.shadow {
+        background: rgba(167, 139, 250, 0.12);
+        color: var(--accent-2);
+        border: 1px solid rgba(167, 139, 250, 0.3);
+      }
+      .life-pill.live {
+        background: rgba(52, 211, 153, 0.12);
+        color: var(--success);
+        border: 1px solid rgba(52, 211, 153, 0.3);
+      }
+      .life-pill.retired {
+        background: rgba(107, 117, 152, 0.12);
+        color: var(--text-faint);
+        border: 1px solid var(--border);
+      }
+
+      .arrow-sep {
+        color: var(--text-faint);
+        font-size: 14px;
+      }
+
+      /* ——— Recommendations ——— */
+      .recs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+
+      .rec {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        position: relative;
+      }
+
+      .rec-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 12px;
+      }
+
+      .rec.deploy .rec-badge {
+        background: rgba(52, 211, 153, 0.12);
+        color: var(--success);
+      }
+      .rec.review .rec-badge {
+        background: rgba(251, 191, 36, 0.12);
+        color: var(--accent-4);
+      }
+      .rec.reject .rec-badge {
+        background: rgba(248, 113, 113, 0.12);
+        color: var(--danger);
+      }
+
+      .rec h4 {
+        font-size: 16px;
+        margin: 0 0 8px;
+      }
+
+      .rec p {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin: 0 0 12px;
+      }
+
+      .rec .threshold {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: var(--text);
+        background: var(--surface-2);
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+      }
+
+      /* ——— Footer ——— */
+      .footer {
+        text-align: center;
+        padding-top: 40px;
+        border-top: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--text-faint);
+      }
+
+      .footer code {
+        font-family: 'JetBrains Mono', monospace;
+        background: var(--surface);
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: var(--text-dim);
+      }
+
+      /* ——— Responsive ——— */
+      @media (max-width: 900px) {
+        body {
+          padding: 32px 16px;
+        }
+        h1 {
+          font-size: 36px;
+        }
+        .stage {
+          grid-template-columns: 60px 1fr;
+          padding: 20px;
+        }
+        .stage-output {
+          grid-column: 1 / -1;
+          border-left: none;
+          border-top: 1px solid var(--border);
+          padding-left: 0;
+          padding-top: 16px;
+        }
+        .stage-num {
+          font-size: 36px;
+        }
+        .entry,
+        .risk-grid,
+        .promotion,
+        .recs {
+          grid-template-columns: 1fr;
+        }
+        .event-grid {
+          grid-template-columns: 1fr;
+        }
+        .event-arrow {
+          transform: rotate(90deg);
+          padding: 4px 0;
+        }
+        .gates-list {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* ——— Subtle entrance animations ——— */
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .stage,
+      .risk-card,
+      .promotion-card,
+      .rec,
+      .entry-card,
+      .event-flow {
+        animation: fadeUp 0.5s ease-out backwards;
+      }
+
+      .stage:nth-child(1) {
+        animation-delay: 0.05s;
+      }
+      .stage:nth-child(2) {
+        animation-delay: 0.1s;
+      }
+      .stage:nth-child(3) {
+        animation-delay: 0.15s;
+      }
+      .stage:nth-child(4) {
+        animation-delay: 0.2s;
+      }
+      .stage:nth-child(5) {
+        animation-delay: 0.25s;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- ─────────────  HEADER  ───────────── -->
+      <header class="header">
+        <div class="eyebrow">Chansey · Architecture</div>
+        <h1>Strategy Validation Pipeline</h1>
+        <p class="subtitle">
+          How an algorithm earns the right to trade real money — a five-stage, risk-adaptive journey from raw parameters
+          to a live deployment.
+        </p>
+      </header>
+
+      <!-- ─────────────  ENTRY INPUTS  ───────────── -->
+      <section>
+        <h2>Pipeline Inputs</h2>
+        <div class="entry">
+          <div class="entry-card">
+            <div class="entry-label">User</div>
+            <div class="entry-value">Algo trading enabled</div>
+            <div class="entry-detail">+ active exchange key</div>
+          </div>
+          <div class="entry-card">
+            <div class="entry-label">Strategy Config</div>
+            <div class="entry-value">Algorithm + base parameters</div>
+            <div class="entry-detail">status: TESTING</div>
+          </div>
+          <div class="entry-card">
+            <div class="entry-label">Risk Level</div>
+            <div class="entry-value">1 – 5 (Conservative → Aggressive)</div>
+            <div class="entry-detail">drives every stage's config</div>
+          </div>
+        </div>
+        <div style="text-align: center; color: var(--text-faint); font-size: 12px; margin-top: 16px">
+          Daily at <strong style="color: var(--text)">02:30 UTC</strong> &nbsp;·&nbsp; staggered 1-min intervals
+          &nbsp;·&nbsp; BullMQ <code style="font-family: 'JetBrains Mono', monospace">pipeline-orchestration</code>
+        </div>
+      </section>
+
+      <!-- ─────────────  THE 5 STAGES  ───────────── -->
+      <section>
+        <h2>The Five Stages</h2>
+        <div class="pipeline">
+          <!-- Stage 1 -->
+          <div class="stage" data-accent="1">
+            <div class="stage-num">01</div>
+            <div class="stage-body">
+              <h3>Optimize</h3>
+              <div class="tagline">Grid-search parameter space with walk-forward analysis to find the best config.</div>
+              <div class="stage-meta">
+                <span class="chip"><strong>Walk-forward</strong> train → test → step</span>
+                <span class="chip"><strong>L1:</strong> 75 combos</span>
+                <span class="chip"><strong>L5:</strong> 30 combos</span>
+                <span class="chip chip-queue">queue · optimization</span>
+              </div>
+            </div>
+            <div class="stage-output">
+              <div class="label">Produces</div>
+              <ul>
+                <li>OptimizationRun</li>
+                <li>bestParameters (JSON)</li>
+                <li>bestScore &amp; improvement %</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="gate">
+            <div class="gate-badge"><span class="lock">🔒</span> improvement ≥ 3% &amp; score ≥ threshold</div>
+          </div>
+
+          <!-- Stage 2 -->
+          <div class="stage" data-accent="2">
+            <div class="stage-num">02</div>
+            <div class="stage-body">
+              <h3>Historical Backtest</h3>
+              <div class="tagline">
+                Run the optimized parameters over a held-out historical window to test real-world performance.
+              </div>
+              <div class="stage-meta">
+                <span class="chip"><strong>Window</strong> 45 – 90 days</span>
+                <span class="chip"><strong>Capital</strong> $10,000</span>
+                <span class="chip"><strong>Type</strong> HISTORICAL</span>
+                <span class="chip chip-queue">queue · backtest-historical</span>
+              </div>
+            </div>
+            <div class="stage-output">
+              <div class="label">Produces</div>
+              <ul>
+                <li>Backtest (trades, snapshots)</li>
+                <li>Sharpe · drawdown · win rate</li>
+                <li>Total return %</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="gate">
+            <div class="gate-badge"><span class="lock">🔒</span> ≥ 1 trade executed</div>
+          </div>
+
+          <!-- Stage 3 -->
+          <div class="stage" data-accent="3">
+            <div class="stage-num">03</div>
+            <div class="stage-body">
+              <h3>Live Replay</h3>
+              <div class="tagline">
+                Replay against the most recent ~30 days of real market data — the ultimate out-of-sample test.
+              </div>
+              <div class="stage-meta">
+                <span class="chip"><strong>Window</strong> ~30 days</span>
+                <span class="chip"><strong>Pacing</strong> adjustable</span>
+                <span class="chip"><strong>Pause/Resume</strong> supported</span>
+                <span class="chip chip-queue">queue · backtest-replay</span>
+              </div>
+            </div>
+            <div class="stage-output">
+              <div class="label">Produces</div>
+              <ul>
+                <li>Backtest (LIVE_REPLAY)</li>
+                <li>Degradation vs historical</li>
+                <li>Composite pipeline score</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="gate">
+            <div class="gate-badge"><span class="lock">🔒</span> composite score ≥ 30 / 100</div>
+          </div>
+
+          <!-- Stage 4 -->
+          <div class="stage" data-accent="4">
+            <div class="stage-num">04</div>
+            <div class="stage-body">
+              <h3>Paper Trade</h3>
+              <div class="tagline">
+                Trade with simulated capital against live market ticks — verify signal quality in real time.
+              </div>
+              <div class="stage-meta">
+                <span class="chip"><strong>L1:</strong> ≥ 50 trades</span>
+                <span class="chip"><strong>L5:</strong> ≥ 30 trades</span>
+                <span class="chip"><strong>Max</strong> 30 days</span>
+                <span class="chip chip-queue">queue · paper-trading</span>
+              </div>
+            </div>
+            <div class="stage-output">
+              <div class="label">Produces</div>
+              <ul>
+                <li>PaperTradingSession</li>
+                <li>Live signal P&amp;L</li>
+                <li>Exit behavior (SL / TP / trail)</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="gate">
+            <div class="gate-badge">
+              <span class="lock">🔒</span> Sharpe ≥ 0.3 &nbsp;·&nbsp; DD ≤ 45% &nbsp;·&nbsp; return ≥ 0
+            </div>
+          </div>
+
+          <!-- Stage 5 -->
+          <div class="stage" data-accent="5">
+            <div class="stage-num">05</div>
+            <div class="stage-body">
+              <h3>Completed</h3>
+              <div class="tagline">
+                Synthesize all stage results into a single recommendation — ready for promotion evaluation.
+              </div>
+              <div class="stage-meta">
+                <span class="chip"><strong>pipelineScore</strong> 0 – 100</span>
+                <span class="chip"><strong>Recommendation</strong> generated</span>
+                <span class="chip"><strong>Report</strong> archived</span>
+              </div>
+            </div>
+            <div class="stage-output">
+              <div class="label">Produces</div>
+              <ul>
+                <li>PipelineSummaryReport</li>
+                <li>DEPLOY / REVIEW / REJECT</li>
+                <li>Audit log entry</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────  RECOMMENDATIONS  ───────────── -->
+      <section>
+        <h2>Pipeline Recommendations</h2>
+        <div class="recs">
+          <div class="rec deploy">
+            <div class="rec-badge">◆ Deploy</div>
+            <h4>Ready for production</h4>
+            <p>Strategy passes all quality gates — automatically eligible for shadow → live promotion.</p>
+            <div class="threshold">score ≥ 70 · Sharpe ≥ 1.0 · DD ≤ 25%</div>
+          </div>
+          <div class="rec review">
+            <div class="rec-badge">◆ Needs Review</div>
+            <h4>Manual evaluation</h4>
+            <p>Moderate performance — requires human judgment on whether to promote or iterate.</p>
+            <div class="threshold">score 30 – 69 · Sharpe ≥ 0.5 · DD ≤ 40%</div>
+          </div>
+          <div class="rec reject">
+            <div class="rec-badge">◆ Do Not Deploy</div>
+            <h4>Insufficient quality</h4>
+            <p>Strategy fails one or more critical thresholds — returned for parameter revision.</p>
+            <div class="threshold">score &lt; 30 · or thresholds failed</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────  RISK MATRIX  ───────────── -->
+      <section>
+        <h2>Risk-Level Adaptation</h2>
+        <div class="risk-grid">
+          <div class="risk-card" data-level="1">
+            <div class="risk-level">Level 1</div>
+            <div class="risk-name">Conservative</div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Train</span><span class="risk-stat-value">180d</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Combos</span><span class="risk-stat-value">75</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Min trades</span><span class="risk-stat-value">50</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Max DD</span><span class="risk-stat-value">15%</span>
+            </div>
+          </div>
+          <div class="risk-card" data-level="2">
+            <div class="risk-level">Level 2</div>
+            <div class="risk-name">Low-Moderate</div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Train</span><span class="risk-stat-value">150d</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Combos</span><span class="risk-stat-value">60</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Min trades</span><span class="risk-stat-value">45</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Max DD</span><span class="risk-stat-value">20%</span>
+            </div>
+          </div>
+          <div class="risk-card" data-level="3">
+            <div class="risk-level">Level 3</div>
+            <div class="risk-name">Moderate · Default</div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Train</span><span class="risk-stat-value">120d</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Combos</span><span class="risk-stat-value">50</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Min trades</span><span class="risk-stat-value">40</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Max DD</span><span class="risk-stat-value">25%</span>
+            </div>
+          </div>
+          <div class="risk-card" data-level="4">
+            <div class="risk-level">Level 4</div>
+            <div class="risk-name">Moderate-High</div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Train</span><span class="risk-stat-value">90d</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Combos</span><span class="risk-stat-value">40</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Min trades</span><span class="risk-stat-value">35</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Max DD</span><span class="risk-stat-value">35%</span>
+            </div>
+          </div>
+          <div class="risk-card" data-level="5">
+            <div class="risk-level">Level 5</div>
+            <div class="risk-name">Aggressive</div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Train</span><span class="risk-stat-value">60d</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Combos</span><span class="risk-stat-value">30</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Min trades</span><span class="risk-stat-value">30</span>
+            </div>
+            <div class="risk-stat">
+              <span class="risk-stat-label">Max DD</span><span class="risk-stat-value">40%</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────  EVENT FLOW  ───────────── -->
+      <section>
+        <h2>Event-Driven Orchestration</h2>
+        <div class="event-flow">
+          <div class="event-grid">
+            <div class="event-node">
+              <div class="title">Stage Worker</div>
+              <div class="detail">BullMQ processor</div>
+            </div>
+            <div class="event-arrow">
+              <span class="arrow">→</span>
+              <span>emits</span>
+            </div>
+            <div class="event-node">
+              <div class="title">PIPELINE_EVENTS</div>
+              <div class="detail">EventEmitter2</div>
+            </div>
+            <div class="event-arrow">
+              <span class="arrow">→</span>
+              <span>handles</span>
+            </div>
+            <div class="event-node">
+              <div class="title">PipelineEventListener</div>
+              <div class="detail">@OnEvent(...)</div>
+            </div>
+          </div>
+          <div style="margin-top: 24px; text-align: center; font-size: 12px; color: var(--text-dim)">
+            <code
+              style="
+                font-family: 'JetBrains Mono', monospace;
+                background: var(--surface-2);
+                padding: 2px 8px;
+                border-radius: 4px;
+              "
+              >OPTIMIZATION_COMPLETED</code
+            >
+            ·
+            <code
+              style="
+                font-family: 'JetBrains Mono', monospace;
+                background: var(--surface-2);
+                padding: 2px 8px;
+                border-radius: 4px;
+              "
+              >BACKTEST_COMPLETED</code
+            >
+            ·
+            <code
+              style="
+                font-family: 'JetBrains Mono', monospace;
+                background: var(--surface-2);
+                padding: 2px 8px;
+                border-radius: 4px;
+              "
+              >PAPER_TRADING_COMPLETED</code
+            >
+            ·
+            <code
+              style="
+                font-family: 'JetBrains Mono', monospace;
+                background: var(--surface-2);
+                padding: 2px 8px;
+                border-radius: 4px;
+              "
+              >PIPELINE_STAGE_TRANSITION</code
+            >
+            <div style="margin-top: 10px; color: var(--text-faint)">
+              No module calls another directly — everything flows through events.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────  PROMOTION  ───────────── -->
+      <section>
+        <h2>Post-Pipeline: Promotion to Live</h2>
+        <div class="promotion">
+          <div class="promotion-card">
+            <h3>🚪 Promotion Gates</h3>
+            <div class="subtitle-small">
+              8 checks evaluated in priority order — one critical failure blocks promotion.
+            </div>
+            <ul class="gates-list">
+              <li>Minimum Score</li>
+              <li>Minimum Trades</li>
+              <li>Maximum Drawdown</li>
+              <li>WFA Consistency</li>
+              <li>Positive Returns</li>
+              <li>Correlation Limit</li>
+              <li>Volatility Cap</li>
+              <li>Portfolio Capacity</li>
+            </ul>
+          </div>
+          <div class="promotion-card">
+            <h3>⟳ Deployment Lifecycle</h3>
+            <div class="subtitle-small">
+              <code style="font-family: 'JetBrains Mono', monospace; font-size: 11px">Deployment.status</code> governs
+              real execution — this is the source of truth.
+            </div>
+            <div class="lifecycle">
+              <span class="life-pill testing">pending approval</span>
+              <span class="arrow-sep">→</span>
+              <span class="life-pill live">active</span>
+              <span class="arrow-sep">→</span>
+              <span class="life-pill shadow">paused</span>
+              <span class="arrow-sep">→</span>
+              <span class="life-pill retired">demoted / terminated</span>
+            </div>
+            <div style="margin-top: 16px; font-size: 12px; color: var(--text-dim); text-align: center">
+              Once active, hourly risk checks can <strong style="color: var(--danger)">auto-demote</strong> on critical
+              drift.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────  FOOTER  ───────────── -->
+      <footer class="footer">
+        <div style="margin-bottom: 8px">
+          Source of truth:
+          <code>apps/api/src/pipeline/</code> · <code>apps/api/src/order/backtest/</code> ·
+          <code>apps/api/src/strategy/</code>
+        </div>
+        <div>Chansey · Algorithmic Trading Platform · Generated from live codebase</div>
+      </footer>
+    </div>
+  </body>
+</html>

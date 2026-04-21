@@ -10,7 +10,9 @@ import { PositionMonitorTask } from './position-monitor.task';
 
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { TickerBatcherService } from '../../exchange/ticker-batcher/ticker-batcher.service';
 import { FailedJobService } from '../../failed-jobs/failed-job.service';
+import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { PositionExit } from '../entities/position-exit.entity';
 import {
   DEFAULT_EXIT_CONFIG,
@@ -107,6 +109,14 @@ describe('PositionMonitorTask', () => {
     transaction: jest.fn(async (cb) => cb(mockManager))
   };
 
+  const mockTickerBatcher = {
+    getTickers: jest.fn()
+  };
+
+  const mockCircuitBreaker = {
+    isOpen: jest.fn().mockReturnValue(false)
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -118,7 +128,9 @@ describe('PositionMonitorTask', () => {
         { provide: ExchangeManagerService, useValue: mockExchangeManagerService },
         { provide: ExchangeKeyService, useValue: mockExchangeKeyService },
         { provide: DataSource, useValue: mockDataSource },
-        { provide: FailedJobService, useValue: { recordFailure: jest.fn() } }
+        { provide: FailedJobService, useValue: { recordFailure: jest.fn() } },
+        { provide: TickerBatcherService, useValue: mockTickerBatcher },
+        { provide: CircuitBreakerService, useValue: mockCircuitBreaker }
       ]
     }).compile();
 
@@ -126,6 +138,7 @@ describe('PositionMonitorTask', () => {
     service = module.get<PositionMonitorService>(PositionMonitorService);
 
     jest.clearAllMocks();
+    mockCircuitBreaker.isOpen.mockReturnValue(false);
   });
 
   describe('shouldActivateTrailing', () => {
@@ -335,10 +348,10 @@ describe('PositionMonitorTask', () => {
       mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([position]));
 
       mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
-      mockExchangeManagerService.getExchangeClient.mockResolvedValue({
-        has: { fetchTickers: true },
-        fetchTickers: jest.fn().mockResolvedValue({ 'BTC/USD': { last: 51000 } })
-      });
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(buildExchangeClient());
+      mockTickerBatcher.getTickers.mockResolvedValue(
+        new Map([['BTC/USD', { price: 51000, timestamp: new Date(), symbol: 'BTC/USD', source: 'binance' }]])
+      );
 
       const updateSpy = jest
         .spyOn(service, 'updateTrailingStop')
@@ -346,6 +359,7 @@ describe('PositionMonitorTask', () => {
 
       const result = await task.process(mockJob);
 
+      expect(mockTickerBatcher.getTickers).toHaveBeenCalledWith('binance', ['BTC/USD']);
       expect(updateSpy).toHaveBeenCalledWith(expect.any(Object), 51000, expect.any(Object));
       expect(result).toEqual({
         monitored: 1,
@@ -388,11 +402,8 @@ describe('PositionMonitorTask', () => {
       mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([position]));
 
       mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
-      mockExchangeManagerService.getExchangeClient.mockResolvedValue({
-        has: { fetchTickers: true },
-        fetchTickers: jest.fn().mockRejectedValue(new Error('Batch timeout')),
-        fetchTicker: jest.fn().mockRejectedValue(new Error('Timeout'))
-      });
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(buildExchangeClient());
+      mockTickerBatcher.getTickers.mockRejectedValue(new Error('Batch timeout'));
 
       const updateSpy = jest
         .spyOn(service, 'updateTrailingStop')
@@ -417,10 +428,8 @@ describe('PositionMonitorTask', () => {
       mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([position]));
 
       mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
-      mockExchangeManagerService.getExchangeClient.mockResolvedValue({
-        has: { fetchTickers: true },
-        fetchTickers: jest.fn().mockResolvedValue({ 'BTC/USD': { last: null, close: null } })
-      });
+      mockExchangeManagerService.getExchangeClient.mockResolvedValue(buildExchangeClient());
+      mockTickerBatcher.getTickers.mockResolvedValue(new Map());
 
       const updateSpy = jest
         .spyOn(service, 'updateTrailingStop')
@@ -437,35 +446,21 @@ describe('PositionMonitorTask', () => {
       });
     });
 
-    it.each([
-      { scenario: 'exchange does not support fetchTickers', hasFetchTickers: false, batchThrows: false },
-      { scenario: 'batch fetchTickers throws', hasFetchTickers: true, batchThrows: true }
-    ])('should fall back to sequential fetchTicker when $scenario', async ({ hasFetchTickers, batchThrows }) => {
-      const position = buildPositionExit({
-        id: 'pos-1',
-        exitConfig: { trailingType: TrailingType.PERCENTAGE, trailingValue: 2 }
-      });
-      mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([position]));
+    it('should skip all positions when ticker circuit is open', async () => {
+      mockPositionExitRepo.createQueryBuilder.mockReturnValue(buildQueryBuilder([buildPositionExit({ id: 'pos-1' })]));
+      mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance_us' } });
+      mockCircuitBreaker.isOpen.mockReturnValue(true);
 
-      mockExchangeKeyService.findOne.mockResolvedValue({ exchange: { slug: 'binance' } });
-      const fetchTickerMock = jest.fn().mockResolvedValue({ last: 51000 });
-      mockExchangeManagerService.getExchangeClient.mockResolvedValue({
-        has: { fetchTickers: hasFetchTickers },
-        ...(batchThrows && { fetchTickers: jest.fn().mockRejectedValue(new Error('Batch not supported')) }),
-        fetchTicker: fetchTickerMock
-      });
-
-      const updateSpy = jest
-        .spyOn(service, 'updateTrailingStop')
-        .mockResolvedValue({ updated: true, triggered: false });
+      const updateSpy = jest.spyOn(service, 'updateTrailingStop');
 
       const result = await task.process(mockJob);
 
-      expect(fetchTickerMock).toHaveBeenCalledWith('BTC/USD');
-      expect(updateSpy).toHaveBeenCalledWith(expect.any(Object), 51000, expect.any(Object));
+      expect(mockTickerBatcher.getTickers).not.toHaveBeenCalled();
+      expect(mockExchangeManagerService.getExchangeClient).not.toHaveBeenCalled();
+      expect(updateSpy).not.toHaveBeenCalled();
       expect(result).toEqual({
         monitored: 1,
-        updated: 1,
+        updated: 0,
         triggered: 0,
         timestamp: expect.any(String)
       });

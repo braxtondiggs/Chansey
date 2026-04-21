@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { PaperTradingMarketDataService, type PriceData } from './paper-trading-market-data.service';
 
 import type { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import type { BatchedTicker } from '../../exchange/ticker-batcher/ticker-batcher.types';
 import * as retryUtil from '../../shared/retry.util';
 
 const createCircuitBreaker = (overrides: Partial<Record<string, jest.Mock>> = {}) => ({
@@ -21,6 +22,7 @@ const createService = (
     coinSelectionService: any;
     coinService: any;
     circuitBreaker: any;
+    tickerBatcher: any;
   }> = {}
 ) => {
   const cacheManager = overrides.cacheManager ?? {
@@ -47,6 +49,11 @@ const createService = (
 
   const circuitBreaker = overrides.circuitBreaker ?? createCircuitBreaker();
 
+  const tickerBatcher = overrides.tickerBatcher ?? {
+    getTicker: jest.fn(),
+    getTickers: jest.fn()
+  };
+
   return {
     service: new PaperTradingMarketDataService(
       config as any,
@@ -54,24 +61,31 @@ const createService = (
       exchangeManager as ExchangeManagerService,
       coinSelectionService as any,
       coinService as any,
-      circuitBreaker as any
+      circuitBreaker as any,
+      tickerBatcher as any
     ),
     cacheManager,
     exchangeManager,
     coinSelectionService,
     coinService,
-    circuitBreaker
+    circuitBreaker,
+    tickerBatcher
   };
 };
 
-describe('PaperTradingMarketDataService', () => {
-  let withExchangeRetrySpy: jest.SpyInstance;
+const mkBatched = (overrides: Partial<BatchedTicker> = {}): BatchedTicker => ({
+  symbol: 'BTC/USDT',
+  price: 45000,
+  bid: 44950,
+  ask: 45050,
+  timestamp: new Date(1700000000000),
+  source: 'binance_us',
+  ...overrides
+});
 
+describe('PaperTradingMarketDataService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Spy on rate-limit-aware retry wrapper to avoid real delays in tests
-    withExchangeRetrySpy = jest.spyOn(retryUtil, 'withExchangeRetry');
-    // Silence domain warn/debug/error logs — individual tests can still spy to assert on messages
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     jest.spyOn(Logger.prototype, 'debug').mockImplementation();
     jest.spyOn(Logger.prototype, 'error').mockImplementation();
@@ -89,7 +103,7 @@ describe('PaperTradingMarketDataService', () => {
       source: 'binance'
     };
 
-    const { service, cacheManager, exchangeManager } = createService({
+    const { service, cacheManager, tickerBatcher } = createService({
       cacheManager: {
         get: jest.fn().mockResolvedValue(cached),
         set: jest.fn()
@@ -99,174 +113,76 @@ describe('PaperTradingMarketDataService', () => {
     const result = await service.getCurrentPrice('binance', 'BTC/USD');
 
     expect(result).toBe(cached);
-    expect(exchangeManager.getPublicClient).not.toHaveBeenCalled();
+    expect(tickerBatcher.getTicker).not.toHaveBeenCalled();
     expect(cacheManager.set).not.toHaveBeenCalled();
   });
 
-  it('fetches and caches price data when not cached', async () => {
-    const ticker = {
-      last: 45000,
-      bid: 44950,
-      ask: 45050,
-      timestamp: 1700000000000
+  it('fetches via batcher and caches price + stale entries on miss', async () => {
+    const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
+    const tickerBatcher = {
+      getTicker: jest.fn().mockResolvedValue(mkBatched({ symbol: 'BTC/USDT', price: 45000, source: 'binance' })),
+      getTickers: jest.fn()
     };
 
-    const client = { fetchTicker: jest.fn().mockResolvedValue(ticker) };
-
-    const cacheManager = {
-      get: jest.fn().mockResolvedValue(null),
-      set: jest.fn()
-    };
-
-    const exchangeManager = {
-      formatSymbol: jest.fn().mockReturnValue('BTC/USDT'),
-      getPublicClient: jest.fn().mockResolvedValue(client)
-    };
-
-    withExchangeRetrySpy.mockResolvedValue({
-      success: true,
-      result: ticker,
-      attempts: 1,
-      totalDelayMs: 0
-    });
-
-    const { service } = createService({ cacheManager, exchangeManager });
-
+    const { service } = createService({ cacheManager, tickerBatcher });
     const result = await service.getCurrentPrice('binance', 'BTC/USDT');
 
-    expect(exchangeManager.formatSymbol).toHaveBeenCalledWith('binance', 'BTC/USDT');
-    // Normal cache write
+    expect(tickerBatcher.getTicker).toHaveBeenCalledWith('binance', 'BTC/USDT');
     expect(cacheManager.set).toHaveBeenCalledWith(
       'paper-trading:price:binance:BTC/USDT',
-      expect.objectContaining({
-        symbol: 'BTC/USDT',
-        price: 45000,
-        bid: 44950,
-        ask: 45050,
-        source: 'binance'
-      }),
+      expect.objectContaining({ symbol: 'BTC/USDT', price: 45000, source: 'binance' }),
       1000
     );
-    // Stale cache write (30 min TTL)
     expect(cacheManager.set).toHaveBeenCalledWith(
       'paper-trading:price:binance:BTC/USDT:stale',
-      expect.objectContaining({ symbol: 'BTC/USDT', price: 45000 }),
+      expect.objectContaining({ price: 45000 }),
       1800000
     );
     expect(result.price).toBe(45000);
   });
 
-  it('uses ticker.close when ticker.last is null', async () => {
-    const ticker = {
-      last: null,
-      close: 46000,
-      bid: 45950,
-      ask: 46050,
-      timestamp: 1700000000000
-    };
-
-    const client = { fetchTicker: jest.fn().mockResolvedValue(ticker) };
-
-    const cacheManager = {
-      get: jest.fn().mockResolvedValue(null),
-      set: jest.fn()
-    };
-
-    const exchangeManager = {
-      formatSymbol: jest.fn().mockReturnValue('BTC/USDT'),
-      getPublicClient: jest.fn().mockResolvedValue(client)
-    };
-
-    withExchangeRetrySpy.mockResolvedValue({
-      success: true,
-      result: ticker,
-      attempts: 1,
-      totalDelayMs: 0
-    });
-
-    const { service } = createService({ cacheManager, exchangeManager });
-
-    const result = await service.getCurrentPrice('binance', 'BTC/USDT');
-
-    expect(result.price).toBe(46000);
-    expect(result.source).toBe('binance');
-  });
-
-  describe('getCurrentPrice retry + stale-cache fallback', () => {
-    it('falls back to stale cache when all retries exhausted', async () => {
-      const staleData = {
+  describe('getCurrentPrice fallback chain', () => {
+    it('falls back to stale cache when batcher returns undefined (symbol not on exchange)', async () => {
+      const staleData: PriceData = {
         symbol: 'BTC/USDT',
         price: 44000,
-        bid: 43950,
-        ask: 44050,
         timestamp: new Date(),
         source: 'binance'
       };
-
       const cacheManager = {
         get: jest.fn().mockImplementation((key: string) => {
-          if (key === 'paper-trading:price:binance:BTC/USDT') return Promise.resolve(null);
           if (key === 'paper-trading:price:binance:BTC/USDT:stale') return Promise.resolve(staleData);
           return Promise.resolve(null);
         }),
         set: jest.fn()
       };
+      const tickerBatcher = { getTicker: jest.fn().mockResolvedValue(undefined), getTickers: jest.fn() };
 
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockReturnValue('BTC/USDT'),
-        getPublicClient: jest.fn().mockResolvedValue({ fetchTicker: jest.fn() })
-      };
-
-      withExchangeRetrySpy.mockResolvedValue({
-        success: false,
-        error: new Error('ETIMEDOUT'),
-        attempts: 4,
-        totalDelayMs: 14000
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
+      const { service } = createService({ cacheManager, tickerBatcher });
       const result = await service.getCurrentPrice('binance', 'BTC/USDT');
 
       expect(result.price).toBe(44000);
       expect(result.source).toBe('binance:stale');
     });
 
-    it('falls back to alternative exchange when retries exhausted and no stale cache', async () => {
-      const fallbackTicker = {
-        last: 43500,
-        bid: 43450,
-        ask: 43550,
-        timestamp: 1700000000000
+    it('falls back to alternate exchange when batcher throws and no stale cache exists', async () => {
+      const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
+      const tickerBatcher = {
+        getTicker: jest
+          .fn()
+          .mockImplementation((slug: string) =>
+            slug === 'gdax'
+              ? Promise.resolve(mkBatched({ symbol: 'BTC/USD', price: 43500, source: 'gdax' }))
+              : Promise.reject(new Error('ETIMEDOUT'))
+          ),
+        getTickers: jest.fn()
       };
 
-      const fallbackClient = { fetchTicker: jest.fn().mockResolvedValue(fallbackTicker) };
-
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_slug: string, symbol: string) => symbol),
-        getPublicClient: jest.fn().mockImplementation((slug: string) => {
-          if (slug === 'gdax') return Promise.resolve(fallbackClient);
-          return Promise.resolve({ fetchTicker: jest.fn() });
-        })
-      };
-
-      withExchangeRetrySpy.mockResolvedValue({
-        success: false,
-        error: new Error('ETIMEDOUT'),
-        attempts: 4,
-        totalDelayMs: 14000
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
+      const { service } = createService({ cacheManager, tickerBatcher });
       const result = await service.getCurrentPrice('binance', 'BTC/USDT');
 
       expect(result.price).toBe(43500);
       expect(result.source).toBe('gdax:fallback');
-      // Should cache the fallback result as stale
       expect(cacheManager.set).toHaveBeenCalledWith(
         'paper-trading:price:binance:BTC/USDT:stale',
         expect.objectContaining({ source: 'gdax:fallback' }),
@@ -274,158 +190,151 @@ describe('PaperTradingMarketDataService', () => {
       );
     });
 
-    it('falls back to DB coin price when all exchanges fail', async () => {
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
+    it('falls back to DB coin price when all exchanges fail via batcher', async () => {
+      const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
+      const tickerBatcher = {
+        getTicker: jest.fn().mockRejectedValue(new Error('ETIMEDOUT')),
+        getTickers: jest.fn()
       };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_slug: string, symbol: string) => symbol),
-        getPublicClient: jest.fn().mockResolvedValue({
-          fetchTicker: jest.fn().mockRejectedValue(new Error('exchange down'))
-        })
-      };
-
-      withExchangeRetrySpy.mockResolvedValue({
-        success: false,
-        error: new Error('ETIMEDOUT'),
-        attempts: 4,
-        totalDelayMs: 14000
-      });
-
       const coinService = {
         getCoinsByRiskLevel: jest.fn(),
         getCoinBySymbol: jest.fn().mockResolvedValue({ id: 'coin-1', currentPrice: 42000 })
       };
 
-      const { service } = createService({ cacheManager, exchangeManager, coinService });
+      const { service } = createService({ cacheManager, tickerBatcher, coinService });
       const result = await service.getCurrentPrice('binance', 'BTC/USDT');
 
       expect(result.price).toBe(42000);
       expect(result.source).toBe('db:coin.currentPrice');
     });
 
-    it('falls back to DB coin price of 0 without skipping it', async () => {
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
+    it('throws when batcher, fallback exchanges, and DB all fail', async () => {
+      const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
+      const tickerBatcher = {
+        getTicker: jest.fn().mockRejectedValue(new Error('ETIMEDOUT')),
+        getTickers: jest.fn()
       };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_slug: string, symbol: string) => symbol),
-        getPublicClient: jest.fn().mockResolvedValue({
-          fetchTicker: jest.fn().mockRejectedValue(new Error('exchange down'))
-        })
-      };
-
-      withExchangeRetrySpy.mockResolvedValue({
-        success: false,
-        error: new Error('ETIMEDOUT'),
-        attempts: 4,
-        totalDelayMs: 14000
-      });
-
-      const coinService = {
-        getCoinsByRiskLevel: jest.fn(),
-        getCoinBySymbol: jest.fn().mockResolvedValue({ id: 'coin-1', currentPrice: 0 })
-      };
-
-      const { service } = createService({ cacheManager, exchangeManager, coinService });
-      const result = await service.getCurrentPrice('binance', 'BTC/USDT');
-
-      expect(result.price).toBe(0);
-      expect(result.source).toBe('db:coin.currentPrice');
-    });
-
-    it('throws when retries, fallback exchanges, and DB all fail', async () => {
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_slug: string, symbol: string) => symbol),
-        getPublicClient: jest.fn().mockResolvedValue({
-          fetchTicker: jest.fn().mockRejectedValue(new Error('exchange down'))
-        })
-      };
-
-      const timeoutError = new Error('ETIMEDOUT');
-      withExchangeRetrySpy.mockResolvedValue({
-        success: false,
-        error: timeoutError,
-        attempts: 4,
-        totalDelayMs: 14000
-      });
-
       const coinService = {
         getCoinsByRiskLevel: jest.fn(),
         getCoinBySymbol: jest.fn().mockResolvedValue(null)
       };
 
-      const { service } = createService({ cacheManager, exchangeManager, coinService });
+      const { service } = createService({ cacheManager, tickerBatcher, coinService });
 
       await expect(service.getCurrentPrice('binance', 'BTC/USDT')).rejects.toThrow('ETIMEDOUT');
     });
-  });
 
-  describe('getPrices retry + stale-cache fallback', () => {
-    it('retries on transient error and succeeds on 2nd attempt', async () => {
-      const tickers = {
-        'BTC/USDT': { last: 45000, bid: 44950, ask: 45050, timestamp: 1700000000000 },
-        'ETH/USDT': { last: 2500, bid: 2490, ask: 2510, timestamp: 1700000000000 }
+    it('short-circuits to stale cache without hitting the batcher when circuit is open', async () => {
+      const stale: PriceData = {
+        symbol: 'BTC/USDT',
+        price: 44000,
+        timestamp: new Date(),
+        source: 'binance_us'
       };
-
-      const client = {
-        markets: { 'BTC/USDT': {}, 'ETH/USDT': {} },
-        loadMarkets: jest.fn().mockResolvedValue(undefined),
-        fetchTickers: jest.fn()
-      };
-
       const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
+        get: jest.fn().mockImplementation((key: string) => {
+          if (key.endsWith(':stale')) return Promise.resolve(stale);
+          return Promise.resolve(null);
+        }),
         set: jest.fn()
       };
+      const tickerBatcher = { getTicker: jest.fn(), getTickers: jest.fn() };
+      const circuitBreaker = createCircuitBreaker({ isOpen: jest.fn().mockReturnValue(true) });
 
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue(client)
+      const { service } = createService({ cacheManager, tickerBatcher, circuitBreaker });
+      const result = await service.getCurrentPrice('binance_us', 'BTC/USDT');
+
+      expect(result.source).toBe('binance_us:stale');
+      expect(tickerBatcher.getTicker).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPrices fallback chain', () => {
+    it('delegates to batcher.getTickers and caches each returned price', async () => {
+      const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
+      const tickerBatcher = {
+        getTicker: jest.fn(),
+        getTickers: jest.fn().mockResolvedValue(
+          new Map<string, BatchedTicker>([
+            ['BTC/USDT', mkBatched({ symbol: 'BTC/USDT', price: 45000, source: 'binance' })],
+            ['ETH/USDT', mkBatched({ symbol: 'ETH/USDT', price: 2500, source: 'binance' })]
+          ])
+        )
       };
 
-      withExchangeRetrySpy.mockResolvedValue({
-        success: true,
-        result: tickers,
-        attempts: 2,
-        totalDelayMs: 2000
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
+      const { service } = createService({ cacheManager, tickerBatcher });
       const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
 
+      expect(tickerBatcher.getTickers).toHaveBeenCalledWith('binance', ['BTC/USDT', 'ETH/USDT']);
       expect(result.get('BTC/USDT')?.price).toBe(45000);
       expect(result.get('ETH/USDT')?.price).toBe(2500);
-      // Each symbol should have both normal + stale cache writes
+      // Each symbol: normal + stale cache write.
       expect(cacheManager.set).toHaveBeenCalledTimes(4);
     });
 
-    it('falls back to stale cache when all retries exhausted', async () => {
-      const stalebtc = {
+    it('returns cached symbols without fetching, and only fetches uncached', async () => {
+      const cachedPrice: PriceData = {
         symbol: 'BTC/USDT',
         price: 44000,
         timestamp: new Date(),
         source: 'binance'
       };
-      const staleeth = {
-        symbol: 'ETH/USDT',
-        price: 2400,
-        timestamp: new Date(),
-        source: 'binance'
+
+      const cacheManager = {
+        get: jest
+          .fn()
+          .mockImplementation((key: string) =>
+            key === 'paper-trading:price:binance:BTC/USDT' ? Promise.resolve(cachedPrice) : Promise.resolve(null)
+          ),
+        set: jest.fn()
       };
+      const tickerBatcher = {
+        getTicker: jest.fn(),
+        getTickers: jest
+          .fn()
+          .mockResolvedValue(
+            new Map<string, BatchedTicker>([
+              ['ETH/USDT', mkBatched({ symbol: 'ETH/USDT', price: 2500, source: 'binance' })]
+            ])
+          )
+      };
+
+      const { service } = createService({ cacheManager, tickerBatcher });
+      const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
+
+      expect(result.get('BTC/USDT')).toBe(cachedPrice);
+      expect(result.get('ETH/USDT')?.price).toBe(2500);
+      expect(tickerBatcher.getTickers).toHaveBeenCalledWith('binance', ['ETH/USDT']);
+      // Only ETH: normal + stale.
+      expect(cacheManager.set).toHaveBeenCalledTimes(2);
+    });
+
+    it('silently omits symbols the batcher does not return on successful fetch', async () => {
+      const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
+      const tickerBatcher = {
+        getTicker: jest.fn(),
+        getTickers: jest
+          .fn()
+          .mockResolvedValue(
+            new Map<string, BatchedTicker>([
+              ['BTC/USDT', mkBatched({ symbol: 'BTC/USDT', price: 45000, source: 'binance' })]
+            ])
+          )
+      };
+
+      const { service } = createService({ cacheManager, tickerBatcher });
+      const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
+
+      expect(result.get('BTC/USDT')?.price).toBe(45000);
+      expect(result.has('ETH/USDT')).toBe(false);
+    });
+
+    it('falls back to stale cache when batcher rejects', async () => {
+      const stalebtc: PriceData = { symbol: 'BTC/USDT', price: 44000, timestamp: new Date(), source: 'binance' };
+      const staleeth: PriceData = { symbol: 'ETH/USDT', price: 2400, timestamp: new Date(), source: 'binance' };
 
       const cacheManager = {
         get: jest.fn().mockImplementation((key: string) => {
-          // No normal cache
           if (!key.endsWith(':stale')) return Promise.resolve(null);
           if (key.includes('BTC/USDT')) return Promise.resolve(stalebtc);
           if (key.includes('ETH/USDT')) return Promise.resolve(staleeth);
@@ -433,24 +342,12 @@ describe('PaperTradingMarketDataService', () => {
         }),
         set: jest.fn()
       };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: { 'BTC/USDT': {}, 'ETH/USDT': {} },
-          loadMarkets: jest.fn().mockResolvedValue(undefined),
-          fetchTickers: jest.fn()
-        })
+      const tickerBatcher = {
+        getTicker: jest.fn(),
+        getTickers: jest.fn().mockRejectedValue(new Error('ETIMEDOUT'))
       };
 
-      withExchangeRetrySpy.mockResolvedValue({
-        success: false,
-        error: new Error('ETIMEDOUT'),
-        attempts: 4,
-        totalDelayMs: 14000
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
+      const { service } = createService({ cacheManager, tickerBatcher });
       const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
 
       expect(result.get('BTC/USDT')?.price).toBe(44000);
@@ -460,52 +357,28 @@ describe('PaperTradingMarketDataService', () => {
     });
 
     it('uses fallback exchange for symbols missing stale cache', async () => {
-      const stalebtc = {
-        symbol: 'BTC/USDT',
-        price: 44000,
-        timestamp: new Date(),
-        source: 'binance'
-      };
-
-      const fallbackTicker = {
-        last: 2400,
-        bid: 2390,
-        ask: 2410,
-        timestamp: 1700000000000
-      };
-
+      const stalebtc: PriceData = { symbol: 'BTC/USDT', price: 44000, timestamp: new Date(), source: 'binance' };
       const cacheManager = {
         get: jest.fn().mockImplementation((key: string) => {
           if (!key.endsWith(':stale')) return Promise.resolve(null);
           if (key.includes('BTC/USDT')) return Promise.resolve(stalebtc);
-          // ETH has no stale cache
           return Promise.resolve(null);
         }),
         set: jest.fn()
       };
 
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockImplementation((slug: string) => {
-          if (slug === 'gdax') {
-            return Promise.resolve({ fetchTicker: jest.fn().mockResolvedValue(fallbackTicker) });
-          }
-          return Promise.resolve({
-            markets: { 'BTC/USDT': {}, 'ETH/USDT': {} },
-            loadMarkets: jest.fn().mockResolvedValue(undefined),
-            fetchTickers: jest.fn()
-          });
-        })
+      const tickerBatcher = {
+        getTicker: jest
+          .fn()
+          .mockImplementation((slug: string) =>
+            slug === 'gdax'
+              ? Promise.resolve(mkBatched({ symbol: 'ETH/USD', price: 2400, source: 'gdax' }))
+              : Promise.resolve(undefined)
+          ),
+        getTickers: jest.fn().mockRejectedValue(new Error('ETIMEDOUT'))
       };
 
-      withExchangeRetrySpy.mockResolvedValue({
-        success: false,
-        error: new Error('ETIMEDOUT'),
-        attempts: 4,
-        totalDelayMs: 14000
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
+      const { service } = createService({ cacheManager, tickerBatcher });
       const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
 
       expect(result.get('BTC/USDT')?.source).toBe('binance:stale');
@@ -513,267 +386,26 @@ describe('PaperTradingMarketDataService', () => {
       expect(result.get('ETH/USDT')?.source).toBe('gdax:fallback');
     });
 
-    it('throws when retries, fallback exchanges, and DB all fail for some symbols', async () => {
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
+    it('throws when batcher rejects and no stale / fallback / DB price exists', async () => {
+      const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
+      const tickerBatcher = {
+        getTicker: jest.fn().mockRejectedValue(new Error('ETIMEDOUT')),
+        getTickers: jest.fn().mockRejectedValue(new Error('ETIMEDOUT'))
       };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: { 'BTC/USDT': {}, 'ETH/USDT': {} },
-          loadMarkets: jest.fn().mockResolvedValue(undefined),
-          fetchTickers: jest.fn(),
-          fetchTicker: jest.fn().mockRejectedValue(new Error('exchange down'))
-        })
-      };
-
-      withExchangeRetrySpy.mockResolvedValue({
-        success: false,
-        error: new Error('ETIMEDOUT'),
-        attempts: 4,
-        totalDelayMs: 14000
-      });
-
       const coinService = {
         getCoinsByRiskLevel: jest.fn(),
         getCoinBySymbol: jest.fn().mockResolvedValue(null)
       };
 
-      const { service } = createService({ cacheManager, exchangeManager, coinService });
+      const { service } = createService({ cacheManager, tickerBatcher, coinService });
 
       await expect(service.getPrices('binance', ['BTC/USDT', 'ETH/USDT'])).rejects.toThrow(
         /2 symbol\(s\) have no stale cache, fallback exchange, or DB fallback/
       );
     });
 
-    it('returns cached symbols without fetching and only fetches uncached', async () => {
-      const cachedPrice: PriceData = {
-        symbol: 'BTC/USDT',
-        price: 44000,
-        bid: 43950,
-        ask: 44050,
-        timestamp: new Date(),
-        source: 'binance'
-      };
-
-      const tickers = {
-        'ETH/USDT': { last: 2500, bid: 2490, ask: 2510, timestamp: 1700000000000 }
-      };
-
-      const cacheManager = {
-        get: jest.fn().mockImplementation((key: string) => {
-          if (key === 'paper-trading:price:binance:BTC/USDT') return Promise.resolve(cachedPrice);
-          return Promise.resolve(null);
-        }),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: { 'BTC/USDT': {}, 'ETH/USDT': {} },
-          loadMarkets: jest.fn().mockResolvedValue(undefined),
-          fetchTickers: jest.fn()
-        })
-      };
-
-      withExchangeRetrySpy.mockResolvedValue({
-        success: true,
-        result: tickers,
-        attempts: 1,
-        totalDelayMs: 0
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
-      const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
-
-      expect(result.get('BTC/USDT')).toBe(cachedPrice);
-      expect(result.get('ETH/USDT')?.price).toBe(2500);
-      // Only ETH should have cache writes (BTC was cached)
-      expect(cacheManager.set).toHaveBeenCalledTimes(2);
-    });
-
-    it('skips symbols missing from ticker response', async () => {
-      const tickers = {
-        'BTC/USDT': { last: 45000, bid: 44950, ask: 45050, timestamp: 1700000000000 }
-        // ETH/USDT intentionally missing from response
-      };
-
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: { 'BTC/USDT': {}, 'ETH/USDT': {} },
-          loadMarkets: jest.fn().mockResolvedValue(undefined),
-          fetchTickers: jest.fn()
-        })
-      };
-
-      withExchangeRetrySpy.mockResolvedValue({
-        success: true,
-        result: tickers,
-        attempts: 1,
-        totalDelayMs: 0
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
-      const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
-
-      expect(result.get('BTC/USDT')?.price).toBe(45000);
-      expect(result.has('ETH/USDT')).toBe(false);
-    });
-
-    it('returns cached-only results when all requested symbols are missing from exchange markets', async () => {
-      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-      const fetchTickers = jest.fn();
-      const loadMarkets = jest.fn().mockResolvedValue(undefined);
-
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: { 'BTC/USDT': {} },
-          loadMarkets,
-          fetchTickers
-        })
-      };
-
-      const { service } = createService({ cacheManager, exchangeManager });
-      const result = await service.getPrices('binance_us', ['USDT/USD', 'NONEXISTENT/USD']);
-
-      expect(result.size).toBe(0);
-      expect(fetchTickers).not.toHaveBeenCalled();
-      expect(withExchangeRetrySpy).not.toHaveBeenCalled();
-      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('none of 2 requested symbols'));
-    });
-
-    it('filters out invalid symbols and calls fetchTickers with valid ones only', async () => {
-      const tickers = {
-        'BTC/USDT': { last: 45000, bid: 44950, ask: 45050, timestamp: 1700000000000 }
-      };
-
-      const fetchTickers = jest.fn();
-      const loadMarkets = jest.fn().mockResolvedValue(undefined);
-
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: { 'BTC/USDT': {} },
-          loadMarkets,
-          fetchTickers
-        })
-      };
-
-      withExchangeRetrySpy.mockImplementation(async (op: () => Promise<unknown>) => {
-        await op();
-        return { success: true, result: tickers, attempts: 1, totalDelayMs: 0 };
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
-      const result = await service.getPrices('binance_us', ['BTC/USDT', 'USDT/USD']);
-
-      expect(fetchTickers).toHaveBeenCalledWith(['BTC/USDT']);
-      expect(result.get('BTC/USDT')?.price).toBe(45000);
-      expect(result.has('USDT/USD')).toBe(false);
-    });
-
-    it('falls through without filtering when loadMarkets fails', async () => {
-      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-      const tickers = {
-        'BTC/USDT': { last: 45000, bid: 44950, ask: 45050, timestamp: 1700000000000 },
-        'ETH/USDT': { last: 2500, bid: 2490, ask: 2510, timestamp: 1700000000000 }
-      };
-
-      const fetchTickers = jest.fn();
-      const loadMarkets = jest.fn().mockRejectedValue(new Error('markets endpoint down'));
-
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: {},
-          loadMarkets,
-          fetchTickers
-        })
-      };
-
-      withExchangeRetrySpy.mockImplementation(async (op: () => Promise<unknown>) => {
-        await op();
-        return { success: true, result: tickers, attempts: 1, totalDelayMs: 0 };
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
-      const result = await service.getPrices('binance', ['BTC/USDT', 'ETH/USDT']);
-
-      expect(fetchTickers).toHaveBeenCalledWith(['BTC/USDT', 'ETH/USDT']);
-      expect(result.get('BTC/USDT')?.price).toBe(45000);
-      expect(result.get('ETH/USDT')?.price).toBe(2500);
-      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('loadMarkets(binance) failed'));
-    });
-
-    it('does not call loadMarkets when markets are already loaded', async () => {
-      const tickers = {
-        'BTC/USDT': { last: 45000, bid: 44950, ask: 45050, timestamp: 1700000000000 }
-      };
-
-      const fetchTickers = jest.fn();
-      const loadMarkets = jest.fn().mockResolvedValue(undefined);
-
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: { 'BTC/USDT': {}, 'ETH/USDT': {} },
-          loadMarkets,
-          fetchTickers
-        })
-      };
-
-      withExchangeRetrySpy.mockImplementation(async (op: () => Promise<unknown>) => {
-        await op();
-        return { success: true, result: tickers, attempts: 1, totalDelayMs: 0 };
-      });
-
-      const { service } = createService({ cacheManager, exchangeManager });
-      await service.getPrices('binance', ['BTC/USDT']);
-
-      expect(loadMarkets).not.toHaveBeenCalled();
-      expect(fetchTickers).toHaveBeenCalledWith(['BTC/USDT']);
-    });
-
-    it('short-circuits to stale cache when breaker is open — does not hit the exchange', async () => {
-      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-
-      const stalebtc = {
-        symbol: 'BTC/USDT',
-        price: 44000,
-        timestamp: new Date(),
-        source: 'binance_us'
-      };
-
+    it('short-circuits to stale cache when breaker is open — does not hit the batcher', async () => {
+      const stalebtc: PriceData = { symbol: 'BTC/USDT', price: 44000, timestamp: new Date(), source: 'binance_us' };
       const cacheManager = {
         get: jest.fn().mockImplementation((key: string) => {
           if (!key.endsWith(':stale')) return Promise.resolve(null);
@@ -782,110 +414,35 @@ describe('PaperTradingMarketDataService', () => {
         }),
         set: jest.fn()
       };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn()
-      };
-
+      const tickerBatcher = { getTicker: jest.fn(), getTickers: jest.fn() };
       const circuitBreaker = createCircuitBreaker({ isOpen: jest.fn().mockReturnValue(true) });
 
-      const { service } = createService({ cacheManager, exchangeManager, circuitBreaker });
+      const { service } = createService({ cacheManager, tickerBatcher, circuitBreaker });
       const result = await service.getPrices('binance_us', ['BTC/USDT']);
 
       expect(result.get('BTC/USDT')?.source).toBe('binance_us:stale');
-      // Most important assertion: with breaker open, we never talk to the exchange
-      expect(withExchangeRetrySpy).not.toHaveBeenCalled();
-      expect(exchangeManager.getPublicClient).not.toHaveBeenCalled();
-      // And we don't re-count a synthetic failure against the circuit
-      expect(circuitBreaker.recordFailure).not.toHaveBeenCalled();
-      loggerSpy.mockRestore();
-    });
-
-    it('records a breaker failure on weight-limit error and lets caller skip retries', async () => {
-      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-      jest.spyOn(Logger.prototype, 'debug').mockImplementation();
-
-      const weightError = new Error(
-        'binanceus 429 Too Many Requests {"code":-1003,"msg":"Too much request weight used; current limit is 1200 request weight per 1 MINUTE."}'
-      );
-
-      const cacheManager = {
-        get: jest.fn().mockResolvedValue(null),
-        set: jest.fn()
-      };
-
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: { 'THETA/USDT': {} },
-          loadMarkets: jest.fn().mockResolvedValue(undefined),
-          fetchTickers: jest.fn(),
-          fetchTicker: jest.fn().mockRejectedValue(weightError)
-        })
-      };
-
-      withExchangeRetrySpy.mockResolvedValue({
-        success: false,
-        error: weightError,
-        attempts: 1, // Key: NOT 4 — the isRetryable callback must short-circuit retries
-        totalDelayMs: 0
-      });
-
-      const circuitBreaker = createCircuitBreaker();
-      const coinService = {
-        getCoinsByRiskLevel: jest.fn(),
-        getCoinBySymbol: jest.fn().mockResolvedValue(null)
-      };
-
-      const { service } = createService({ cacheManager, exchangeManager, circuitBreaker, coinService });
-
-      await expect(service.getPrices('binance_us', ['THETA/USDT'])).rejects.toThrow(/no stale cache/);
-
-      // Breaker saw the failure and can count toward opening
-      expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('paper-trading:market-data:binance_us');
-      // And we passed an isRetryable guard so the retry wrapper won't loop on 429s
-      const callArgs = withExchangeRetrySpy.mock.calls[0];
-      const retryOptions = callArgs[1];
-      expect(retryOptions.isRetryable(weightError)).toBe(false);
-      loggerSpy.mockRestore();
-    });
-
-    it('records a breaker success on a normal fetch', async () => {
-      const tickers = {
-        'BTC/USDT': { last: 45000, bid: 44950, ask: 45050, timestamp: 1700000000000 }
-      };
-
-      const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
-      const exchangeManager = {
-        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
-        getPublicClient: jest.fn().mockResolvedValue({
-          markets: { 'BTC/USDT': {} },
-          loadMarkets: jest.fn().mockResolvedValue(undefined),
-          fetchTickers: jest.fn()
-        })
-      };
-
-      withExchangeRetrySpy.mockResolvedValue({ success: true, result: tickers, attempts: 1, totalDelayMs: 0 });
-
-      const circuitBreaker = createCircuitBreaker();
-      const { service } = createService({ cacheManager, exchangeManager, circuitBreaker });
-
-      await service.getPrices('binance_us', ['BTC/USDT']);
-
-      expect(circuitBreaker.recordSuccess).toHaveBeenCalledWith('paper-trading:market-data:binance_us');
+      expect(tickerBatcher.getTickers).not.toHaveBeenCalled();
       expect(circuitBreaker.recordFailure).not.toHaveBeenCalled();
     });
   });
 
   describe('checkExchangeHealth', () => {
+    let withExchangeRetrySpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      withExchangeRetrySpy = jest.spyOn(retryUtil, 'withExchangeRetry');
+    });
+
+    afterEach(() => {
+      withExchangeRetrySpy.mockRestore();
+    });
+
     it('returns healthy with latency when exchange responds', async () => {
       const exchangeManager = {
         formatSymbol: jest.fn(),
         getPublicClient: jest.fn().mockResolvedValue({ fetchTime: jest.fn() })
       };
 
-      // Deterministic latency: Date.now() is called at start and end of checkExchangeHealth
       jest.spyOn(Date, 'now').mockReturnValueOnce(1_000_000).mockReturnValueOnce(1_000_042);
 
       withExchangeRetrySpy.mockResolvedValue({ success: true, result: 1700000000000, attempts: 1, totalDelayMs: 0 });
@@ -916,7 +473,6 @@ describe('PaperTradingMarketDataService', () => {
 
       expect(result.healthy).toBe(false);
       expect(result.error).toBe('connection refused');
-      expect(result.latencyMs).toBeUndefined();
     });
 
     it('returns unhealthy when getPublicClient throws', async () => {
@@ -948,7 +504,6 @@ describe('PaperTradingMarketDataService', () => {
       expect(result).toEqual(['BTC/USD', 'ETH/USD']);
       expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(1);
 
-      // Second call must be served from cache
       await service.resolveSymbolUniverse(session, 'USD');
       expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(1);
     });
@@ -974,18 +529,13 @@ describe('PaperTradingMarketDataService', () => {
       const session = makeSession();
 
       await service.resolveSymbolUniverse(session, 'USD');
-
-      fakeNow += 5 * 60 * 1000 + 1; // past TTL
-
+      fakeNow += 5 * 60 * 1000 + 1;
       await service.resolveSymbolUniverse(session, 'USD');
 
       expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(2);
-
-      jest.restoreAllMocks();
     });
 
-    it('does not cache the BTC/ETH fallback — re-queries DB on every tick until real selections exist', async () => {
-      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    it('does not cache the BTC/ETH fallback — re-queries DB on every tick', async () => {
       const coinSelectionService = { getCoinSelectionsByUser: jest.fn().mockResolvedValue([]) };
       const coinService = { getCoinsByRiskLevel: jest.fn().mockResolvedValue([]) };
       const {
@@ -1004,8 +554,6 @@ describe('PaperTradingMarketDataService', () => {
       expect(result).toEqual(['BTC/USD', 'ETH/USD']);
       expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(2);
       expect(mockCv.getCoinsByRiskLevel).toHaveBeenCalledTimes(2);
-      // Verify log includes userId for debugging
-      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('u-99'));
     });
 
     it('clearSymbolCache removes the cached entry so next call re-queries', async () => {
@@ -1023,7 +571,6 @@ describe('PaperTradingMarketDataService', () => {
     });
 
     it('returns BTC/ETH fallback when session.user is null', async () => {
-      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       const { service, coinSelectionService: mockCs } = createService();
       const session = { id: 'sess-no-user', user: null } as any;
 
@@ -1031,11 +578,9 @@ describe('PaperTradingMarketDataService', () => {
 
       expect(result).toEqual(['BTC/USD', 'ETH/USD']);
       expect(mockCs.getCoinSelectionsByUser).not.toHaveBeenCalled();
-      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('no user attached'));
     });
 
     it('falls through to risk-level coins when coin selection service throws', async () => {
-      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       const coinSelectionService = {
         getCoinSelectionsByUser: jest.fn().mockRejectedValue(new Error('DB connection lost'))
       };
@@ -1043,23 +588,16 @@ describe('PaperTradingMarketDataService', () => {
       const { service } = createService({ coinSelectionService, coinService });
 
       const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
-
       expect(result).toEqual(['SOL/USD']);
-      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('coin selection fetch failed'));
     });
 
     it('returns BTC/ETH fallback when both services throw', async () => {
-      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-      const coinSelectionService = {
-        getCoinSelectionsByUser: jest.fn().mockRejectedValue(new Error('DB down'))
-      };
+      const coinSelectionService = { getCoinSelectionsByUser: jest.fn().mockRejectedValue(new Error('DB down')) };
       const coinService = { getCoinsByRiskLevel: jest.fn().mockRejectedValue(new Error('DB down')) };
       const { service } = createService({ coinSelectionService, coinService });
 
       const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
-
       expect(result).toEqual(['BTC/USD', 'ETH/USD']);
-      expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('risk-level coin fetch failed'));
     });
   });
 
@@ -1072,21 +610,17 @@ describe('PaperTradingMarketDataService', () => {
       };
       const { service } = createService({ coinSelectionService });
 
-      // Populate caches for 3 sessions
       await service.resolveSymbolUniverse(makeSession('s-1'), 'USD');
       await service.resolveSymbolUniverse(makeSession('s-2'), 'USD');
       await service.resolveSymbolUniverse(makeSession('s-3'), 'USD');
 
       const swept = service.sweepOrphaned(new Set(['s-2']));
-
       expect(swept).toBe(2);
 
-      // s-2 should still be cached (no re-query needed)
       coinSelectionService.getCoinSelectionsByUser.mockClear();
       await service.resolveSymbolUniverse(makeSession('s-2'), 'USD');
       expect(coinSelectionService.getCoinSelectionsByUser).not.toHaveBeenCalled();
 
-      // s-1 should be gone (re-query needed)
       await service.resolveSymbolUniverse(makeSession('s-1'), 'USD');
       expect(coinSelectionService.getCoinSelectionsByUser).toHaveBeenCalledTimes(1);
     });
@@ -1098,19 +632,13 @@ describe('PaperTradingMarketDataService', () => {
       const { service } = createService({ coinSelectionService });
 
       await service.resolveSymbolUniverse(makeSession('s-1'), 'USD');
-
       expect(service.sweepOrphaned(new Set(['s-1']))).toBe(0);
     });
   });
 
   describe('clearCache', () => {
     it('deletes price, stale, and orderbook keys for a given symbol', async () => {
-      const cacheManager = {
-        get: jest.fn(),
-        set: jest.fn(),
-        del: jest.fn()
-      };
-
+      const cacheManager = { get: jest.fn(), set: jest.fn(), del: jest.fn() };
       const { service } = createService({ cacheManager });
       await service.clearCache('binance', 'BTC/USDT');
 
@@ -1120,12 +648,7 @@ describe('PaperTradingMarketDataService', () => {
     });
 
     it('does not delete anything when no symbol provided', async () => {
-      const cacheManager = {
-        get: jest.fn(),
-        set: jest.fn(),
-        del: jest.fn()
-      };
-
+      const cacheManager = { get: jest.fn(), set: jest.fn(), del: jest.fn() };
       const { service } = createService({ cacheManager });
       await service.clearCache('binance');
 

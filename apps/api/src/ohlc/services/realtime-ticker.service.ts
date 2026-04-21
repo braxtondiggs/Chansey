@@ -4,10 +4,8 @@ import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { Cache } from 'cache-manager';
 
 import { CoinService } from '../../coin/coin.service';
-import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
-import { formatSymbolForExchange } from '../../exchange/utils';
+import { TickerBatcherService } from '../../exchange/ticker-batcher/ticker-batcher.service';
 import { toErrorInfo } from '../../shared/error.util';
-import { withExchangeRetryThrow } from '../../shared/retry.util';
 
 export interface TickerPrice {
   coinId: string;
@@ -31,9 +29,9 @@ export class RealtimeTickerService {
 
   constructor(
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
-    private readonly exchangeManager: ExchangeManagerService,
     @Inject(forwardRef(() => CoinService))
-    private readonly coinService: CoinService
+    private readonly coinService: CoinService,
+    private readonly tickerBatcher: TickerBatcherService
   ) {}
 
   /**
@@ -158,48 +156,28 @@ export class RealtimeTickerService {
   }
 
   /**
-   * Internal: Fetch ticker from exchange with fallback
+   * Internal: Fetch ticker from exchange with priority-list fallthrough.
+   * Delegates to the batcher — which owns retry, circuit breaker, and market filtering.
    */
   private async fetchTicker(symbol: string): Promise<Omit<TickerPrice, 'coinId'> | null> {
     const tradingSymbol = `${symbol.toUpperCase()}/USD`;
 
     for (const exchangeSlug of this.EXCHANGE_PRIORITY) {
       try {
-        const client = await this.exchangeManager.getPublicClient(exchangeSlug);
-
-        // Load markets if not loaded
-        if (!client.markets) {
-          await withExchangeRetryThrow(() => client.loadMarkets(), {
-            logger: this.logger,
-            operationName: `loadMarkets(${exchangeSlug})`
-          });
-        }
-
-        // Check if symbol exists
-        const formattedSymbol = formatSymbolForExchange(exchangeSlug, tradingSymbol);
-        if (!client.markets[formattedSymbol]) {
-          continue;
-        }
-
-        // Fetch ticker
-        const ticker = await withExchangeRetryThrow(() => client.fetchTicker(formattedSymbol), {
-          logger: this.logger,
-          operationName: `fetchTicker(${exchangeSlug}:${tradingSymbol})`
-        });
-
-        if (ticker && ticker.last) {
-          return {
-            symbol: tradingSymbol,
-            price: ticker.last,
-            change24h: ticker.change || 0,
-            changePercent24h: ticker.percentage || 0,
-            volume24h: ticker.quoteVolume || ticker.baseVolume || 0,
-            high24h: ticker.high || ticker.last,
-            low24h: ticker.low || ticker.last,
-            updatedAt: new Date(),
-            source: exchangeSlug
-          };
-        }
+        const batched = await this.tickerBatcher.getTicker(exchangeSlug, tradingSymbol);
+        if (!batched || !batched.price) continue;
+        const refPrice = batched.price;
+        return {
+          symbol: tradingSymbol,
+          price: refPrice,
+          change24h: batched.change ?? 0,
+          changePercent24h: batched.percentage ?? 0,
+          volume24h: batched.quoteVolume ?? batched.baseVolume ?? 0,
+          high24h: batched.high ?? refPrice,
+          low24h: batched.low ?? refPrice,
+          updatedAt: new Date(),
+          source: exchangeSlug
+        };
       } catch (error: unknown) {
         const err = toErrorInfo(error);
         this.logger.debug(`Failed to fetch ticker from ${exchangeSlug} for ${tradingSymbol}: ${err.message}`);

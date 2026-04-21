@@ -6,9 +6,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [ master ]
   pull_request:
-    branches: [master]
+    branches: [ master ]
 
 # Cancel in-progress runs for the same workflow on the same branch
 concurrency:
@@ -34,13 +34,13 @@ jobs:
       has_api: ${{ steps.check.outputs.has_api }}
       has_chansey: ${{ steps.check.outputs.has_chansey }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           filter: tree:0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -48,7 +48,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
@@ -58,7 +58,7 @@ jobs:
         run: npm ci --prefer-offline --no-audit
 
       - name: Cache Nx
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules/.cache/nx
           key: nx-${{ runner.os }}-${{ github.sha }}
@@ -114,12 +114,12 @@ jobs:
     needs: setup
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -127,7 +127,7 @@ jobs:
 
       - name: Restore node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
@@ -137,7 +137,7 @@ jobs:
         run: npm ci --prefer-offline --no-audit
 
       - name: Restore Nx cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules/.cache/nx
           key: nx-${{ runner.os }}-${{ github.sha }}
@@ -162,12 +162,12 @@ jobs:
     needs: setup
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -175,7 +175,7 @@ jobs:
 
       - name: Restore node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
@@ -185,7 +185,7 @@ jobs:
         run: npm ci --prefer-offline --no-audit
 
       - name: Restore Nx cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules/.cache/nx
           key: nx-${{ runner.os }}-${{ github.sha }}
@@ -205,7 +205,7 @@ jobs:
 
       - name: Upload coverage reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-reports
           path: coverage/
@@ -218,12 +218,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -231,7 +231,7 @@ jobs:
 
       - name: Restore node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
@@ -241,7 +241,7 @@ jobs:
         run: npm ci --prefer-offline --no-audit
 
       - name: Restore Nx cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules/.cache/nx
           key: nx-${{ runner.os }}-${{ github.sha }}
@@ -268,7 +268,7 @@ jobs:
 
       - name: Upload build artifacts
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build-artifacts
           path: dist/
@@ -280,10 +280,10 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -300,17 +300,17 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: package-lock.json
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: build-artifacts
           path: dist/
@@ -334,15 +334,16 @@ jobs:
   # Job 7: Deploy frontend to Railway (only on master push when affected)
   deploy-frontend:
     name: Deploy Frontend
-    needs: [setup, build]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.setup.outputs.has_chansey == 'true'
+    needs: [ setup, build ]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' &&
+      needs.setup.outputs.has_chansey == 'true'
     runs-on: ubuntu-latest
     container: ghcr.io/railwayapp/cli:latest
     env:
       SVC_ID: 3869b3ae-f1db-4b9d-86a5-543264e00f4d
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -352,15 +353,16 @@ jobs:
   # Job 8: Deploy API to Railway (only on master push when affected)
   deploy-api:
     name: Deploy API
-    needs: [setup, build]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.setup.outputs.has_api == 'true'
+    needs: [ setup, build ]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' &&
+      needs.setup.outputs.has_api == 'true'
     runs-on: ubuntu-latest
     container: ghcr.io/railwayapp/cli:latest
     env:
       SVC_ID: 6a9cd43d-adac-4f7b-b4b3-368cf7b709a1
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -371,7 +373,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [lint, test, build]
+    needs: [ lint, test, build ]
     if: always()
     steps:
       - name: Check job statuses

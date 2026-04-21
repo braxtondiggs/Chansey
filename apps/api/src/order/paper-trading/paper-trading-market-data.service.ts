@@ -3,7 +3,6 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 
 import { Cache } from 'cache-manager';
-import type * as ccxt from 'ccxt';
 
 import { PaperTradingSession } from './entities';
 import type { PriceData } from './paper-trading-market-data.types';
@@ -14,16 +13,16 @@ import { CoinSelectionRelations } from '../../coin-selection/coin-selection.enti
 import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
 import { EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { TickerBatcherService } from '../../exchange/ticker-batcher/ticker-batcher.service';
+import { tickerCircuitKey } from '../../shared/circuit-breaker.constants';
 import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { toErrorInfo } from '../../shared/error.util';
-import { isRateLimitError, isWeightLimitError, withExchangeRetry } from '../../shared/retry.util';
-import type { User } from '../../users/users.entity';
+import { withExchangeRetry } from '../../shared/retry.util';
 
 export type { PriceData, OrderBook, OrderBookLevel, RealisticSlippageResult } from './paper-trading-market-data.types';
 
 const STALE_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const FALLBACK_EXCHANGE_SLUGS = ['gdax', 'kraken'] as const;
-const CIRCUIT_KEY_PREFIX = 'paper-trading:market-data';
 
 @Injectable()
 export class PaperTradingMarketDataService {
@@ -38,13 +37,14 @@ export class PaperTradingMarketDataService {
     private readonly exchangeManager: ExchangeManagerService,
     private readonly coinSelectionService: CoinSelectionService,
     private readonly coinService: CoinService,
-    private readonly circuitBreaker: CircuitBreakerService
+    private readonly circuitBreaker: CircuitBreakerService,
+    private readonly tickerBatcher: TickerBatcherService
   ) {
     this.cacheTtlMs = config.priceCacheTtlMs;
   }
 
   private circuitKey(exchangeSlug: string): string {
-    return `${CIRCUIT_KEY_PREFIX}:${exchangeSlug}`;
+    return tickerCircuitKey(exchangeSlug);
   }
 
   /** Resolve symbol universe from user's coin selections, falling back to risk-level coins. */
@@ -120,113 +120,83 @@ export class PaperTradingMarketDataService {
   }
 
   /**
-   * Get current price for a symbol from exchange
-   * Uses cache with short TTL to minimize API calls
+   * Get current price for a symbol. Routes through TickerBatcherService,
+   * which coalesces concurrent callers and owns the circuit-breaker state
+   * for the exchange hop. Falls back to stale cache → alternate exchange → DB.
    */
-  async getCurrentPrice(exchangeSlug: string, symbol: string, user?: User): Promise<PriceData> {
+  async getCurrentPrice(exchangeSlug: string, symbol: string): Promise<PriceData> {
     const cacheKey = `paper-trading:price:${exchangeSlug}:${symbol}`;
 
-    // Try cache first
     const cached = await this.cacheManager.get<PriceData>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    // If the breaker is open, skip the exchange call entirely and short-circuit
-    // to the stale / fallback chain. Every call we skip preserves request-weight
-    // budget and lets binance_us recover.
+    // If the breaker is open, skip the batcher and go straight to the stale chain.
     const circuitOpen = this.circuitBreaker.isOpen(this.circuitKey(exchangeSlug));
 
-    // Format symbol for exchange
-    const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
+    let fetched: PriceData | null = null;
+    let fetchError: Error | null = circuitOpen ? new Error(`Circuit breaker open for ${exchangeSlug}`) : null;
 
-    const result = circuitOpen
-      ? {
-          success: false as const,
-          error: new Error(`Circuit breaker open for ${exchangeSlug}`),
-          attempts: 0,
-          totalDelayMs: 0
+    if (!circuitOpen) {
+      try {
+        const ticker = await this.tickerBatcher.getTicker(exchangeSlug, symbol);
+        if (ticker) {
+          fetched = {
+            symbol,
+            price: ticker.price,
+            bid: ticker.bid,
+            ask: ticker.ask,
+            timestamp: ticker.timestamp,
+            source: exchangeSlug
+          };
+        } else {
+          fetchError = new Error(`No ticker for ${symbol} on ${exchangeSlug}`);
         }
-      : await withExchangeRetry(
-          async () => {
-            const client = user
-              ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
-              : await this.exchangeManager.getPublicClient(exchangeSlug);
-            return client.fetchTicker(formattedSymbol);
-          },
-          {
-            logger: this.logger,
-            operationName: `fetchTicker(${exchangeSlug}:${symbol})`,
-            // Rate/weight limits are account-wide — burning retries on them just
-            // deepens the hole. Skip retries and fall through to the stale cache.
-            isRetryable: (err) => !isRateLimitError(err) && !isWeightLimitError(err)
-          }
-        );
-
-    if (result.success && result.result) {
-      const ticker = result.result;
-      const priceData: PriceData = {
-        symbol,
-        price: ticker.last ?? ticker.close ?? 0,
-        bid: ticker.bid,
-        ask: ticker.ask,
-        timestamp: new Date(ticker.timestamp ?? Date.now()),
-        source: exchangeSlug
-      };
-
-      this.circuitBreaker.recordSuccess(this.circuitKey(exchangeSlug));
-
-      // Cache the result
-      await this.cacheManager.set(cacheKey, priceData, this.cacheTtlMs);
-
-      // Write stale fallback cache with longer TTL
-      const staleKey = `${cacheKey}:stale`;
-      await this.cacheManager.set(staleKey, priceData, STALE_CACHE_TTL_MS);
-
-      return priceData;
+      } catch (error: unknown) {
+        fetchError = error instanceof Error ? error : new Error(String(error));
+      }
     }
 
-    if (!circuitOpen && result.error) {
-      this.circuitBreaker.recordFailure(this.circuitKey(exchangeSlug));
+    if (fetched) {
+      await this.cacheManager.set(cacheKey, fetched, this.cacheTtlMs);
+      await this.cacheManager.set(`${cacheKey}:stale`, fetched, STALE_CACHE_TTL_MS);
+      return fetched;
     }
 
-    // All retries exhausted — fall back to stale cache
     const staleKey = `${cacheKey}:stale`;
     const stale = await this.cacheManager.get<PriceData>(staleKey);
     if (stale) {
       this.logger.warn(
-        `${circuitOpen ? 'Circuit open' : 'All retries exhausted'} fetching price for ${symbol} from ${exchangeSlug}. Using stale cached price.`
+        `${circuitOpen ? 'Circuit open' : 'Batcher fetch exhausted'} for ${symbol} on ${exchangeSlug}. Using stale cached price.`
       );
       return { ...stale, source: `${stale.source}:stale` };
     }
 
-    // Try fallback exchanges
     const fallbackPrice = await this.tryFallbackExchanges(symbol, exchangeSlug);
     if (fallbackPrice) {
-      const staleKey2 = `${cacheKey}:stale`;
-      await this.cacheManager.set(staleKey2, fallbackPrice, STALE_CACHE_TTL_MS);
+      await this.cacheManager.set(`${cacheKey}:stale`, fallbackPrice, STALE_CACHE_TTL_MS);
       return fallbackPrice;
     }
 
-    // Try database price as last resort
     const dbPrice = await this.tryDatabasePrice(symbol);
     if (dbPrice) {
       return dbPrice;
     }
 
     this.logger.error(
-      `Failed to fetch price for ${symbol} from ${exchangeSlug} after ${circuitOpen ? 'circuit-open short-circuit' : 'retries'}, fallback exchanges, and DB lookup`
+      `Failed to fetch price for ${symbol} from ${exchangeSlug} after ${circuitOpen ? 'circuit-open short-circuit' : 'batcher'}, fallback exchanges, and DB lookup`
     );
-    throw result.error;
+    throw fetchError ?? new Error(`Failed to fetch price for ${symbol} from ${exchangeSlug}`);
   }
 
   /**
-   * Get prices for multiple symbols in one call
+   * Get prices for multiple symbols. Routes through the batcher for a single
+   * coalesced exchange hop per flush window.
    */
-  async getPrices(exchangeSlug: string, symbols: string[], user?: User): Promise<Map<string, PriceData>> {
+  async getPrices(exchangeSlug: string, symbols: string[]): Promise<Map<string, PriceData>> {
     const results = new Map<string, PriceData>();
 
-    // Check cache for all symbols in parallel
     const cacheResults = await Promise.all(
       symbols.map(async (symbol) => {
         const cacheKey = `paper-trading:price:${exchangeSlug}:${symbol}`;
@@ -248,109 +218,46 @@ export class PaperTradingMarketDataService {
       return results;
     }
 
-    // Short-circuit exchange calls while the breaker is open for this exchange.
     const circuitOpen = this.circuitBreaker.isOpen(this.circuitKey(exchangeSlug));
 
-    let validPairs: Array<{ raw: string; formatted: string }> = [];
-    let result: Awaited<ReturnType<typeof withExchangeRetry<Record<string, ccxt.Ticker>>>>;
+    let fetchError: Error | null = circuitOpen ? new Error(`Circuit breaker open for ${exchangeSlug}`) : null;
 
-    if (circuitOpen) {
-      result = {
-        success: false as const,
-        error: new Error(`Circuit breaker open for ${exchangeSlug}`),
-        attempts: 0,
-        totalDelayMs: 0
-      };
-    } else {
-      const client = user
-        ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
-        : await this.exchangeManager.getPublicClient(exchangeSlug);
-
-      // Lazy-load markets so we can filter out symbols the exchange doesn't list.
-      // Without this, CCXT drops unknown symbols internally and may send an empty
-      // `symbols` param to the REST API, which Binance rejects with code -1102.
-      let marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
-      if (!marketsLoaded) {
-        try {
-          await client.loadMarkets();
-          marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
-        } catch (error: unknown) {
-          const err = toErrorInfo(error);
-          this.logger.warn(`loadMarkets(${exchangeSlug}) failed, proceeding without symbol validation: ${err.message}`);
-        }
-      }
-
-      const formattedPairs = uncachedSymbols.map((raw) => ({
-        raw,
-        formatted: this.exchangeManager.formatSymbol(exchangeSlug, raw)
-      }));
-
-      validPairs = marketsLoaded
-        ? formattedPairs.filter(({ formatted }) => formatted in (client.markets as Record<string, unknown>))
-        : formattedPairs;
-
-      if (validPairs.length === 0) {
-        this.logger.warn(
-          `getPrices(${exchangeSlug}): none of ${uncachedSymbols.length} requested symbols ` +
-            `(${uncachedSymbols.join(', ')}) exist on exchange; returning cached-only results`
-        );
-        return results;
-      }
-
-      result = await withExchangeRetry(() => client.fetchTickers(validPairs.map((p) => p.formatted)), {
-        logger: this.logger,
-        operationName: `fetchTickers(${exchangeSlug})`,
-        // Rate/weight limits are account-wide — skip retries to preserve
-        // request-weight budget and fall through to the stale cache.
-        isRetryable: (err) => !isRateLimitError(err) && !isWeightLimitError(err)
-      });
-    }
-
-    if (result.success && result.result) {
-      const tickers = result.result;
-
-      this.circuitBreaker.recordSuccess(this.circuitKey(exchangeSlug));
-
-      for (const { raw: symbol, formatted: formattedSymbol } of validPairs) {
-        const ticker = tickers[formattedSymbol];
-
-        if (ticker) {
+    if (!circuitOpen) {
+      try {
+        const tickerMap = await this.tickerBatcher.getTickers(exchangeSlug, uncachedSymbols);
+        for (const [symbol, ticker] of tickerMap) {
           const priceData: PriceData = {
             symbol,
-            price: ticker.last ?? ticker.close ?? 0,
+            price: ticker.price,
             bid: ticker.bid,
             ask: ticker.ask,
-            timestamp: new Date(ticker.timestamp ?? Date.now()),
+            timestamp: ticker.timestamp,
             source: exchangeSlug
           };
-
           results.set(symbol, priceData);
-
-          // Cache the result
           const cacheKey = `paper-trading:price:${exchangeSlug}:${symbol}`;
           await this.cacheManager.set(cacheKey, priceData, this.cacheTtlMs);
-
-          // Write stale fallback cache with longer TTL
-          const staleKey = `${cacheKey}:stale`;
-          await this.cacheManager.set(staleKey, priceData, STALE_CACHE_TTL_MS);
+          await this.cacheManager.set(`${cacheKey}:stale`, priceData, STALE_CACHE_TTL_MS);
         }
+      } catch (error: unknown) {
+        fetchError = error instanceof Error ? error : new Error(String(error));
       }
+    }
 
+    // On a successful fetch, symbols the exchange didn't return are silently
+    // omitted. Only a hard fetch failure drops into the stale-cache chain.
+    if (!fetchError) {
       return results;
     }
 
-    if (!circuitOpen && result.error) {
-      this.circuitBreaker.recordFailure(this.circuitKey(exchangeSlug));
-    }
-
-    // All retries exhausted — fall back to stale cache
     this.logger.warn(
-      `${circuitOpen ? 'Circuit open' : 'All retries exhausted'} fetching prices from ${exchangeSlug}. ` +
+      `${circuitOpen ? 'Circuit open' : 'Batcher fetch exhausted'} for ${exchangeSlug}. ` +
         `Falling back to stale cached prices for ${uncachedSymbols.length} symbol(s).`
     );
 
     const stillMissing: string[] = [];
     for (const symbol of uncachedSymbols) {
+      if (results.has(symbol)) continue;
       const staleKey = `paper-trading:price:${exchangeSlug}:${symbol}:stale`;
       const stale = await this.cacheManager.get<PriceData>(staleKey);
       if (stale) {
@@ -360,7 +267,6 @@ export class PaperTradingMarketDataService {
       }
     }
 
-    // Try fallback exchanges and DB for symbols with no stale cache
     for (const symbol of stillMissing) {
       const fallbackPrice = await this.tryFallbackExchanges(symbol, exchangeSlug);
       if (fallbackPrice) {
@@ -380,7 +286,7 @@ export class PaperTradingMarketDataService {
     const finalMisses = stillMissing.filter((s) => !results.has(s));
     if (finalMisses.length > 0) {
       throw new Error(
-        `Failed to fetch prices from ${exchangeSlug} after retries, ` +
+        `Failed to fetch prices from ${exchangeSlug} via batcher, ` +
           `and ${finalMisses.length} symbol(s) have no stale cache, fallback exchange, or DB fallback`
       );
     }
@@ -434,18 +340,16 @@ export class PaperTradingMarketDataService {
       try {
         const quoteAsset = EXCHANGE_QUOTE_CURRENCY[slug] ?? 'USD';
         const fallbackSymbol = `${base}/${quoteAsset}`;
-        const formattedSymbol = this.exchangeManager.formatSymbol(slug, fallbackSymbol);
-        const client = await this.exchangeManager.getPublicClient(slug);
-        const ticker = await client.fetchTicker(formattedSymbol);
+        const ticker = await this.tickerBatcher.getTicker(slug, fallbackSymbol);
 
-        if (ticker?.last != null || ticker?.close != null) {
+        if (ticker && ticker.price > 0) {
           this.logger.warn(`Fetched price for ${symbol} from fallback exchange ${slug}`);
           return {
             symbol,
-            price: ticker.last ?? ticker.close ?? 0,
+            price: ticker.price,
             bid: ticker.bid,
             ask: ticker.ask,
-            timestamp: new Date(ticker.timestamp ?? Date.now()),
+            timestamp: ticker.timestamp,
             source: `${slug}:fallback`
           };
         }
