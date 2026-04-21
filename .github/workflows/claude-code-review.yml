@@ -2,26 +2,25 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [ opened, synchronize ]
     # Optional: Only run on specific file changes
     paths:
-      - 'apps/**'
-      - 'libs/**'
-      - '*.json'
-      - '*.md'
+      - "apps/**"
+      - "libs/**"
+      - "*.json"
+      - "*.md"
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    if: |
+      github.event.pull_request.draft == false &&
+      !contains(github.event.pull_request.title, '[skip-review]') &&
+      !contains(github.event.pull_request.title, '[WIP]')
 
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: read
       id-token: write
 
@@ -39,50 +38,79 @@ jobs:
             echo "is_force_push=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install ast-grep
+        if: steps.force-push-check.outputs.is_force_push != 'true'
+        run: npm i -g @ast-grep/cli
+
       - name: Run Claude Code Review
         if: steps.force-push-check.outputs.is_force_push != 'true'
         id: claude-review
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          # Direct prompt for automated review (no @claude mention needed)
-          direct_prompt: |
-            Please review this pull request. If this is a follow-up review (synchronize event),
-            check for existing review comments and only comment on:
-            - NEW issues not previously mentioned
-            - Issues that were NOT addressed by recent commits
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Do NOT repeat feedback that has already been addressed in subsequent commits.
-            Before commenting on an issue, verify it still exists in the latest code.
+            You are reviewing a pull request in the Chansey Nx monorepo.
+            Repo: Angular 21 frontend (apps/chansey) + NestJS 11 API (apps/api) + TypeORM/PostgreSQL + BullMQ/Redis.
+            Conventions live in CLAUDE.md and .claude/rules/*.md — read them when module context is unclear.
 
-            Review criteria:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            === YOUR JOB ===
+            Post INLINE review comments using `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`) on specific file:line locations.
+            Leave ZERO summary/overview/approval comments. Do NOT post top-level `gh pr comment` comments.
+            If you find nothing worth flagging, post nothing. "No comment" is a valid outcome — do NOT emit review text as a chat message either.
 
-            Be constructive and helpful in your feedback.
+            === WHAT TO FLAG ===
+            Comment ONLY on concrete, defensible issues in the following priority order:
+            1. **Bugs** — logic errors, off-by-one, race conditions, null/undefined misses, wrong exception handling.
+            2. **Security** — injection, auth bypass, secrets in logs, missing input validation at boundaries.
+            3. **Data integrity** — migration ordering, missing indexes, incorrect transactions, numeric precision (decimal.js required for money per CLAUDE.md).
+            4. **Test coverage gaps** — new branches/paths without corresponding spec coverage.
+            5. **Breaking changes** — API contract drift, DB schema breakage without migration, unsafe TypeORM entity edits.
+            6. **Pattern violations** — only when materially wrong (e.g., mocking DB where integration is required, using `uuid_generate_v4()` instead of `gen_random_uuid()`, plural table names when the project uses singular — see .claude/rules/migrations.md).
 
-          # Optional: Customize review based on file types
-          # direct_prompt: |
-          #   Review this PR focusing on:
-          #   - For TypeScript files: Type safety and proper interface usage
-          #   - For API endpoints: Security, input validation, and error handling
-          #   - For React components: Performance, accessibility, and best practices
-          #   - For tests: Coverage, edge cases, and test quality
+            === WHAT NOT TO FLAG ===
+            - Style/formatting (Prettier + ESLint handle it)
+            - "Consider extracting to a helper" / "this method is long" unless it crosses the CLAUDE.md file-size hard limits (750 backend / 400 frontend component / 450 frontend service)
+            - Praise, encouragement, or acknowledgements ("Great work on X!")
+            - Restating what the diff does
+            - Speculation or "you might want to consider" nits
+            - Suggestions already addressed in later commits of the same PR (on `synchronize` events, verify against current HEAD)
 
-          # Optional: Different prompts for different authors
-          # direct_prompt: |
-          #   ${{ github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' &&
-          #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
-          #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
+            === COMMENT FORMAT ===
+            Each inline comment must include:
+            - **Severity**: `[CRITICAL]` / `[HIGH]` / `[MEDIUM]` / `[LOW]` prefix
+            - **What**: the specific problem (one sentence)
+            - **Why**: concrete failure mode or risk (one sentence)
+            - **Fix**: suggested code change (use GitHub suggestion blocks ```suggestion ... ``` when the fix is a direct line replacement)
 
-          # Optional: Add specific tools for running tests or linting
-          # allowed_tools: "Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck)"
+            === TOOLS TO USE BEFORE COMMENTING ===
+            - Use Grep to check whether a "missing" function/util actually exists elsewhere in the repo
+            - Use Read to check the surrounding context of a diff hunk (not just the diff)
+            - Do NOT run tests or lint — CI runs them in a separate job and the pre-commit hook runs them locally. Reason about correctness from the code itself.
 
-          # Optional: Skip review for certain conditions
-          # if: |
-          #   !contains(github.event.pull_request.title, '[skip-review]') &&
-          #   !contains(github.event.pull_request.title, '[WIP]')
+            === STRUCTURAL SEARCH ===
+            Before flagging a rename, signature change, or "removed" symbol, run `sg -p 'oldName($$$)' apps libs`
+            to verify no real callers remain. Prefer `sg` over `Grep` when the question is code-structural
+            (call sites, type usages, decorator patterns). `Grep` is fine for strings/comments/string-typed
+            contracts (event names, queue names, route paths).
+
+            === SYNCHRONIZE EVENTS ===
+            On re-review (synchronize), comment only on:
+            - NEW issues in the new commits
+            - Previously-raised issues that are NOT yet fixed in the latest HEAD
+            Never repeat feedback already addressed.
+
+            === BANNED OUTPUTS ===
+            Do not produce any of these:
+            - "Overall this PR looks good"
+            - "Strengths:" / "Minor Observations:" / "Summary:" sections
+            - Approvals or sign-offs
+            - Issue-level summary comments (only inline, on specific lines)
+
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 8
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(git diff:*),Bash(git log:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(sg:*),Bash(ast-grep:*),Grep,Read"

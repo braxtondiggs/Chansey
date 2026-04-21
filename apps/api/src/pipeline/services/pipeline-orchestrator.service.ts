@@ -153,8 +153,13 @@ export class PipelineOrchestratorService {
   }
 
   private async cancelPipelineInternal(pipeline: Pipeline, reason: string): Promise<void> {
-    if (pipeline.status === PipelineStatus.COMPLETED || pipeline.status === PipelineStatus.CANCELLED) {
-      throw new BadRequestException('Pipeline is already completed or cancelled');
+    if (
+      pipeline.status === PipelineStatus.COMPLETED ||
+      pipeline.status === PipelineStatus.CANCELLED ||
+      pipeline.status === PipelineStatus.REJECTED ||
+      pipeline.status === PipelineStatus.FAILED
+    ) {
+      throw new BadRequestException('Pipeline is already in a terminal state');
     }
 
     // Best-effort downstream cancel first — we want the real workload stopped
@@ -197,6 +202,9 @@ export class PipelineOrchestratorService {
     }
     if (pipeline.status === PipelineStatus.CANCELLED) {
       throw new BadRequestException('Pipeline has been cancelled');
+    }
+    if (pipeline.status === PipelineStatus.REJECTED) {
+      throw new BadRequestException('Pipeline has been rejected');
     }
 
     const previousStatus = pipeline.status;

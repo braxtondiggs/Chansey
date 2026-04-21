@@ -247,6 +247,7 @@ describe('PipelineOrchestrationService', () => {
     it.each([
       ['COMPLETED', PipelineStatus.COMPLETED],
       ['FAILED', PipelineStatus.FAILED],
+      ['REJECTED', PipelineStatus.REJECTED],
       ['CANCELLED', PipelineStatus.CANCELLED]
     ])('does NOT block when only %s pipelines exist', async (_label, _status) => {
       // The query filters by status IN (active), so terminal-status rows are excluded by SQL,

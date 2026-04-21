@@ -528,6 +528,55 @@ describe('PipelineProgressionService', () => {
       expect(pipeline.recommendation).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
       expect(eventEmitter.emit).toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_FAILED, expect.any(Object));
     });
+
+    it('does NOT emit PIPELINE_REJECTED', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.failPipeline(pipeline, 'infra boom');
+
+      expect(eventEmitter.emit).not.toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_REJECTED, expect.anything());
+    });
+  });
+
+  describe('rejectPipeline', () => {
+    it('marks pipeline as REJECTED with DO_NOT_DEPLOY and persists failureReason', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.rejectPipeline(pipeline, 'Optimization improvement 1.5% < min 3%');
+
+      expect(pipeline.status).toBe(PipelineStatus.REJECTED);
+      expect(pipeline.failureReason).toBe('Optimization improvement 1.5% < min 3%');
+      expect(pipeline.recommendation).toBe(DeploymentRecommendation.DO_NOT_DEPLOY);
+      expect(pipeline.completedAt).toBeInstanceOf(Date);
+      expect(pipelineRepository.save).toHaveBeenCalledWith(pipeline);
+    });
+
+    it('emits PIPELINE_REJECTED with the reason', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.rejectPipeline(pipeline, 'zero trades');
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        PIPELINE_EVENTS.PIPELINE_REJECTED,
+        expect.objectContaining({
+          pipelineId: pipeline.id,
+          reason: 'zero trades'
+        })
+      );
+    });
+
+    it('does NOT emit PIPELINE_FAILED (distinct from failPipeline)', async () => {
+      const pipeline = makePipeline();
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.rejectPipeline(pipeline, 'below threshold');
+
+      expect(pipeline.status).not.toBe(PipelineStatus.FAILED);
+      expect(eventEmitter.emit).not.toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_FAILED, expect.anything());
+    });
   });
 
   describe('completePipeline', () => {

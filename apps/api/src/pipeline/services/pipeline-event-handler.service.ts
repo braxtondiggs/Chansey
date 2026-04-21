@@ -77,7 +77,7 @@ export class PipelineEventHandlerService {
     );
 
     if (!passed) {
-      await this.progressionService.failPipeline(
+      await this.progressionService.rejectPipeline(
         pipeline,
         `Optimization did not meet progression threshold: ${failures.join('; ')}`
       );
@@ -169,7 +169,7 @@ export class PipelineEventHandlerService {
     this.logger.log(`Backtest ${type} completed for pipeline ${pipeline.id}`);
 
     if (metrics.totalTrades === 0) {
-      await this.progressionService.failPipeline(
+      await this.progressionService.rejectPipeline(
         pipeline,
         `${type} backtest produced 0 trades — cannot advance pipeline`
       );
@@ -259,7 +259,7 @@ export class PipelineEventHandlerService {
 
       const minimumScore = pipeline.progressionRules.minimumPipelineScore ?? 30;
       if (scoreResult.overallScore < minimumScore) {
-        await this.progressionService.failPipeline(
+        await this.progressionService.rejectPipeline(
           pipeline,
           `LIVE_REPLAY score ${scoreResult.overallScore.toFixed(1)} < minimum ${minimumScore}`
         );
@@ -384,7 +384,7 @@ export class PipelineEventHandlerService {
     );
 
     if (!passed) {
-      await this.progressionService.failPipeline(
+      await this.progressionService.rejectPipeline(
         pipeline,
         `Paper trading did not meet thresholds: ${failures.join('; ')}`
       );

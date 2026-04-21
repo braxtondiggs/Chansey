@@ -146,5 +146,6 @@ export const PIPELINE_EVENTS = {
   PIPELINE_STATUS_CHANGE: 'pipeline.status-change',
   PIPELINE_PROGRESS: 'pipeline.progress',
   PIPELINE_COMPLETED: 'pipeline.completed',
-  PIPELINE_FAILED: 'pipeline.failed'
+  PIPELINE_FAILED: 'pipeline.failed',
+  PIPELINE_REJECTED: 'pipeline.rejected'
 } as const;

@@ -188,14 +188,16 @@ describe('PipelineOrchestratorService', () => {
       expect(pipeline.stageTransitionedAt).toBe(original);
     });
 
-    it.each([[PipelineStatus.RUNNING], [PipelineStatus.COMPLETED], [PipelineStatus.CANCELLED]])(
-      'throws BadRequest when status is %s',
-      async (status) => {
-        pipelineRepository.findOne.mockResolvedValue(makePipeline({ status }));
-        await expect(service.startPipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
-        expect(stageExecutionService.enqueueStageJob).not.toHaveBeenCalled();
-      }
-    );
+    it.each([
+      [PipelineStatus.RUNNING],
+      [PipelineStatus.COMPLETED],
+      [PipelineStatus.CANCELLED],
+      [PipelineStatus.REJECTED]
+    ])('throws BadRequest when status is %s', async (status) => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status }));
+      await expect(service.startPipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
+      expect(stageExecutionService.enqueueStageJob).not.toHaveBeenCalled();
+    });
 
     it('marks pipeline FAILED and rethrows when enqueueStageJob fails', async () => {
       pipelineRepository.findOne.mockResolvedValue(makePipeline());
@@ -250,14 +252,16 @@ describe('PipelineOrchestratorService', () => {
       expect(stageExecutionService.removeStageJob).toHaveBeenCalledWith('pipeline-123', PipelineStage.OPTIMIZE);
     });
 
-    it.each([[PipelineStatus.COMPLETED], [PipelineStatus.CANCELLED]])(
-      'throws when pipeline already %s',
-      async (status) => {
-        pipelineRepository.findOne.mockResolvedValue(makePipeline({ status }));
-        await expect(service.cancelPipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
-        expect(stageExecutionService.cancelCurrentStage).not.toHaveBeenCalled();
-      }
-    );
+    it.each([
+      [PipelineStatus.COMPLETED],
+      [PipelineStatus.CANCELLED],
+      [PipelineStatus.REJECTED],
+      [PipelineStatus.FAILED]
+    ])('throws when pipeline already %s', async (status) => {
+      pipelineRepository.findOne.mockResolvedValue(makePipeline({ status }));
+      await expect(service.cancelPipeline('pipeline-123', mockUser)).rejects.toThrow(BadRequestException);
+      expect(stageExecutionService.cancelCurrentStage).not.toHaveBeenCalled();
+    });
   });
 
   describe('skipStage', () => {

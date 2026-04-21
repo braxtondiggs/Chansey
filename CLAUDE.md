@@ -24,6 +24,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `nx affected:lint` - Run linting only for affected projects
 - `nx dep-graph` - View project dependency graph
 
+### Code Search
+
+- Prefer `sg -p 'name($$$)' apps libs` (ast-grep) over `Grep` for code-structural questions — call sites, type usages,
+  decorator patterns, signature changes. `sg` parses the AST, so it won't match comments/strings/identically-named
+  variables.
+- Stick with `Grep` for strings, comments, and string-typed contracts (event names, queue names, route paths, audit-log
+  keys).
+
 ### Code Quality
 
 - `npm run format` - Format code with Prettier

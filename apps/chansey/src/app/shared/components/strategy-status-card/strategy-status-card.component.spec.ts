@@ -70,7 +70,7 @@ describe('StrategyStatusCardComponent', () => {
   it('renders the rejected panel when wasRejected is true', () => {
     statusSignal.set({
       ...baseStatus,
-      status: PipelineStatus.FAILED,
+      status: PipelineStatus.REJECTED,
       wasRejected: true,
       rejectionReason: 'Test rejected reason'
     });
