@@ -105,38 +105,42 @@ export class PaperTradingEngineService {
         noCandles || this.hasAnySymbolAdvanced(currentTimestamps, session.lastProcessedCandleTs);
 
       if (shouldRunStrategy) {
-        const signals = await this.runAlgorithm(
-          session,
-          algoPortfolio,
-          priceMap,
-          activeAccounts,
-          quoteCurrency,
-          historicalCandles
-        );
-        signalsReceived = signals.length;
+        try {
+          const signals = await this.runAlgorithm(
+            session,
+            algoPortfolio,
+            priceMap,
+            activeAccounts,
+            quoteCurrency,
+            historicalCandles
+          );
+          signalsReceived = signals.length;
 
-        const filtered = await this.filterSignals(session, signals);
+          const filtered = await this.filterSignals(session, signals);
 
-        const heldCoins = new Set(
-          activeAccounts.filter((a) => a.currency !== quoteCurrency && a.total > 1e-8).map((a) => a.currency)
-        );
+          const heldCoins = new Set(
+            activeAccounts.filter((a) => a.currency !== quoteCurrency && a.total > 1e-8).map((a) => a.currency)
+          );
 
-        const loopResult = await this.processSignalLoop(
-          session,
-          filtered,
-          algoPortfolio,
-          heldCoins,
-          priceMap,
-          historicalCandles,
-          quoteCurrency,
-          exchangeSlug,
-          now
-        );
-        ordersExecuted += loopResult.ordersExecuted;
-        errors.push(...loopResult.errors);
-
-        if (!noCandles) {
-          session.lastProcessedCandleTs = currentTimestamps;
+          const loopResult = await this.processSignalLoop(
+            session,
+            filtered,
+            algoPortfolio,
+            heldCoins,
+            priceMap,
+            historicalCandles,
+            quoteCurrency,
+            exchangeSlug,
+            now
+          );
+          ordersExecuted += loopResult.ordersExecuted;
+          errors.push(...loopResult.errors);
+        } finally {
+          // Always advance the dedup guard so a persistent crash on bar N
+          // doesn't force re-evaluation and re-throw of the same bar forever.
+          if (!noCandles) {
+            session.lastProcessedCandleTs = currentTimestamps;
+          }
         }
       }
 
