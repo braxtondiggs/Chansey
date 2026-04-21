@@ -3,6 +3,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 
 import { Cache } from 'cache-manager';
+import type * as ccxt from 'ccxt';
 
 import { PaperTradingSession } from './entities';
 import type { PriceData } from './paper-trading-market-data.types';
@@ -13,14 +14,16 @@ import { CoinSelectionRelations } from '../../coin-selection/coin-selection.enti
 import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
 import { EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { toErrorInfo } from '../../shared/error.util';
-import { withExchangeRetry } from '../../shared/retry.util';
+import { isRateLimitError, isWeightLimitError, withExchangeRetry } from '../../shared/retry.util';
 import type { User } from '../../users/users.entity';
 
 export type { PriceData, OrderBook, OrderBookLevel, RealisticSlippageResult } from './paper-trading-market-data.types';
 
 const STALE_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const FALLBACK_EXCHANGE_SLUGS = ['gdax', 'kraken'] as const;
+const CIRCUIT_KEY_PREFIX = 'paper-trading:market-data';
 
 @Injectable()
 export class PaperTradingMarketDataService {
@@ -34,9 +37,14 @@ export class PaperTradingMarketDataService {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly exchangeManager: ExchangeManagerService,
     private readonly coinSelectionService: CoinSelectionService,
-    private readonly coinService: CoinService
+    private readonly coinService: CoinService,
+    private readonly circuitBreaker: CircuitBreakerService
   ) {
     this.cacheTtlMs = config.priceCacheTtlMs;
+  }
+
+  private circuitKey(exchangeSlug: string): string {
+    return `${CIRCUIT_KEY_PREFIX}:${exchangeSlug}`;
   }
 
   /** Resolve symbol universe from user's coin selections, falling back to risk-level coins. */
@@ -124,19 +132,36 @@ export class PaperTradingMarketDataService {
       return cached;
     }
 
+    // If the breaker is open, skip the exchange call entirely and short-circuit
+    // to the stale / fallback chain. Every call we skip preserves request-weight
+    // budget and lets binance_us recover.
+    const circuitOpen = this.circuitBreaker.isOpen(this.circuitKey(exchangeSlug));
+
     // Format symbol for exchange
     const formattedSymbol = this.exchangeManager.formatSymbol(exchangeSlug, symbol);
 
-    // Get client (public if no user)
-    const client = user
-      ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
-      : await this.exchangeManager.getPublicClient(exchangeSlug);
-
-    // Fetch ticker with retry
-    const result = await withExchangeRetry(() => client.fetchTicker(formattedSymbol), {
-      logger: this.logger,
-      operationName: `fetchTicker(${exchangeSlug}:${symbol})`
-    });
+    const result = circuitOpen
+      ? {
+          success: false as const,
+          error: new Error(`Circuit breaker open for ${exchangeSlug}`),
+          attempts: 0,
+          totalDelayMs: 0
+        }
+      : await withExchangeRetry(
+          async () => {
+            const client = user
+              ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
+              : await this.exchangeManager.getPublicClient(exchangeSlug);
+            return client.fetchTicker(formattedSymbol);
+          },
+          {
+            logger: this.logger,
+            operationName: `fetchTicker(${exchangeSlug}:${symbol})`,
+            // Rate/weight limits are account-wide — burning retries on them just
+            // deepens the hole. Skip retries and fall through to the stale cache.
+            isRetryable: (err) => !isRateLimitError(err) && !isWeightLimitError(err)
+          }
+        );
 
     if (result.success && result.result) {
       const ticker = result.result;
@@ -149,6 +174,8 @@ export class PaperTradingMarketDataService {
         source: exchangeSlug
       };
 
+      this.circuitBreaker.recordSuccess(this.circuitKey(exchangeSlug));
+
       // Cache the result
       await this.cacheManager.set(cacheKey, priceData, this.cacheTtlMs);
 
@@ -159,12 +186,16 @@ export class PaperTradingMarketDataService {
       return priceData;
     }
 
+    if (!circuitOpen && result.error) {
+      this.circuitBreaker.recordFailure(this.circuitKey(exchangeSlug));
+    }
+
     // All retries exhausted — fall back to stale cache
     const staleKey = `${cacheKey}:stale`;
     const stale = await this.cacheManager.get<PriceData>(staleKey);
     if (stale) {
       this.logger.warn(
-        `All retries exhausted fetching price for ${symbol} from ${exchangeSlug}. Using stale cached price.`
+        `${circuitOpen ? 'Circuit open' : 'All retries exhausted'} fetching price for ${symbol} from ${exchangeSlug}. Using stale cached price.`
       );
       return { ...stale, source: `${stale.source}:stale` };
     }
@@ -184,7 +215,7 @@ export class PaperTradingMarketDataService {
     }
 
     this.logger.error(
-      `Failed to fetch price for ${symbol} from ${exchangeSlug} after retries, fallback exchanges, and DB lookup`
+      `Failed to fetch price for ${symbol} from ${exchangeSlug} after ${circuitOpen ? 'circuit-open short-circuit' : 'retries'}, fallback exchanges, and DB lookup`
     );
     throw result.error;
   }
@@ -217,50 +248,70 @@ export class PaperTradingMarketDataService {
       return results;
     }
 
-    // Get client
-    const client = user
-      ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
-      : await this.exchangeManager.getPublicClient(exchangeSlug);
+    // Short-circuit exchange calls while the breaker is open for this exchange.
+    const circuitOpen = this.circuitBreaker.isOpen(this.circuitKey(exchangeSlug));
 
-    // Lazy-load markets so we can filter out symbols the exchange doesn't list.
-    // Without this, CCXT drops unknown symbols internally and may send an empty
-    // `symbols` param to the REST API, which Binance rejects with code -1102.
-    let marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
-    if (!marketsLoaded) {
-      try {
-        await client.loadMarkets();
-        marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
-      } catch (error: unknown) {
-        const err = toErrorInfo(error);
-        this.logger.warn(`loadMarkets(${exchangeSlug}) failed, proceeding without symbol validation: ${err.message}`);
+    let validPairs: Array<{ raw: string; formatted: string }> = [];
+    let result: Awaited<ReturnType<typeof withExchangeRetry<Record<string, ccxt.Ticker>>>>;
+
+    if (circuitOpen) {
+      result = {
+        success: false as const,
+        error: new Error(`Circuit breaker open for ${exchangeSlug}`),
+        attempts: 0,
+        totalDelayMs: 0
+      };
+    } else {
+      const client = user
+        ? await this.exchangeManager.getExchangeClient(exchangeSlug, user)
+        : await this.exchangeManager.getPublicClient(exchangeSlug);
+
+      // Lazy-load markets so we can filter out symbols the exchange doesn't list.
+      // Without this, CCXT drops unknown symbols internally and may send an empty
+      // `symbols` param to the REST API, which Binance rejects with code -1102.
+      let marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
+      if (!marketsLoaded) {
+        try {
+          await client.loadMarkets();
+          marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.warn(
+            `loadMarkets(${exchangeSlug}) failed, proceeding without symbol validation: ${err.message}`
+          );
+        }
       }
+
+      const formattedPairs = uncachedSymbols.map((raw) => ({
+        raw,
+        formatted: this.exchangeManager.formatSymbol(exchangeSlug, raw)
+      }));
+
+      validPairs = marketsLoaded
+        ? formattedPairs.filter(({ formatted }) => formatted in (client.markets as Record<string, unknown>))
+        : formattedPairs;
+
+      if (validPairs.length === 0) {
+        this.logger.warn(
+          `getPrices(${exchangeSlug}): none of ${uncachedSymbols.length} requested symbols ` +
+            `(${uncachedSymbols.join(', ')}) exist on exchange; returning cached-only results`
+        );
+        return results;
+      }
+
+      result = await withExchangeRetry(() => client.fetchTickers(validPairs.map((p) => p.formatted)), {
+        logger: this.logger,
+        operationName: `fetchTickers(${exchangeSlug})`,
+        // Rate/weight limits are account-wide — skip retries to preserve
+        // request-weight budget and fall through to the stale cache.
+        isRetryable: (err) => !isRateLimitError(err) && !isWeightLimitError(err)
+      });
     }
-
-    const formattedPairs = uncachedSymbols.map((raw) => ({
-      raw,
-      formatted: this.exchangeManager.formatSymbol(exchangeSlug, raw)
-    }));
-
-    const validPairs = marketsLoaded
-      ? formattedPairs.filter(({ formatted }) => formatted in (client.markets as Record<string, unknown>))
-      : formattedPairs;
-
-    if (validPairs.length === 0) {
-      this.logger.warn(
-        `getPrices(${exchangeSlug}): none of ${uncachedSymbols.length} requested symbols ` +
-          `(${uncachedSymbols.join(', ')}) exist on exchange; returning cached-only results`
-      );
-      return results;
-    }
-
-    // Fetch all tickers with retry
-    const result = await withExchangeRetry(() => client.fetchTickers(validPairs.map((p) => p.formatted)), {
-      logger: this.logger,
-      operationName: `fetchTickers(${exchangeSlug})`
-    });
 
     if (result.success && result.result) {
       const tickers = result.result;
+
+      this.circuitBreaker.recordSuccess(this.circuitKey(exchangeSlug));
 
       for (const { raw: symbol, formatted: formattedSymbol } of validPairs) {
         const ticker = tickers[formattedSymbol];
@@ -290,9 +341,13 @@ export class PaperTradingMarketDataService {
       return results;
     }
 
+    if (!circuitOpen && result.error) {
+      this.circuitBreaker.recordFailure(this.circuitKey(exchangeSlug));
+    }
+
     // All retries exhausted — fall back to stale cache
     this.logger.warn(
-      `All retries exhausted fetching prices from ${exchangeSlug}. ` +
+      `${circuitOpen ? 'Circuit open' : 'All retries exhausted'} fetching prices from ${exchangeSlug}. ` +
         `Falling back to stale cached prices for ${uncachedSymbols.length} symbol(s).`
     );
 

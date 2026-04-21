@@ -173,6 +173,26 @@ export function isAuthenticationError(error: Error): boolean {
 }
 
 /**
+ * Check if an error is a Binance-style request-weight limit (code -1003).
+ * Unlike per-endpoint rate limits, weight limits are account/IP-wide and reset
+ * at the top of each minute, so retrying after a short backoff rarely helps.
+ */
+export function isWeightLimitError(error: Error): boolean {
+  const message = error.message?.toLowerCase() || '';
+  const hasExactWeightLimitCode = /"code"\s*:\s*-1003\b/.test(message) || /(^|[^0-9-])-1003([^0-9]|$)/.test(message);
+  return hasExactWeightLimitCode || message.includes('request weight');
+}
+
+/**
+ * Compute the ms until the top of the next UTC minute, with a small cushion.
+ * Used to delay retries of weight-limit errors until the 1200/min budget resets.
+ */
+export function msUntilNextMinute(nowMs: number = Date.now(), cushionMs = 500): number {
+  const ms = 60_000 - (nowMs % 60_000);
+  return ms + cushionMs;
+}
+
+/**
  * Check if an error is a clock skew / timestamp error (Binance -1021).
  * These errors occur when the client clock drifts from the exchange server clock
  * and the request falls outside the recvWindow.
@@ -398,6 +418,12 @@ export async function withRateLimitRetryThrow<T>(operation: () => Promise<T>, op
  * - Timeout/network: uses default exponential backoff
  */
 export function exchangeAwareDelay(error: Error, _attempt: number, defaultDelayMs: number): number | void {
+  // Weight-limit errors (Binance -1003) are account/IP-wide and reset at the top
+  // of each minute. A fixed 5s backoff rarely helps — wait until the budget resets.
+  if (isWeightLimitError(error)) {
+    return msUntilNextMinute();
+  }
+
   if (isRateLimitError(error)) {
     const retryAfter = extractRetryAfterMs(error);
     const rateLimitDelay = retryAfter ?? 5000;

@@ -5,6 +5,14 @@ import { PaperTradingMarketDataService, type PriceData } from './paper-trading-m
 import type { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import * as retryUtil from '../../shared/retry.util';
 
+const createCircuitBreaker = (overrides: Partial<Record<string, jest.Mock>> = {}) => ({
+  isOpen: jest.fn().mockReturnValue(false),
+  recordSuccess: jest.fn(),
+  recordFailure: jest.fn(),
+  checkCircuit: jest.fn(),
+  ...overrides
+});
+
 const createService = (
   overrides: Partial<{
     cacheManager: any;
@@ -12,6 +20,7 @@ const createService = (
     config: any;
     coinSelectionService: any;
     coinService: any;
+    circuitBreaker: any;
   }> = {}
 ) => {
   const cacheManager = overrides.cacheManager ?? {
@@ -36,18 +45,22 @@ const createService = (
     getCoinsByRiskLevel: jest.fn().mockResolvedValue([])
   };
 
+  const circuitBreaker = overrides.circuitBreaker ?? createCircuitBreaker();
+
   return {
     service: new PaperTradingMarketDataService(
       config as any,
       cacheManager,
       exchangeManager as ExchangeManagerService,
       coinSelectionService as any,
-      coinService as any
+      coinService as any,
+      circuitBreaker as any
     ),
     cacheManager,
     exchangeManager,
     coinSelectionService,
-    coinService
+    coinService,
+    circuitBreaker
   };
 };
 
@@ -749,6 +762,119 @@ describe('PaperTradingMarketDataService', () => {
 
       expect(loadMarkets).not.toHaveBeenCalled();
       expect(fetchTickers).toHaveBeenCalledWith(['BTC/USDT']);
+    });
+
+    it('short-circuits to stale cache when breaker is open — does not hit the exchange', async () => {
+      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      const stalebtc = {
+        symbol: 'BTC/USDT',
+        price: 44000,
+        timestamp: new Date(),
+        source: 'binance_us'
+      };
+
+      const cacheManager = {
+        get: jest.fn().mockImplementation((key: string) => {
+          if (!key.endsWith(':stale')) return Promise.resolve(null);
+          if (key.includes('BTC/USDT')) return Promise.resolve(stalebtc);
+          return Promise.resolve(null);
+        }),
+        set: jest.fn()
+      };
+
+      const exchangeManager = {
+        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
+        getPublicClient: jest.fn()
+      };
+
+      const circuitBreaker = createCircuitBreaker({ isOpen: jest.fn().mockReturnValue(true) });
+
+      const { service } = createService({ cacheManager, exchangeManager, circuitBreaker });
+      const result = await service.getPrices('binance_us', ['BTC/USDT']);
+
+      expect(result.get('BTC/USDT')?.source).toBe('binance_us:stale');
+      // Most important assertion: with breaker open, we never talk to the exchange
+      expect(withExchangeRetrySpy).not.toHaveBeenCalled();
+      expect(exchangeManager.getPublicClient).not.toHaveBeenCalled();
+      // And we don't re-count a synthetic failure against the circuit
+      expect(circuitBreaker.recordFailure).not.toHaveBeenCalled();
+      loggerSpy.mockRestore();
+    });
+
+    it('records a breaker failure on weight-limit error and lets caller skip retries', async () => {
+      const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+
+      const weightError = new Error(
+        'binanceus 429 Too Many Requests {"code":-1003,"msg":"Too much request weight used; current limit is 1200 request weight per 1 MINUTE."}'
+      );
+
+      const cacheManager = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn()
+      };
+
+      const exchangeManager = {
+        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
+        getPublicClient: jest.fn().mockResolvedValue({
+          markets: { 'THETA/USDT': {} },
+          loadMarkets: jest.fn().mockResolvedValue(undefined),
+          fetchTickers: jest.fn(),
+          fetchTicker: jest.fn().mockRejectedValue(weightError)
+        })
+      };
+
+      withExchangeRetrySpy.mockResolvedValue({
+        success: false,
+        error: weightError,
+        attempts: 1, // Key: NOT 4 — the isRetryable callback must short-circuit retries
+        totalDelayMs: 0
+      });
+
+      const circuitBreaker = createCircuitBreaker();
+      const coinService = {
+        getCoinsByRiskLevel: jest.fn(),
+        getCoinBySymbol: jest.fn().mockResolvedValue(null)
+      };
+
+      const { service } = createService({ cacheManager, exchangeManager, circuitBreaker, coinService });
+
+      await expect(service.getPrices('binance_us', ['THETA/USDT'])).rejects.toThrow(/no stale cache/);
+
+      // Breaker saw the failure and can count toward opening
+      expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('paper-trading:market-data:binance_us');
+      // And we passed an isRetryable guard so the retry wrapper won't loop on 429s
+      const callArgs = withExchangeRetrySpy.mock.calls[0];
+      const retryOptions = callArgs[1];
+      expect(retryOptions.isRetryable(weightError)).toBe(false);
+      loggerSpy.mockRestore();
+    });
+
+    it('records a breaker success on a normal fetch', async () => {
+      const tickers = {
+        'BTC/USDT': { last: 45000, bid: 44950, ask: 45050, timestamp: 1700000000000 }
+      };
+
+      const cacheManager = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
+      const exchangeManager = {
+        formatSymbol: jest.fn().mockImplementation((_: string, s: string) => s),
+        getPublicClient: jest.fn().mockResolvedValue({
+          markets: { 'BTC/USDT': {} },
+          loadMarkets: jest.fn().mockResolvedValue(undefined),
+          fetchTickers: jest.fn()
+        })
+      };
+
+      withExchangeRetrySpy.mockResolvedValue({ success: true, result: tickers, attempts: 1, totalDelayMs: 0 });
+
+      const circuitBreaker = createCircuitBreaker();
+      const { service } = createService({ cacheManager, exchangeManager, circuitBreaker });
+
+      await service.getPrices('binance_us', ['BTC/USDT']);
+
+      expect(circuitBreaker.recordSuccess).toHaveBeenCalledWith('paper-trading:market-data:binance_us');
+      expect(circuitBreaker.recordFailure).not.toHaveBeenCalled();
     });
   });
 

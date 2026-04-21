@@ -14,6 +14,7 @@ import { TickerPairs } from './ticker-pairs/ticker-pairs.entity';
 
 import { CoinSelection } from '../coin-selection/coin-selection.entity';
 import { Order } from '../order/order.entity';
+import { NUMERIC_TRANSFORMER } from '../utils/transformers';
 
 @Entity()
 export class Coin {
@@ -77,7 +78,14 @@ export class Coin {
   })
   marketRank?: number | null;
 
-  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 38,
+    scale: 8,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Total supply of the coin',
     example: 21000000.0,
@@ -86,7 +94,14 @@ export class Coin {
   })
   totalSupply?: number | null;
 
-  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 38,
+    scale: 8,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Circulating supply of the coin',
     example: 18500000.0,
@@ -95,7 +110,14 @@ export class Coin {
   })
   circulatingSupply?: number | null;
 
-  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 38,
+    scale: 8,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Maximum supply of the coin',
     example: 21000000.0,
@@ -112,7 +134,14 @@ export class Coin {
   })
   geckoRank?: number | null;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Sentiment up score',
     example: 60.0,
@@ -121,7 +150,14 @@ export class Coin {
   })
   sentimentUp?: number | null;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Sentiment down score',
     example: 40.0,
@@ -130,7 +166,14 @@ export class Coin {
   })
   sentimentDown?: number | null;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 25,
+    scale: 8,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'All-time high price of the coin',
     example: 60000.0,
@@ -139,7 +182,14 @@ export class Coin {
   })
   ath?: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 6,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Change from all-time high',
     example: -20.0,
@@ -157,7 +207,7 @@ export class Coin {
   })
   athDate?: Date | null;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, default: null })
+  @Column({ type: 'decimal', precision: 25, scale: 8, default: null, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({
     description: 'All-time low price of the coin',
     example: 3000.0,
@@ -166,7 +216,7 @@ export class Coin {
   })
   atl?: number | null;
 
-  @Column({ type: 'decimal', precision: 15, scale: 6, default: null })
+  @Column({ type: 'decimal', precision: 15, scale: 6, default: null, transformer: NUMERIC_TRANSFORMER })
   @ApiProperty({
     description: 'Change from all-time low',
     example: 50.0,
@@ -175,7 +225,14 @@ export class Coin {
   })
   atlChange?: number | null;
 
-  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 38,
+    scale: 8,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Total volume of the coin',
     example: 600000000.0,
@@ -184,7 +241,14 @@ export class Coin {
   })
   totalVolume?: number | null;
 
-  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 38,
+    scale: 8,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Market capitalization of the coin',
     example: 1200000000000.0,
@@ -193,7 +257,14 @@ export class Coin {
   })
   marketCap?: number | null;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 25,
+    scale: 8,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Price change in 24 hours',
     example: -132.19,
@@ -202,7 +273,14 @@ export class Coin {
   })
   priceChange24h?: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 5,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Price change percentage in 24 hours',
     example: -4.97413,
@@ -211,7 +289,14 @@ export class Coin {
   })
   priceChangePercentage24h?: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 5,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Price change percentage in 7 days',
     example: 0.74613,
@@ -220,7 +305,14 @@ export class Coin {
   })
   priceChangePercentage7d?: number | null;
 
-  @Column({ type: 'decimal', precision: 25, scale: 8, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 25,
+    scale: 8,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Current price of the coin in USD',
     example: 45000.12345678,
@@ -229,7 +321,14 @@ export class Coin {
   })
   currentPrice?: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 5,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Price change percentage in 14 days',
     example: 8.36958,
@@ -238,7 +337,14 @@ export class Coin {
   })
   priceChangePercentage14d?: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 5,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Price change percentage in 30 days',
     example: 41.03672,
@@ -247,7 +353,14 @@ export class Coin {
   })
   priceChangePercentage30d?: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 5,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Price change percentage in 60 days',
     example: 20.9407,
@@ -256,7 +369,14 @@ export class Coin {
   })
   priceChangePercentage60d?: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 5,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Price change percentage in 200 days',
     example: 5.1652,
@@ -265,7 +385,14 @@ export class Coin {
   })
   priceChangePercentage200d?: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 5,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Price change percentage in 1 year',
     example: -33.698,
@@ -274,7 +401,14 @@ export class Coin {
   })
   priceChangePercentage1y?: number | null;
 
-  @Column({ type: 'decimal', precision: 38, scale: 8, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 38,
+    scale: 8,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Market cap change in 24 hours',
     example: -16184990966.68,
@@ -283,7 +417,14 @@ export class Coin {
   })
   marketCapChange24h?: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 5, nullable: true, default: null })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 5,
+    nullable: true,
+    default: null,
+    transformer: NUMERIC_TRANSFORMER
+  })
   @ApiProperty({
     description: 'Market cap change percentage in 24 hours',
     example: -5.04176,

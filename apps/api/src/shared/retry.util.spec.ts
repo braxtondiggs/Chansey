@@ -7,6 +7,8 @@ import {
   isClockSkewError,
   isRateLimitError,
   isTransientError,
+  isWeightLimitError,
+  msUntilNextMinute,
   rateLimitAwareDelay,
   withExchangeRetry,
   withExchangeRetryThrow,
@@ -568,6 +570,60 @@ describe('retry.util', () => {
     it('should return undefined for timeout/network errors (use default backoff)', () => {
       expect(exchangeAwareDelay(new Error('ECONNRESET'), 1, 1000)).toBeUndefined();
       expect(exchangeAwareDelay(new Error('ETIMEDOUT'), 1, 1000)).toBeUndefined();
+    });
+
+    it('should wait until the next minute boundary for Binance weight-limit errors (-1003)', () => {
+      // Freeze Date.now() so we know exactly how long until the next minute.
+      // 1_700_000_010_000 % 60_000 === 30_000 → 30s into the minute → 30s + cushion remain.
+      const frozen = 1_700_000_010_000;
+      const dateNowSpy = jest.spyOn(Date, 'now').mockReturnValue(frozen);
+
+      try {
+        const error = new Error(
+          'binanceus 429 Too Many Requests {"code":-1003,"msg":"Too much request weight used; current limit is 1200 request weight per 1 MINUTE."}'
+        );
+
+        const delay = exchangeAwareDelay(error, 1, 5000);
+
+        expect(delay).toBe(30_500);
+        // Crucially, must not fall through to the generic 5s rate-limit default
+        expect(delay).not.toBe(5000);
+      } finally {
+        dateNowSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('isWeightLimitError', () => {
+    it('matches Binance -1003 error code', () => {
+      expect(
+        isWeightLimitError(new Error('binanceus 429 Too Many Requests {"code":-1003,"msg":"Too much request weight"}'))
+      ).toBe(true);
+    });
+
+    it('matches "request weight" in the message', () => {
+      expect(isWeightLimitError(new Error('current limit is 1200 request weight per 1 MINUTE'))).toBe(true);
+    });
+
+    it('does not match generic rate-limit messages', () => {
+      expect(isWeightLimitError(new Error('rate limit exceeded'))).toBe(false);
+      expect(isWeightLimitError(new Error('HTTP 429'))).toBe(false);
+    });
+  });
+
+  describe('msUntilNextMinute', () => {
+    // 1_700_000_010_000 % 60_000 === 30_000 → 30s into the minute
+    it('returns remaining ms in minute plus the default cushion', () => {
+      expect(msUntilNextMinute(1_700_000_010_000)).toBe(30_500);
+    });
+
+    it('uses a custom cushion when provided', () => {
+      expect(msUntilNextMinute(1_700_000_010_000, 0)).toBe(30_000);
+    });
+
+    it('never returns 0 — always waits at least the cushion past the boundary', () => {
+      // Exactly on the boundary — waiting 0ms would immediately burn another weight unit
+      expect(msUntilNextMinute(1_700_000_000_000)).toBeGreaterThan(0);
     });
   });
 
