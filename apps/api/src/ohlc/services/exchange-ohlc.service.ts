@@ -15,11 +15,14 @@ export interface OHLCRawData {
   volume: number;
 }
 
+export type OHLCFetchErrorType = 'no_data' | 'request_failed' | 'no_exchanges_available';
+
 export interface OHLCFetchResult {
   success: boolean;
   candles?: OHLCRawData[];
   exchangeSlug?: string;
   error?: string;
+  errorType?: OHLCFetchErrorType;
 }
 
 @Injectable()
@@ -53,8 +56,11 @@ export class ExchangeOHLCService {
    */
   async fetchOHLCWithFallback(symbol: string, since: number, limit = 500): Promise<OHLCFetchResult> {
     const errors: string[] = [];
+    let sawNoData = false;
+    let attempted = 0;
 
     for (const exchangeSlug of this.EXCHANGE_PRIORITY) {
+      attempted++;
       const result = await this.fetchOHLCWithRetry(exchangeSlug, symbol, since, limit);
 
       if (result.success) {
@@ -62,14 +68,29 @@ export class ExchangeOHLCService {
       }
 
       errors.push(`${exchangeSlug}: ${result.error}`);
+      if (result.errorType === 'no_data') sawNoData = true;
 
       // Add delay between exchange attempts to avoid rate limiting
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
+    // Distinguish "every exchange errored" from "no exchange has this data".
+    // Callers use this to decide whether to halt (request_failed) or skip ahead (no_data).
+    // If any exchange returned no_data, the pair/hour genuinely has no candle there; otherwise
+    // every attempt was a request error and we should not silently skip forward.
+    let errorType: OHLCFetchErrorType;
+    if (attempted === 0) {
+      errorType = 'no_exchanges_available';
+    } else if (sawNoData) {
+      errorType = 'no_data';
+    } else {
+      errorType = 'request_failed';
+    }
+
     return {
       success: false,
-      error: `All exchanges failed: ${errors.join('; ')}`
+      error: attempted === 0 ? 'No exchanges configured' : `All exchanges failed: ${errors.join('; ')}`,
+      errorType
     };
   }
 
@@ -95,7 +116,8 @@ export class ExchangeOHLCService {
         return {
           success: false,
           exchangeSlug,
-          error: `${exchangeSlug} does not support fetchOHLCV`
+          error: `${exchangeSlug} does not support fetchOHLCV`,
+          errorType: 'no_data'
         };
       }
 
@@ -113,7 +135,8 @@ export class ExchangeOHLCService {
         return {
           success: false,
           exchangeSlug,
-          error: `Symbol ${formattedSymbol} not found on ${exchangeSlug}`
+          error: `Symbol ${formattedSymbol} not found on ${exchangeSlug}`,
+          errorType: 'no_data'
         };
       }
 
@@ -128,7 +151,8 @@ export class ExchangeOHLCService {
         return {
           success: false,
           exchangeSlug,
-          error: 'No data returned'
+          error: 'No data returned',
+          errorType: 'no_data'
         };
       }
 
@@ -156,7 +180,8 @@ export class ExchangeOHLCService {
       return {
         success: false,
         exchangeSlug,
-        error: message
+        error: message,
+        errorType: 'request_failed'
       };
     }
   }

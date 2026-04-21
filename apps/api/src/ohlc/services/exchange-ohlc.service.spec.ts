@@ -43,6 +43,39 @@ describe('ExchangeOHLCService', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('does not support fetchOHLCV');
+    expect(result.errorType).toBe('no_data');
+  });
+
+  it('fetchOHLC tags missing symbol as no_data', async () => {
+    const client = createClient({ markets: { 'ETH/USD': {} } });
+    exchangeManager.getPublicClient.mockResolvedValue(client as any);
+
+    const result = await service.fetchOHLC('binance_us', 'BTC/USD', Date.now());
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('no_data');
+  });
+
+  it('fetchOHLC tags empty candle response as no_data', async () => {
+    const client = createClient({ markets: { 'BTC/USD': {} } });
+    client.fetchOHLCV.mockResolvedValue([] as any);
+    exchangeManager.getPublicClient.mockResolvedValue(client as any);
+
+    const result = await service.fetchOHLC('binance_us', 'BTC/USD', Date.now());
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('no_data');
+  });
+
+  it('fetchOHLC tags caught exceptions as request_failed', async () => {
+    const client = createClient({ markets: { 'BTC/USD': {} } });
+    client.fetchOHLCV.mockRejectedValue(new Error('network down'));
+    exchangeManager.getPublicClient.mockResolvedValue(client as any);
+
+    const result = await service.fetchOHLC('binance_us', 'BTC/USD', Date.now());
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('request_failed');
   });
 
   it('fetchOHLC loads markets and maps candles', async () => {
@@ -90,14 +123,52 @@ describe('ExchangeOHLCService', () => {
   it('fetchOHLCWithFallback returns combined errors when all fail', async () => {
     jest
       .spyOn(service, 'fetchOHLCWithRetry')
-      .mockResolvedValueOnce({ success: false, error: 'fail1' })
-      .mockResolvedValueOnce({ success: false, error: 'fail2' })
-      .mockResolvedValueOnce({ success: false, error: 'fail3' });
+      .mockResolvedValueOnce({ success: false, error: 'fail1', errorType: 'request_failed' })
+      .mockResolvedValueOnce({ success: false, error: 'fail2', errorType: 'request_failed' })
+      .mockResolvedValueOnce({ success: false, error: 'fail3', errorType: 'request_failed' });
 
     const result = await service.fetchOHLCWithFallback('BTC/USD', 0, 500);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('All exchanges failed');
+  });
+
+  it('fetchOHLCWithFallback propagates request_failed when every exchange errored', async () => {
+    jest
+      .spyOn(service, 'fetchOHLCWithRetry')
+      .mockResolvedValueOnce({ success: false, error: 'net1', errorType: 'request_failed' })
+      .mockResolvedValueOnce({ success: false, error: 'net2', errorType: 'request_failed' })
+      .mockResolvedValueOnce({ success: false, error: 'net3', errorType: 'request_failed' });
+
+    const result = await service.fetchOHLCWithFallback('BTC/USD', 0, 500);
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('request_failed');
+  });
+
+  it('fetchOHLCWithFallback propagates no_data when at least one exchange reported it', async () => {
+    jest
+      .spyOn(service, 'fetchOHLCWithRetry')
+      .mockResolvedValueOnce({ success: false, error: 'net', errorType: 'request_failed' })
+      .mockResolvedValueOnce({ success: false, error: 'missing', errorType: 'no_data' })
+      .mockResolvedValueOnce({ success: false, error: 'net', errorType: 'request_failed' });
+
+    const result = await service.fetchOHLCWithFallback('BTC/USD', 0, 500);
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('no_data');
+  });
+
+  it('fetchOHLCWithFallback returns no_exchanges_available when priority list is empty', async () => {
+    configService.get.mockReturnValue('');
+    const emptyService = new ExchangeOHLCService(exchangeManager, configService as any);
+    // Override the priority list to simulate no configured exchanges.
+    (emptyService as any).EXCHANGE_PRIORITY = [];
+
+    const result = await emptyService.fetchOHLCWithFallback('BTC/USD', 0, 500);
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('no_exchanges_available');
   });
 
   it('supportsOHLC returns false on client errors', async () => {

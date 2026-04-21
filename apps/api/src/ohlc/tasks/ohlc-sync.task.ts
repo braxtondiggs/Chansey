@@ -218,14 +218,25 @@ export class OHLCSyncTask extends FailSafeWorkerHost implements OnModuleInit {
         `Seeded ${created} symbol mappings from ${coins.length} candidate(s), skipped ${skipped} with no valid pairs`
       );
 
-      // Trigger backfill for newly mapped coins (runs in background, non-blocking)
+      // Trigger backfill for newly mapped coins in batches to avoid rate-limiting
+      // the exchange when the weekly seeder discovers a large cohort of new coins.
       if (newlyMappedCoinIds.length > 0) {
         this.logger.log(`Triggering backfill for ${newlyMappedCoinIds.length} newly mapped coin(s)`);
-        for (const coinId of newlyMappedCoinIds) {
-          this.backfillService.startBackfill(coinId).catch((error: unknown) => {
-            const err = toErrorInfo(error);
-            this.logger.warn(`Failed to trigger backfill for coin ${coinId}: ${err.message}`);
-          });
+        const BACKFILL_BATCH_SIZE = 3;
+        const BACKFILL_BATCH_DELAY_MS = 1000;
+        for (let i = 0; i < newlyMappedCoinIds.length; i += BACKFILL_BATCH_SIZE) {
+          const batch = newlyMappedCoinIds.slice(i, i + BACKFILL_BATCH_SIZE);
+          await Promise.all(
+            batch.map((coinId) =>
+              this.backfillService.startBackfill(coinId).catch((error: unknown) => {
+                const err = toErrorInfo(error);
+                this.logger.warn(`Failed to trigger backfill for coin ${coinId}: ${err.message}`);
+              })
+            )
+          );
+          if (i + BACKFILL_BATCH_SIZE < newlyMappedCoinIds.length) {
+            await this.sleep(BACKFILL_BATCH_DELAY_MS);
+          }
         }
       }
     } catch (error: unknown) {
