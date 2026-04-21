@@ -1,4 +1,5 @@
 export { cleanExchangeMessage, mapCcxtError } from './ccxt-error-mapper.util';
+export { TICKER_CIRCUIT_KEY_PREFIX, tickerCircuitKey } from './circuit-breaker.constants';
 export { LOCK_DEFAULTS, LOCK_KEYS, LOCK_REDIS_DB } from './distributed-lock.constants';
 export { DistributedLockService, LockInfo, LockOptions, LockResult } from './distributed-lock.service';
 export { isUniqueConstraintViolation, toErrorInfo } from './error.util';
@@ -30,6 +31,7 @@ export {
   exchangeAwareDelay,
   extractRetryAfterMs,
   isAuthenticationError,
+  isClientError,
   isClockSkewError,
   isRateLimitError,
   isTransientError,

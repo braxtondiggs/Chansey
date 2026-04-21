@@ -7,6 +7,9 @@ import { DataSource, Repository } from 'typeorm';
 
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { TickerBatcherService } from '../../exchange/ticker-batcher/ticker-batcher.service';
+import { tickerCircuitKey } from '../../shared/circuit-breaker.constants';
+import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { PositionExit } from '../entities/position-exit.entity';
 import {
@@ -36,7 +39,9 @@ export class PositionMonitorService {
     private readonly orderRepo: Repository<Order>,
     private readonly exchangeManagerService: ExchangeManagerService,
     private readonly exchangeKeyService: ExchangeKeyService,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly circuitBreaker: CircuitBreakerService,
+    private readonly tickerBatcher: TickerBatcherService
   ) {}
 
   /**
@@ -121,7 +126,10 @@ export class PositionMonitorService {
 
   /**
    * Fetch current prices for all symbols held by positions under one exchange key.
-   * Returns the ticker map and exchange client, or null client if the key is invalid.
+   * Routes through TickerBatcherService so we participate in the shared ticker
+   * circuit breaker — during rate-limit storms we fail fast instead of amplifying
+   * load. Returns a null client when the circuit is open or the exchange key is
+   * missing so the caller's existing `!exchangeClient` guard skips all positions.
    */
   private async fetchPricesForExchange(
     exchangeKeyId: string,
@@ -135,58 +143,36 @@ export class PositionMonitorService {
       return { tickers: {}, exchangeClient: null };
     }
 
-    const exchangeClient = await this.exchangeManagerService.getExchangeClient(
-      exchangeKey.exchange.slug,
-      position.user
-    );
+    const slug = exchangeKey.exchange.slug;
+
+    if (this.circuitBreaker.isOpen(tickerCircuitKey(slug))) {
+      this.logger.debug(`ticker_circuit_open: skipping ${positions.length} positions on ${slug}`);
+      return { tickers: {}, exchangeClient: null };
+    }
+
+    const exchangeClient = await this.exchangeManagerService.getExchangeClient(slug, position.user);
 
     const symbols = [...new Set(positions.map((p) => p.symbol))];
     const tickers: Record<string, number> = {};
 
-    if (exchangeClient.has['fetchTickers']) {
-      try {
-        const batchTickers = await exchangeClient.fetchTickers(symbols);
-        for (const symbol of symbols) {
-          const ticker = batchTickers[symbol];
-          if (ticker) {
-            const price = ticker.last ?? ticker.close ?? null;
-            if (price != null && price > 0) {
-              tickers[symbol] = price;
-            }
-          }
+    if (symbols.length === 0) {
+      return { tickers, exchangeClient };
+    }
+
+    try {
+      const batched = await this.tickerBatcher.getTickers(slug, symbols);
+      for (const [sym, ticker] of batched) {
+        if (ticker.price > 0) {
+          tickers[sym] = ticker.price;
         }
-      } catch (batchError: unknown) {
-        const err = toErrorInfo(batchError);
-        this.logger.warn(`Batch fetchTickers failed, falling back to sequential: ${err.message}`);
-        await this.fetchTickersSequentially(exchangeClient, symbols, tickers);
       }
-    } else {
-      await this.fetchTickersSequentially(exchangeClient, symbols, tickers);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Ticker batch fetch failed for ${slug}: ${err.message}`);
+      return { tickers: {}, exchangeClient: null };
     }
 
     return { tickers, exchangeClient };
-  }
-
-  /**
-   * Fetch tickers one-by-one as a fallback when batch fetchTickers is unavailable or fails
-   */
-  private async fetchTickersSequentially(
-    exchangeClient: ccxt.Exchange,
-    symbols: string[],
-    tickers: Record<string, number>
-  ): Promise<void> {
-    for (const symbol of symbols) {
-      try {
-        const ticker = await exchangeClient.fetchTicker(symbol);
-        const price = ticker.last ?? ticker.close ?? null;
-        if (price != null && price > 0) {
-          tickers[symbol] = price;
-        }
-      } catch (tickerError: unknown) {
-        const err = toErrorInfo(tickerError);
-        this.logger.warn(`Failed to fetch ticker for ${symbol}: ${err.message}`);
-      }
-    }
   }
 
   /**

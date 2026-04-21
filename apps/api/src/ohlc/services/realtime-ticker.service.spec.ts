@@ -3,12 +3,10 @@ import { type Cache } from 'cache-manager';
 import { RealtimeTickerService } from './realtime-ticker.service';
 
 import { type CoinService } from '../../coin/coin.service';
-import { type ExchangeManagerService } from '../../exchange/exchange-manager.service';
 
 describe('RealtimeTickerService', () => {
   let service: RealtimeTickerService;
   let cache: jest.Mocked<Cache>;
-  let exchangeManager: jest.Mocked<ExchangeManagerService>;
   let coinService: jest.Mocked<CoinService>;
 
   beforeEach(() => {
@@ -18,16 +16,17 @@ describe('RealtimeTickerService', () => {
       del: jest.fn()
     } as unknown as jest.Mocked<Cache>;
 
-    exchangeManager = {
-      getPublicClient: jest.fn()
-    } as unknown as jest.Mocked<ExchangeManagerService>;
-
     coinService = {
       getCoinById: jest.fn(),
       updateCurrentPrice: jest.fn()
     } as unknown as jest.Mocked<CoinService>;
 
-    service = new RealtimeTickerService(cache, exchangeManager, coinService);
+    const tickerBatcher = {
+      getTicker: jest.fn(),
+      getTickers: jest.fn()
+    } as any;
+
+    service = new RealtimeTickerService(cache, coinService, tickerBatcher);
   });
 
   afterEach(() => {
@@ -192,35 +191,31 @@ describe('RealtimeTickerService', () => {
     expect(coinService.updateCurrentPrice).toHaveBeenCalledWith('eth', 70);
   });
 
-  it('getPrice uses kraken symbol mapping', async () => {
+  it('falls through the exchange priority list until the batcher returns a ticker', async () => {
     cache.get.mockResolvedValue(null);
     coinService.getCoinById.mockResolvedValue({ id: 'btc', symbol: 'btc' } as any);
 
-    const binanceClient = {
-      markets: {},
-      loadMarkets: jest.fn(),
-      fetchTicker: jest.fn()
-    };
-    const gdaxClient = {
-      markets: {},
-      loadMarkets: jest.fn(),
-      fetchTicker: jest.fn()
-    };
-    const krakenClient = {
-      markets: { 'XBT/ZUSD': {} },
-      loadMarkets: jest.fn(),
-      fetchTicker: jest.fn().mockResolvedValue({ last: 42 })
-    };
-
-    exchangeManager.getPublicClient.mockImplementation((slug?: string) => {
-      if (slug === 'binance_us') return binanceClient as any;
-      if (slug === 'gdax') return gdaxClient as any;
-      return krakenClient as any;
+    // Swap the already-constructed service's batcher with one that returns undefined
+    // for binance_us and gdax, then resolves for kraken.
+    const tickerBatcher = (service as any).tickerBatcher as { getTicker: jest.Mock };
+    tickerBatcher.getTicker = jest.fn().mockImplementation((slug: string) => {
+      if (slug === 'kraken') {
+        return Promise.resolve({
+          symbol: 'BTC/USD',
+          price: 42,
+          timestamp: new Date(),
+          source: 'kraken'
+        });
+      }
+      return Promise.resolve(undefined);
     });
 
     const result = await service.getPrice('btc');
 
     expect(result?.price).toBe(42);
-    expect(krakenClient.fetchTicker).toHaveBeenCalledWith('XBT/ZUSD');
+    expect(result?.source).toBe('kraken');
+    expect(tickerBatcher.getTicker).toHaveBeenCalledWith('binance_us', 'BTC/USD');
+    expect(tickerBatcher.getTicker).toHaveBeenCalledWith('gdax', 'BTC/USD');
+    expect(tickerBatcher.getTicker).toHaveBeenCalledWith('kraken', 'BTC/USD');
   });
 });

@@ -94,6 +94,11 @@ const envSchema = z.object({
   OHLC_RETENTION_DAYS: z.coerce.number().min(1).default(365),
   OHLC_EXCHANGE_PRIORITY: z.string().default('binance_us,gdax,kraken'),
 
+  // Ticker Batcher (coalesces concurrent exchange ticker fetches)
+  TICKER_BATCHER_FLUSH_MS: z.coerce.number().int().positive().optional(),
+  TICKER_BATCHER_MAX_BATCH_SIZE: z.coerce.number().int().positive().optional(),
+  TICKER_BATCHER_MEM_CACHE_TTL_MS: z.coerce.number().int().positive().optional(),
+
   // Observability - Grafana Stack (Optional)
   LOKI_ENDPOINT: z.string().url('Loki endpoint must be a valid URL').optional(),
   LOKI_USERNAME: z.string().optional(),
