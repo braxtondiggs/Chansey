@@ -8,6 +8,7 @@ import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { LOCK_REDIS } from '../../shared/lock-redis.provider';
 import { ListingAnnouncementType } from '../entities/listing-announcement.entity';
+import { normalizeBaseSymbol } from '../utils/symbol-normalization';
 
 const COINBASE_PRODUCTS_ENDPOINT = 'https://api.exchange.coinbase.com/products';
 const ELIGIBLE_QUOTE_CURRENCIES = new Set(['USD', 'USDC']);
@@ -114,7 +115,7 @@ export class CoinbaseAnnouncementClient implements AnnouncementClient, OnModuleI
       if (product.status !== 'online') continue;
       if (!ELIGIBLE_QUOTE_CURRENCIES.has(product.quote_currency)) continue;
       if (product.fx_stablecoin) continue;
-      bases.add(product.base_currency.toUpperCase());
+      bases.add(normalizeBaseSymbol(product.base_currency));
     }
     return [...bases].sort();
   }

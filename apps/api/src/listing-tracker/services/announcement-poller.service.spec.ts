@@ -18,6 +18,8 @@ describe('AnnouncementPollerService', () => {
   let announcementRepo: any;
   let coinRepo: any;
   let redis: any;
+  let gecko: any;
+  let circuitBreaker: any;
 
   beforeEach(() => {
     announcementRepo = {
@@ -34,7 +36,23 @@ describe('AnnouncementPollerService', () => {
         exec: jest.fn().mockResolvedValue([])
       }),
       scard: jest.fn().mockResolvedValue(0),
-      spop: jest.fn().mockResolvedValue(0)
+      spop: jest.fn().mockResolvedValue(0),
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue('OK')
+    };
+    gecko = {
+      client: {
+        coins: {
+          list: {
+            get: jest.fn().mockResolvedValue([])
+          }
+        }
+      }
+    };
+    circuitBreaker = {
+      checkCircuit: jest.fn(),
+      recordSuccess: jest.fn(),
+      recordFailure: jest.fn()
     };
   });
 
@@ -43,6 +61,8 @@ describe('AnnouncementPollerService', () => {
       announcementRepo,
       coinRepo,
       redis,
+      gecko,
+      circuitBreaker,
       clients[0] as unknown as BinanceAnnouncementClient,
       clients[1] as unknown as CoinbaseAnnouncementClient,
       clients[2] as unknown as KrakenAnnouncementClient
@@ -122,5 +142,61 @@ describe('AnnouncementPollerService', () => {
     );
     // Sibling clients keep working.
     expect(results[1].inserted).toHaveLength(1);
+  });
+
+  describe('CoinGecko fallback resolution', () => {
+    it('resolves coinId from CoinGecko when local lookup misses and exactly one symbol matches', async () => {
+      // Local lookup misses on the symbol query, but hits on the subsequent slug query.
+      coinRepo.findOne = jest
+        .fn()
+        .mockResolvedValueOnce(null) // symbol lookup
+        .mockResolvedValueOnce({ id: 'mapped-coin-id' }); // slug lookup
+      gecko.client.coins.list.get = jest.fn().mockResolvedValue([{ id: 'chipper', symbol: 'chip', name: 'Chip' }]);
+
+      const binance = makeClient('binance', [{ ...sample, announcedSymbol: 'CHIP' }]);
+      const poller = build([binance, makeClient('coinbase', []), makeClient('kraken', [])]);
+
+      const results = await poller.pollAll();
+      expect(results[0].inserted[0].coinId).toBe('mapped-coin-id');
+      expect(announcementRepo.save).toHaveBeenCalledWith(expect.objectContaining({ coinId: 'mapped-coin-id' }));
+    });
+
+    it('leaves coinId null when symbol matches multiple CoinGecko coins (ambiguous)', async () => {
+      coinRepo.findOne = jest.fn().mockResolvedValue(null);
+      gecko.client.coins.list.get = jest.fn().mockResolvedValue([
+        { id: 'chipper', symbol: 'chip' },
+        { id: 'other-chip', symbol: 'chip' }
+      ]);
+
+      const binance = makeClient('binance', [{ ...sample, announcedSymbol: 'CHIP' }]);
+      const poller = build([binance, makeClient('coinbase', []), makeClient('kraken', [])]);
+
+      const results = await poller.pollAll();
+      expect(results[0].inserted[0].coinId).toBeNull();
+    });
+
+    it('caches the CoinGecko list in Redis and reuses it on subsequent calls', async () => {
+      coinRepo.findOne = jest.fn().mockResolvedValue(null);
+      gecko.client.coins.list.get = jest.fn().mockResolvedValue([{ id: 'foo', symbol: 'foo' }]);
+
+      const binance = makeClient('binance', [sample]);
+      const poller = build([binance, makeClient('coinbase', []), makeClient('kraken', [])]);
+
+      // First call: cache miss → fetch from CoinGecko → writes the cache.
+      await poller.pollAll();
+      expect(gecko.client.coins.list.get).toHaveBeenCalledTimes(1);
+      expect(redis.set).toHaveBeenCalledWith(
+        'listing-tracker:coingecko-coin-list',
+        expect.any(String),
+        'EX',
+        expect.any(Number)
+      );
+
+      // Second call: cache hit → reuses cached list, no additional CoinGecko fetch.
+      redis.get = jest.fn().mockResolvedValue(JSON.stringify([{ id: 'foo', symbol: 'foo' }]));
+      announcementRepo.findOne = jest.fn().mockResolvedValue({ id: 'existing' }); // skip re-insert
+      await poller.pollAll();
+      expect(gecko.client.coins.list.get).toHaveBeenCalledTimes(1);
+    });
   });
 });

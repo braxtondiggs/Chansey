@@ -1,10 +1,13 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards
@@ -12,6 +15,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 
+import { IsOptional, IsUUID } from 'class-validator';
 import { Repository } from 'typeorm';
 
 import { Role } from '@chansey/api-interfaces';
@@ -31,6 +35,12 @@ import { RolesGuard } from '../authentication/guard/roles.guard';
 import { Coin } from '../coin/coin.entity';
 
 const MAX_LIMIT = 500;
+
+class RetryAnnouncementDto {
+  @IsOptional()
+  @IsUUID()
+  coinId?: string;
+}
 
 @ApiTags('Admin - Listing Tracker')
 @ApiBearerAuth('token')
@@ -94,10 +104,27 @@ export class ListingTrackerController {
 
   @Post('announcements/:id/retry')
   @HttpCode(HttpStatus.ACCEPTED)
-  @ApiOperation({ summary: 'Re-fan-out an announcement to eligible users' })
-  async retryAnnouncement(@Param('id') id: string) {
+  @ApiOperation({
+    summary:
+      'Re-fan-out an announcement to eligible users. Optionally override the coin mapping via `coinId` query or body param when the original row was detected without a match.'
+  })
+  async retryAnnouncement(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('coinId', new ParseUUIDPipe({ optional: true })) coinIdQuery?: string,
+    @Body() body?: RetryAnnouncementDto
+  ) {
     const announcement = await this.announcementRepo.findOne({ where: { id } });
     if (!announcement) throw new NotFoundException(`Announcement ${id} not found`);
+
+    const overrideCoinId = coinIdQuery ?? body?.coinId;
+    if (overrideCoinId && !announcement.coinId) {
+      const overrideCoin = await this.coinRepo.findOne({ where: { id: overrideCoinId } });
+      if (!overrideCoin) throw new BadRequestException(`Coin ${overrideCoinId} not found`);
+      announcement.coinId = overrideCoin.id;
+      announcement.coin = overrideCoin;
+      await this.announcementRepo.save(announcement);
+    }
+
     if (!announcement.coinId) {
       return { status: 'skipped', reason: 'no-coin-mapping' };
     }

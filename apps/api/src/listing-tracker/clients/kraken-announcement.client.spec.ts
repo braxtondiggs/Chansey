@@ -140,6 +140,24 @@ describe('KrakenAnnouncementClient', () => {
       expect(result[0].announcedSymbol).toBe('BTC');
     });
 
+    it('skips pairs without wsname (ambiguous base/quote boundary)', async () => {
+      fetchSpy.mockResolvedValue(
+        makeFetchResponse({
+          result: {
+            // No wsname, base concatenated with quote — the old parser mis-extracted this as `APXUSD`.
+            APXUSD: { base: 'APXUSD', quote: 'ZUSD', status: 'online', altname: 'APXUSD' },
+            XXBTZUSD: { base: 'XXBT', quote: 'ZUSD', status: 'online', altname: 'XBTUSD', wsname: 'XBT/USD' }
+          }
+        })
+      );
+
+      const result = await client.getLatest();
+
+      const symbols = result.map((r) => r.announcedSymbol).sort();
+      // APXUSD without wsname is dropped; the BTC pair still comes through.
+      expect(symbols).toEqual(['BTC']);
+    });
+
     it('records circuit-breaker failure and throws on HTTP error', async () => {
       fetchSpy.mockResolvedValue(makeFetchResponse(null, false, 500));
       const recordFailureSpy = jest.spyOn(circuitBreaker, 'recordFailure');

@@ -178,6 +178,11 @@ const TRADING_METRIC_PROVIDERS = [
     name: 'chansey_live_orders_placed_total',
     help: 'Total live orders placed successfully',
     labelNames: ['market_type', 'side']
+  }),
+  makeCounterProvider({
+    name: 'chansey_listing_tracker_unmatched_total',
+    help: 'Listing announcements skipped because the symbol could not be matched to a coin',
+    labelNames: ['exchange_slug']
   })
 ];
 

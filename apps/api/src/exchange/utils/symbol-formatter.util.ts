@@ -5,15 +5,15 @@
  * Different exchanges use different conventions for trading symbols.
  */
 
+import { KRAKEN_BASE_ALIASES_INVERSE, KRAKEN_QUOTE_ALIASES_INVERSE } from '../constants';
+
 /**
  * Symbol conversion rules for specific exchanges
  */
 const EXCHANGE_SYMBOL_RULES: Record<string, { base: Record<string, string>; quote: Record<string, string> }> = {
   kraken: {
-    // Kraken uses XBT instead of BTC
-    base: { BTC: 'XBT' },
-    // Kraken uses ZUSD for USD
-    quote: { USD: 'ZUSD' }
+    base: KRAKEN_BASE_ALIASES_INVERSE,
+    quote: KRAKEN_QUOTE_ALIASES_INVERSE
   }
 };
 

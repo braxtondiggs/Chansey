@@ -48,7 +48,9 @@ export class TradingMetricsService {
     @InjectMetric('chansey_concentration_gate_blocks_total')
     private readonly concentrationGateBlocksTotal: Counter<string>,
     @InjectMetric('chansey_live_orders_placed_total')
-    private readonly liveOrdersPlacedTotal: Counter<string>
+    private readonly liveOrdersPlacedTotal: Counter<string>,
+    @InjectMetric('chansey_listing_tracker_unmatched_total')
+    private readonly listingTrackerUnmatchedTotal: Counter<string>
   ) {}
 
   recordOrdersSynced(exchange: string, status: 'success' | 'partial' | 'failed', count = 1): void {
@@ -122,5 +124,9 @@ export class TradingMetricsService {
 
   recordLiveOrderPlaced(marketType: 'futures' | 'spot', side: string): void {
     this.liveOrdersPlacedTotal.inc({ market_type: marketType, side });
+  }
+
+  recordListingTrackerUnmatched(exchangeSlug: string): void {
+    this.listingTrackerUnmatchedTotal.inc({ exchange_slug: exchangeSlug });
   }
 }
