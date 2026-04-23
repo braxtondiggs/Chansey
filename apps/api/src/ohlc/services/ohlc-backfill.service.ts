@@ -59,7 +59,9 @@ export class OHLCBackfillService {
       throw new Error(`Coin not found: ${coinId}`);
     }
 
-    const symbol = `${coin.symbol.toUpperCase()}/USD`;
+    // getSymbolMapsForCoins already filters isActive and orders by priority ASC at the DB layer.
+    const mappings = await this.symbolMapService.getSymbolMapsForCoins([coinId]);
+    const symbol = mappings[0]?.symbol ?? `${coin.symbol.toUpperCase()}/USD`;
     const now = new Date();
     const start = startDate || new Date(now.getTime() - this.ONE_YEAR_MS);
     const end = endDate || now;
@@ -113,17 +115,24 @@ export class OHLCBackfillService {
     // Remove from cancelled set if it was cancelled
     this.cancelledJobs.delete(coinId);
 
+    // Re-read the symbol map so a mapping fixed between runs (e.g. /USD -> /USDT) is actually used.
+    const mappings = await this.symbolMapService.getSymbolMapsForCoins([coinId]);
+    const freshSymbol = mappings[0]?.symbol ?? progress.coinSymbol;
+
+    if (freshSymbol !== progress.coinSymbol) {
+      this.logger.log(`Resuming ${coinId} with updated symbol ${progress.coinSymbol} → ${freshSymbol}`);
+      await this.updateProgress(coinId, { coinSymbol: freshSymbol });
+    }
+
     // Resume from current date
     this.logger.log(`Resuming backfill for ${coinId} from ${progress.currentDate.toISOString()}`);
 
     await this.updateProgress(coinId, { status: 'in_progress' });
 
-    this.performBackfill(coinId, progress.coinSymbol, progress.currentDate, progress.endDate).catch(
-      (error: unknown) => {
-        const err = toErrorInfo(error);
-        this.logger.error(`Resume backfill failed for ${coinId}: ${err.message}`);
-      }
-    );
+    this.performBackfill(coinId, freshSymbol, progress.currentDate, progress.endDate).catch((error: unknown) => {
+      const err = toErrorInfo(error);
+      this.logger.error(`Resume backfill failed for ${coinId}: ${err.message}`);
+    });
   }
 
   /**
@@ -204,17 +213,23 @@ export class OHLCBackfillService {
     for (let i = 0; i < coins.length; i += BATCH_SIZE) {
       const batch = coins.slice(i, i + BATCH_SIZE);
 
+      const existingMaps = await this.symbolMapService.getSymbolMapsForCoins(batch.map((c) => c.id));
+      const mappedCoinIds = new Set(existingMaps.map((m) => m.coinId));
+
       await Promise.all(
         batch.map(async (coin) => {
           try {
-            // Create symbol mapping if it doesn't exist
-            await this.symbolMapService.upsertSymbolMap({
-              coinId: coin.id,
-              exchangeId: primaryExchange.id,
-              symbol: `${coin.symbol.toUpperCase()}/USD`,
-              isActive: true,
-              priority: 0
-            });
+            // Only seed a /USD mapping when no active mapping exists — otherwise we'd
+            // stomp a more accurate pair (e.g. /USDT) picked by the weekly seeder.
+            if (!mappedCoinIds.has(coin.id)) {
+              await this.symbolMapService.upsertSymbolMap({
+                coinId: coin.id,
+                exchangeId: primaryExchange.id,
+                symbol: `${coin.symbol.toUpperCase()}/USD`,
+                isActive: true,
+                priority: 0
+              });
+            }
 
             // Start backfill
             await this.startBackfill(coin.id);
@@ -280,8 +295,15 @@ export class OHLCBackfillService {
             const lastCandle = result.candles[result.candles.length - 1];
             currentDate = new Date(lastCandle.timestamp + 3600000); // +1 hour
           }
+        } else if (result.errorType === 'request_failed' || result.errorType === 'no_exchanges_available') {
+          // Do NOT advance the cursor — throw so the catch block persists `failed` with the current
+          // cursor, preserving progress for a later resume once the upstream issue is fixed.
+          throw new Error(
+            `Exchange request failed for ${symbol} at ${new Date(since).toISOString()}: ${result.error ?? 'unknown'}`
+          );
         } else {
-          // No data - skip forward
+          // errorType === 'no_data' (or undefined legacy paths): the exchange genuinely has no
+          // candle for this hour. Skip forward.
           currentDate = new Date(currentDate.getTime() + 3600000);
         }
 
@@ -306,6 +328,22 @@ export class OHLCBackfillService {
 
         throw error;
       }
+    }
+
+    // Zero candles across the full range means the pair is wrong, delisted, or the exchange has
+    // no history. Mark failed so the manual resume endpoint (with a re-resolved symbol) can
+    // re-attempt instead of silently treating a no-op run as successful. Reset currentDate to
+    // fromDate so a resume has a full range to retry against the fresh symbol.
+    if (totalCandles === 0) {
+      const error = `No candles returned for ${symbol} between ${fromDate.toISOString()} and ${toDate.toISOString()}`;
+      await this.updateProgress(coinId, {
+        status: 'failed',
+        currentDate: fromDate,
+        percentComplete: 0,
+        error
+      });
+      this.logger.warn(`Backfill produced 0 candles for ${coinId} (${symbol}) — marking failed`);
+      return;
     }
 
     // Mark as complete

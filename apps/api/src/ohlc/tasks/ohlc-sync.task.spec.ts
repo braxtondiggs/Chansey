@@ -561,4 +561,41 @@ describe('OHLCSyncTask', () => {
 
     expect(backfillService.startBackfill).toHaveBeenCalledWith('btc');
   });
+
+  it('seedSymbolMaps fans out backfills in batches of 3 with a delay between batches', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DISABLE_BACKGROUND_TASKS = 'false';
+    configService.get.mockReturnValue(undefined);
+    symbolMapService.getActiveSymbolMaps.mockResolvedValue([]);
+    exchangeService.getExchanges.mockResolvedValue([{ id: 'ex-1', slug: 'binance_us', name: 'Binance US' }] as any);
+    exchangeOHLC.getAllBaseSymbols.mockResolvedValue(new Set(['A', 'B', 'C', 'D', 'E']));
+    coinService.getCoinsBySymbols.mockResolvedValue([
+      { id: 'a', symbol: 'a' },
+      { id: 'b', symbol: 'b' },
+      { id: 'c', symbol: 'c' },
+      { id: 'd', symbol: 'd' },
+      { id: 'e', symbol: 'e' }
+    ] as any);
+    exchangeOHLC.getAvailableSymbols.mockImplementation(async (_slug, sym) => [`${sym.toUpperCase()}/USD`]);
+    const sleepSpy = jest.spyOn(task as any, 'sleep').mockResolvedValue(undefined);
+    jest.spyOn(task as any, 'scheduleOHLCSyncJob').mockResolvedValue(undefined);
+
+    // Record the order that startBackfill is invoked relative to sleep calls
+    const order: string[] = [];
+    backfillService.startBackfill.mockImplementation((async (id: string) => {
+      order.push(`backfill:${id}`);
+      return 'job';
+    }) as any);
+    sleepSpy.mockImplementation((async (ms: number) => {
+      order.push(`sleep:${ms}`);
+    }) as any);
+
+    await task.onModuleInit();
+
+    expect(backfillService.startBackfill).toHaveBeenCalledTimes(5);
+    // First batch of 3 before the 1000ms sleep, second batch of 2 after
+    const firstSleepIndex = order.findIndex((e) => e === 'sleep:1000');
+    expect(firstSleepIndex).toBe(3);
+    expect(order.slice(4)).toEqual(['backfill:d', 'backfill:e']);
+  });
 });
