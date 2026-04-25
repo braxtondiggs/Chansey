@@ -15,7 +15,7 @@ const FETCH_TIMEOUT_MS = 10_000;
 const LAST_SEEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 // Must match `AnnouncementPollerService.LAST_SEEN_KEY()` — bootstrap seeds the same set the poller reads.
 const POLLER_LAST_SEEN_KEY = (slug: string) => `listing-tracker:last-seen:${slug}`;
-const BOOTSTRAP_SENTINEL_KEY = 'listing-tracker:binance:seeded';
+const BOOTSTRAP_SENTINEL_KEY = 'listing-tracker:binance_us:seeded';
 
 interface BinanceSymbol {
   symbol: string;
@@ -30,7 +30,7 @@ interface BinanceExchangeInfoResponse {
 
 @Injectable()
 export class BinanceAnnouncementClient implements AnnouncementClient, OnModuleInit {
-  readonly exchangeSlug = 'binance';
+  readonly exchangeSlug = 'binance_us';
   private readonly logger = new Logger(BinanceAnnouncementClient.name);
   private readonly circuitKey = `listing-tracker:${this.exchangeSlug}`;
 
