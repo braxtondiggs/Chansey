@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
+import { InvalidSymbolException } from '../../common/exceptions';
 import { Order } from '../../order/order.entity';
 import { toErrorInfo } from '../../shared/error.util';
 import { UserStrategyPosition } from '../../strategy/entities/user-strategy-position.entity';
@@ -48,8 +49,8 @@ export class ExchangeSelectionService {
 
   /**
    * Select the best exchange key for a BUY order.
-   * 1. Single active key → return immediately
-   * 2. Filter by symbol support (price lookup, checked in parallel)
+   * 1. Single active key → probe symbol support; throw if unsupported (no fallback)
+   * 2. Multi-key → filter by symbol support (price lookup, checked in parallel)
    * 3. Return first supported key
    */
   async selectForBuy(userId: string, symbol: string): Promise<ExchangeKey> {
@@ -60,9 +61,27 @@ export class ExchangeSelectionService {
       throw new NotFoundException(`No active exchange keys found for user ${userId}`);
     }
 
-    // Single active key — no selection needed
+    const [base] = symbol.split('/');
+
+    // Single active key — still probe symbol support. Throws if the only exchange doesn't list the pair.
     if (activeKeys.length === 1) {
-      return activeKeys[0];
+      const only = activeKeys[0];
+      const onlySlug = only.exchange?.slug;
+      if (!onlySlug) {
+        throw new NotFoundException(`Active exchange key for user ${userId} has no exchange slug`);
+      }
+      const quoteAsset = this.exchangeManagerService.getQuoteAsset(onlySlug);
+      const exchangeSymbol = `${base}/${quoteAsset}`;
+      try {
+        await this.exchangeManagerService.getPrice(onlySlug, exchangeSymbol);
+        return only;
+      } catch (error) {
+        const err = toErrorInfo(error);
+        this.logger.warn(
+          `Symbol ${exchangeSymbol} not supported on sole exchange ${onlySlug} for user ${userId}: ${err.message}`
+        );
+        throw new InvalidSymbolException(exchangeSymbol, onlySlug);
+      }
     }
 
     // Check all exchanges for symbol support in parallel
@@ -72,7 +91,6 @@ export class ExchangeSelectionService {
         if (!exchangeSlug) throw new Error('no slug');
         // Resolve exchange-specific quote currency (e.g., USD for Coinbase, USDT for Binance)
         const quoteAsset = this.exchangeManagerService.getQuoteAsset(exchangeSlug);
-        const [base] = symbol.split('/');
         const exchangeSymbol = `${base}/${quoteAsset}`;
         await this.exchangeManagerService.getPrice(exchangeSlug, exchangeSymbol);
         return key;
