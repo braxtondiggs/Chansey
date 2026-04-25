@@ -38,6 +38,7 @@ import { backtestConfig } from '../order/backtest/backtest.config';
 import { Backtest } from '../order/backtest/backtest.entity';
 import { MarketDataSet } from '../order/backtest/market-data-set.entity';
 import { OrderModule } from '../order/order.module';
+import { PaperTradingSession } from '../order/paper-trading/entities';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { Risk } from '../risk/risk.entity';
@@ -85,7 +86,8 @@ const BACKTEST_QUEUE_NAMES = backtestConfig();
       MarketDataSet,
       Pipeline,
       ExchangeKey,
-      OptimizationRun
+      OptimizationRun,
+      PaperTradingSession
     ]),
     BullModule.registerQueue(
       { name: 'strategy-evaluation-queue' },

@@ -17,6 +17,17 @@ function buildUser(riskLevel = 5): User {
   } as any;
 }
 
+interface FakeMarketsClient {
+  markets: Record<string, unknown>;
+  loadMarkets: jest.Mock;
+}
+
+function makeMarketsClient(pairs: string[]): FakeMarketsClient {
+  const markets: Record<string, unknown> = {};
+  for (const pair of pairs) markets[pair] = { symbol: pair };
+  return { markets, loadMarkets: jest.fn().mockResolvedValue(markets) };
+}
+
 describe('ListingTradeExecutorService', () => {
   let positionRepo: any;
   let announcementRepo: any;
@@ -24,6 +35,8 @@ describe('ListingTradeExecutorService', () => {
   let tradeExecutionService: any;
   let coinSelectionService: any;
   let balanceService: any;
+  let exchangeKeyService: any;
+  let exchangeManagerService: any;
   let service: ListingTradeExecutorService;
 
   beforeEach(() => {
@@ -46,6 +59,17 @@ describe('ListingTradeExecutorService', () => {
     balanceService = {
       getCurrentBalances: jest.fn().mockResolvedValue([{ totalUsdValue: 10_000 }, { totalUsdValue: 5_000 }])
     };
+    exchangeKeyService = {
+      findAll: jest.fn().mockResolvedValue([{ id: 'key-binance', isActive: true, exchange: { slug: 'binance_us' } }])
+    };
+    exchangeManagerService = {
+      getQuoteAsset: jest.fn().mockImplementation((slug: string) => {
+        if (slug === 'coinbase' || slug === 'gdax') return 'USD';
+        if (slug === 'kraken') return 'USD';
+        return 'USDT';
+      }),
+      getExchangeClient: jest.fn().mockResolvedValue(makeMarketsClient(['FOO/USDT']))
+    };
 
     service = new ListingTradeExecutorService(
       positionRepo,
@@ -53,7 +77,9 @@ describe('ListingTradeExecutorService', () => {
       candidateRepo,
       tradeExecutionService,
       coinSelectionService,
-      balanceService
+      balanceService,
+      exchangeKeyService,
+      exchangeManagerService
     );
   });
 
@@ -82,6 +108,7 @@ describe('ListingTradeExecutorService', () => {
         userId: 'user-1',
         action: 'BUY',
         symbol: 'FOO/USDT',
+        exchangeKeyId: 'key-binance',
         autoSize: true,
         allocationPercentage: cfg.positionSizePct,
         portfolioValue: 15_000,
@@ -95,6 +122,106 @@ describe('ListingTradeExecutorService', () => {
     );
     expect(positionRepo.save).toHaveBeenCalled();
     expect(announcementRepo.update).toHaveBeenCalledWith({ id: 'ann-1' }, { dispatched: true });
+  });
+
+  it('translates the pair to Kraken native symbols (BTC/USD → XBT/ZUSD)', async () => {
+    exchangeKeyService.findAll = jest
+      .fn()
+      .mockResolvedValue([{ id: 'key-kraken', isActive: true, exchange: { slug: 'kraken' } }]);
+    exchangeManagerService.getExchangeClient = jest.fn().mockResolvedValue(makeMarketsClient(['XBT/ZUSD']));
+
+    const cfg = getCfg('postAnnouncement');
+    await service.executeBuy({
+      user: buildUser(5),
+      coin: { id: 'coin-btc', symbol: 'BTC' } as Coin,
+      strategyType: ListingStrategyType.POST_ANNOUNCEMENT,
+      config: cfg
+    });
+
+    expect(tradeExecutionService.executeTradeSignal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'XBT/ZUSD',
+        exchangeKeyId: 'key-kraken'
+      })
+    );
+  });
+
+  it('uses USD quote asset for coinbase-only users instead of a hardcoded /USDT', async () => {
+    exchangeKeyService.findAll = jest
+      .fn()
+      .mockResolvedValue([{ id: 'key-coinbase', isActive: true, exchange: { slug: 'coinbase' } }]);
+    exchangeManagerService.getExchangeClient = jest.fn().mockResolvedValue(makeMarketsClient(['FOO/USD']));
+
+    const cfg = getCfg('postAnnouncement');
+    await service.executeBuy({
+      user: buildUser(5),
+      coin,
+      strategyType: ListingStrategyType.POST_ANNOUNCEMENT,
+      config: cfg
+    });
+
+    expect(tradeExecutionService.executeTradeSignal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'FOO/USD',
+        exchangeKeyId: 'key-coinbase'
+      })
+    );
+  });
+
+  it('skips silently when the user has no active exchange keys', async () => {
+    exchangeKeyService.findAll = jest.fn().mockResolvedValue([]);
+    const cfg = getCfg('postAnnouncement');
+    const result = await service.executeBuy({
+      user: buildUser(5),
+      coin,
+      strategyType: ListingStrategyType.POST_ANNOUNCEMENT,
+      config: cfg
+    });
+    expect(result).toBeNull();
+    expect(tradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
+  });
+
+  it('skips silently when no active exchange lists the coin pair', async () => {
+    exchangeKeyService.findAll = jest
+      .fn()
+      .mockResolvedValue([{ id: 'key-binance', isActive: true, exchange: { slug: 'binance_us' } }]);
+    exchangeManagerService.getExchangeClient = jest.fn().mockResolvedValue(makeMarketsClient(['BTC/USDT']));
+
+    const cfg = getCfg('postAnnouncement');
+    const result = await service.executeBuy({
+      user: buildUser(5),
+      coin,
+      strategyType: ListingStrategyType.POST_ANNOUNCEMENT,
+      config: cfg
+    });
+    expect(result).toBeNull();
+    expect(tradeExecutionService.executeTradeSignal).not.toHaveBeenCalled();
+    expect(positionRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('prefers the first active exchange that lists the pair when multiple keys exist', async () => {
+    exchangeKeyService.findAll = jest.fn().mockResolvedValue([
+      { id: 'key-coinbase', isActive: true, exchange: { slug: 'coinbase' } },
+      { id: 'key-binance', isActive: true, exchange: { slug: 'binance_us' } }
+    ]);
+    exchangeManagerService.getExchangeClient = jest.fn().mockImplementation(async (slug: string) => {
+      if (slug === 'coinbase') return makeMarketsClient([]); // coinbase doesn't list FOO
+      return makeMarketsClient(['FOO/USDT']);
+    });
+
+    const cfg = getCfg('postAnnouncement');
+    await service.executeBuy({
+      user: buildUser(5),
+      coin,
+      strategyType: ListingStrategyType.POST_ANNOUNCEMENT,
+      config: cfg
+    });
+    expect(tradeExecutionService.executeTradeSignal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'FOO/USDT',
+        exchangeKeyId: 'key-binance'
+      })
+    );
   });
 
   it('returns null when portfolio value is 0', async () => {

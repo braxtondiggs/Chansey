@@ -9,6 +9,7 @@ import { OptimizationRun, OptimizationStatus } from '../optimization/entities/op
 import { BacktestResultService } from '../order/backtest/backtest-result.service';
 import { backtestConfig } from '../order/backtest/backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
+import { PaperTradingSession, PaperTradingStatus } from '../order/paper-trading/entities';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PIPELINE_EVENTS, PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 
@@ -39,6 +40,10 @@ describe('BacktestWatchdogService', () => {
     update: jest.fn().mockResolvedValue(undefined)
   };
 
+  const mockPaperTradingSessionRepository = {
+    find: jest.fn().mockResolvedValue([])
+  };
+
   const mockEventEmitter = {
     emit: jest.fn()
   };
@@ -54,7 +59,8 @@ describe('BacktestWatchdogService', () => {
         { provide: EventEmitter2, useValue: mockEventEmitter },
         { provide: getRepositoryToken(Backtest), useValue: mockBacktestRepository },
         { provide: getRepositoryToken(OptimizationRun), useValue: mockOptimizationRunRepository },
-        { provide: getRepositoryToken(Pipeline), useValue: mockPipelineRepository }
+        { provide: getRepositoryToken(Pipeline), useValue: mockPipelineRepository },
+        { provide: getRepositoryToken(PaperTradingSession), useValue: mockPaperTradingSessionRepository }
       ]
     }).compile();
 
@@ -646,6 +652,231 @@ describe('BacktestWatchdogService', () => {
 
       expect(mockPipelineRepository.find).not.toHaveBeenCalled();
       expect(mockBacktestRepository.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('detectFailedPaperTradingPipelines', () => {
+    it('should do nothing when no candidates exist', async () => {
+      mockPipelineRepository.find.mockResolvedValue([]);
+
+      await service.detectFailedPaperTradingPipelines();
+
+      expect(mockPaperTradingSessionRepository.find).not.toHaveBeenCalled();
+      expect(mockPipelineRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should surface session errorMessage when paper trading session is FAILED', async () => {
+      const pipeline = {
+        id: 'pipeline-pt-1',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: 'pts-1'
+      };
+      const failedSession = {
+        id: 'pts-1',
+        status: PaperTradingStatus.FAILED,
+        stoppedReason: 'error',
+        errorMessage: 'Recovery failed: Redis connection lost'
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockPaperTradingSessionRepository.find.mockResolvedValue([failedSession]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 1 });
+
+      await service.detectFailedPaperTradingPipelines();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledWith(
+        { id: 'pipeline-pt-1', status: PipelineStatus.RUNNING, currentStage: PipelineStage.PAPER_TRADE },
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('Recovery failed: Redis connection lost')
+        })
+      );
+    });
+
+    it('falls back to stoppedReason when FAILED session has no errorMessage', async () => {
+      const pipeline = {
+        id: 'pipeline-pt-1b',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: 'pts-1b'
+      };
+      const failedSession = {
+        id: 'pts-1b',
+        status: PaperTradingStatus.FAILED,
+        stoppedReason: 'watchdog_stale',
+        errorMessage: null
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockPaperTradingSessionRepository.find.mockResolvedValue([failedSession]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 1 });
+
+      await service.detectFailedPaperTradingPipelines();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledWith(
+        { id: 'pipeline-pt-1b', status: PipelineStatus.RUNNING, currentStage: PipelineStage.PAPER_TRADE },
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('watchdog_stale')
+        })
+      );
+    });
+
+    it('should mark pipeline as FAILED when paper trading session is STOPPED', async () => {
+      const pipeline = {
+        id: 'pipeline-pt-2',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: 'pts-2'
+      };
+      const stoppedSession = {
+        id: 'pts-2',
+        status: PaperTradingStatus.STOPPED,
+        stoppedReason: 'max_drawdown'
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockPaperTradingSessionRepository.find.mockResolvedValue([stoppedSession]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 1 });
+
+      await service.detectFailedPaperTradingPipelines();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledWith(
+        { id: 'pipeline-pt-2', status: PipelineStatus.RUNNING, currentStage: PipelineStage.PAPER_TRADE },
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('max_drawdown')
+        })
+      );
+    });
+
+    it('should mark pipeline as FAILED when linked session no longer exists', async () => {
+      const pipeline = {
+        id: 'pipeline-pt-3',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: 'pts-deleted'
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockPaperTradingSessionRepository.find.mockResolvedValue([]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 1 });
+
+      await service.detectFailedPaperTradingPipelines();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledWith(
+        { id: 'pipeline-pt-3', status: PipelineStatus.RUNNING, currentStage: PipelineStage.PAPER_TRADE },
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('no longer exists')
+        })
+      );
+    });
+
+    it('should skip pipeline when session is still ACTIVE', async () => {
+      const pipeline = {
+        id: 'pipeline-pt-4',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: 'pts-active'
+      };
+      const activeSession = {
+        id: 'pts-active',
+        status: PaperTradingStatus.ACTIVE,
+        stoppedReason: null
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockPaperTradingSessionRepository.find.mockResolvedValue([activeSession]);
+
+      await service.detectFailedPaperTradingPipelines();
+
+      expect(mockPipelineRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should skip pipeline when session is COMPLETED (owned by separate recovery path)', async () => {
+      const pipeline = {
+        id: 'pipeline-pt-5',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: 'pts-completed'
+      };
+      const completedSession = {
+        id: 'pts-completed',
+        status: PaperTradingStatus.COMPLETED,
+        stoppedReason: 'duration_reached'
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockPaperTradingSessionRepository.find.mockResolvedValue([completedSession]);
+
+      await service.detectFailedPaperTradingPipelines();
+
+      expect(mockPipelineRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should skip pipeline when atomic update reports affected === 0', async () => {
+      const pipeline = {
+        id: 'pipeline-pt-6',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: 'pts-6'
+      };
+      const failedSession = {
+        id: 'pts-6',
+        status: PaperTradingStatus.FAILED,
+        stoppedReason: 'err'
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockPaperTradingSessionRepository.find.mockResolvedValue([failedSession]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 0 });
+
+      await expect(service.detectFailedPaperTradingPipelines()).resolves.toBeUndefined();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('should skip during boot grace period', async () => {
+      (service as any).bootedAt = Date.now();
+
+      await service.detectFailedPaperTradingPipelines();
+
+      expect(mockPipelineRepository.find).not.toHaveBeenCalled();
+      expect(mockPaperTradingSessionRepository.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('detectOrphanedPaperTradePipelines', () => {
+    it('should mark pipeline as FAILED when in PAPER_TRADE with null session past cutoff', async () => {
+      const orphanPipeline = {
+        id: 'pipeline-pt-orphan',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: null
+      };
+      mockPipelineRepository.find.mockResolvedValue([orphanPipeline]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 1 });
+
+      await service.detectOrphanedPaperTradePipelines();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledWith(
+        { id: 'pipeline-pt-orphan', status: PipelineStatus.RUNNING, currentStage: PipelineStage.PAPER_TRADE },
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('never started')
+        })
+      );
+    });
+
+    it('should do nothing when no orphans exist', async () => {
+      mockPipelineRepository.find.mockResolvedValue([]);
+
+      await service.detectOrphanedPaperTradePipelines();
+
+      expect(mockPipelineRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should skip during boot grace period', async () => {
+      (service as any).bootedAt = Date.now();
+
+      await service.detectOrphanedPaperTradePipelines();
+
+      expect(mockPipelineRepository.find).not.toHaveBeenCalled();
     });
   });
 });

@@ -8,6 +8,10 @@ import { Coin } from '../../coin/coin.entity';
 import { CoinSelectionSource } from '../../coin-selection/coin-selection-source.enum';
 import { CoinSelectionType } from '../../coin-selection/coin-selection-type.enum';
 import { CoinSelectionService } from '../../coin-selection/coin-selection.service';
+import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
+import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
+import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { formatSymbolForExchange } from '../../exchange/utils';
 import {
   ExitConfig,
   StopLossType,
@@ -18,6 +22,7 @@ import {
 import { Order } from '../../order/order.entity';
 import { TradeExecutionService, TradeSignalWithExit } from '../../order/services/trade-execution.service';
 import { toErrorInfo } from '../../shared/error.util';
+import { withExchangeRetryThrow } from '../../shared/retry.util';
 import { User } from '../../users/users.entity';
 import { LISTING_STRATEGY_NAMES, ListingStrategyConfig, resolveExpiryDate } from '../constants/risk-config';
 import { ListingAnnouncement } from '../entities/listing-announcement.entity';
@@ -59,7 +64,11 @@ export class ListingTradeExecutorService {
     @Inject(forwardRef(() => CoinSelectionService))
     private readonly coinSelectionService: CoinSelectionService,
     @Inject(forwardRef(() => BalanceService))
-    private readonly balanceService: BalanceService
+    private readonly balanceService: BalanceService,
+    @Inject(forwardRef(() => ExchangeKeyService))
+    private readonly exchangeKeyService: ExchangeKeyService,
+    @Inject(forwardRef(() => ExchangeManagerService))
+    private readonly exchangeManagerService: ExchangeManagerService
   ) {}
 
   /**
@@ -91,12 +100,18 @@ export class ListingTradeExecutorService {
       return null;
     }
 
+    const match = await this.resolveSupportedExchange(user, coin);
+    if (!match) {
+      return null;
+    }
+
     const exitConfig = this.buildExitConfig(config);
 
     const signal: TradeSignalWithExit = {
       userId: user.id,
       action: 'BUY',
-      symbol: `${coin.symbol.toUpperCase()}/USDT`,
+      symbol: match.symbol,
+      exchangeKeyId: match.exchangeKey.id,
       quantity: 0,
       autoSize: true,
       portfolioValue,
@@ -207,6 +222,61 @@ export class ListingTradeExecutorService {
       this.logger.warn(`Failed to fetch portfolio value for user ${user.id}: ${err.message}`);
       return 0;
     }
+  }
+
+  /**
+   * Probe each of the user's active exchange keys to find one that actually
+   * lists `${coin.symbol}/${exchangeQuoteAsset}`. Returns the first match with
+   * the exchange-specific pair, or null when no exchange supports the coin.
+   */
+  private async resolveSupportedExchange(
+    user: User,
+    coin: Coin
+  ): Promise<{ exchangeKey: ExchangeKey; symbol: string } | null> {
+    const allKeys = await this.exchangeKeyService.findAll(user.id);
+    const activeKeys = allKeys.filter((k) => k.isActive && k.exchange?.slug);
+    const base = coin.symbol.toUpperCase();
+
+    if (activeKeys.length === 0) {
+      this.logger.warn(`[listing] skipped: no active exchange keys for user ${user.id} (coin ${base})`);
+      return null;
+    }
+
+    const checkedSlugs = activeKeys.map((k) => k.exchange?.slug).filter((s): s is string => Boolean(s));
+
+    const results = await Promise.allSettled(
+      activeKeys.map(async (key) => {
+        const slug = key.exchange?.slug;
+        if (!slug) throw new Error('no slug');
+        const quoteAsset = this.exchangeManagerService.getQuoteAsset(slug);
+        const rawPair = `${base}/${quoteAsset}`;
+        const pair = formatSymbolForExchange(slug, rawPair);
+        const client = await this.exchangeManagerService.getExchangeClient(slug, user);
+        await withExchangeRetryThrow(() => client.loadMarkets(), {
+          logger: this.logger,
+          operationName: `loadMarkets(${slug})`
+        });
+        if (!client.markets || !client.markets[pair]) {
+          throw new Error(`pair ${pair} not listed on ${slug}`);
+        }
+        return { exchangeKey: key, symbol: pair };
+      })
+    );
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === 'fulfilled') {
+        return result.value;
+      }
+      const err = toErrorInfo(result.reason);
+      const slug = activeKeys[i].exchange?.slug ?? 'unknown';
+      this.logger.debug(`[listing] market probe failed for user=${user.id} slug=${slug} coin=${base}: ${err.message}`);
+    }
+
+    this.logger.warn(
+      `[listing] no exchange supports ${base} for user ${user.id} (checked: ${checkedSlugs.join(', ')})`
+    );
+    return null;
   }
 
   /**

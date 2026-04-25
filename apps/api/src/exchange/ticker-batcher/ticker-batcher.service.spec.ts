@@ -92,7 +92,7 @@ describe('TickerBatcherService', () => {
     expect(t1?.price).toBe(42000);
     expect(t2?.price).toBe(42000);
     expect(fetchTickers).toHaveBeenCalledTimes(1);
-    expect(fetchTickers).toHaveBeenCalledWith(['BTC/USDT']);
+    expect(fetchTickers).toHaveBeenCalledWith();
   });
 
   it('batches distinct symbols enqueued in the same flush window into one call', async () => {
@@ -122,7 +122,7 @@ describe('TickerBatcherService', () => {
     expect(eth?.price).toBe(2500);
     expect(sol?.price).toBe(100);
     expect(fetchTickers).toHaveBeenCalledTimes(1);
-    expect(fetchTickers).toHaveBeenCalledWith(expect.arrayContaining(['BTC/USDT', 'ETH/USDT', 'SOL/USDT']));
+    expect(fetchTickers).toHaveBeenCalledWith();
   });
 
   it('flushes immediately when pending reaches maxBatchSize', async () => {
@@ -333,11 +333,12 @@ describe('TickerBatcherService', () => {
     expect(fetchTickers).toHaveBeenCalledTimes(2);
   });
 
-  it('resolves with undefined for a symbol not in client.markets', async () => {
+  it('resolves with undefined for a symbol the exchange does not return', async () => {
+    // No-args fetchTickers returns the universe; ETH simply isn't in the response.
     const tickers = { 'BTC/USDT': baseTicker({ last: 42000 }) };
     const fetchTickers = jest.fn().mockResolvedValue(tickers);
     const client = {
-      markets: { 'BTC/USDT': {} }, // no ETH/USDT
+      markets: { 'BTC/USDT': {} },
       loadMarkets: jest.fn().mockResolvedValue(undefined),
       fetchTickers
     };
@@ -351,31 +352,60 @@ describe('TickerBatcherService', () => {
 
     expect(btc?.price).toBe(42000);
     expect(eth).toBeUndefined();
-    expect(fetchTickers).toHaveBeenCalledWith(['BTC/USDT']);
+    expect(fetchTickers).toHaveBeenCalledWith();
   });
 
-  it('falls through without filtering when loadMarkets throws', async () => {
-    const tickers = {
-      'BTC/USDT': baseTicker({ last: 42000 }),
-      'ETH/USDT': baseTicker({ last: 2500 })
-    };
+  it('does not pass a symbols argument to fetchTickers (avoids Binance -1102)', async () => {
+    const tickers = { 'BTC/USDT': baseTicker({ last: 42000 }) };
     const fetchTickers = jest.fn().mockResolvedValue(tickers);
     const client = {
-      markets: {},
-      loadMarkets: jest.fn().mockRejectedValue(new Error('markets endpoint down')),
+      markets: { 'BTC/USDT': {} },
+      loadMarkets: jest.fn().mockResolvedValue(undefined),
       fetchTickers
     };
     const { service } = makeService({ exchangeManager: createExchangeManager(client) });
 
+    const p = service.getTicker('binance_us', 'BTC/USDT');
+    await jest.advanceTimersByTimeAsync(DEFAULT_CONFIG.flushMs + 1);
+    await p;
+
+    expect(fetchTickers).toHaveBeenCalledTimes(1);
+    expect(fetchTickers.mock.calls[0]).toEqual([]);
+  });
+
+  it('filters response to only the symbols pending callers requested', async () => {
+    // Response contains a much larger universe than what callers asked for.
+    const tickers = {
+      'BTC/USDT': baseTicker({ last: 42000 }),
+      'ETH/USDT': baseTicker({ last: 2500 }),
+      'SOL/USDT': baseTicker({ last: 100 }),
+      'DOGE/USDT': baseTicker({ last: 0.08 }),
+      'XRP/USDT': baseTicker({ last: 0.5 })
+    };
+    const fetchTickers = jest.fn().mockResolvedValue(tickers);
+    const client = {
+      markets: {},
+      loadMarkets: jest.fn().mockResolvedValue(undefined),
+      fetchTickers
+    };
+    const { service } = makeService({ exchangeManager: createExchangeManager(client) });
+
+    // Only ask for two of the five.
     const pBtc = service.getTicker('binance_us', 'BTC/USDT');
     const pEth = service.getTicker('binance_us', 'ETH/USDT');
-
     await jest.advanceTimersByTimeAsync(DEFAULT_CONFIG.flushMs + 1);
     const [btc, eth] = await Promise.all([pBtc, pEth]);
 
     expect(btc?.price).toBe(42000);
     expect(eth?.price).toBe(2500);
-    expect(fetchTickers).toHaveBeenCalledWith(expect.arrayContaining(['BTC/USDT', 'ETH/USDT']));
+
+    // Re-requesting one of the unrequested symbols re-hits the exchange (not cached).
+    fetchTickers.mockClear();
+    const pSol = service.getTicker('binance_us', 'SOL/USDT');
+    await jest.advanceTimersByTimeAsync(DEFAULT_CONFIG.flushMs + 1);
+    const sol = await pSol;
+    expect(sol?.price).toBe(100);
+    expect(fetchTickers).toHaveBeenCalledTimes(1);
   });
 
   it('re-fetches from the exchange after the memCache entry expires', async () => {
@@ -459,7 +489,7 @@ describe('TickerBatcherService', () => {
       expect(result.get('BTC/USDT')?.price).toBe(42000);
       expect(result.get('ETH/USDT')?.price).toBe(2500);
       expect(fetchTickers).toHaveBeenCalledTimes(1);
-      expect(fetchTickers).toHaveBeenCalledWith(['ETH/USDT']);
+      expect(fetchTickers).toHaveBeenCalledWith();
     });
 
     it('returns partial results without throwing when some symbols succeed and others fail', async () => {

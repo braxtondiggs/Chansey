@@ -45,8 +45,8 @@ function makeFetchResponse(body: unknown, ok = true, status = 200): Response {
   } as unknown as Response;
 }
 
-const BOOTSTRAP_SENTINEL_KEY = 'listing-tracker:binance:seeded';
-const LAST_SEEN_KEY = 'listing-tracker:last-seen:binance';
+const BOOTSTRAP_SENTINEL_KEY = 'listing-tracker:binance_us:seeded';
+const LAST_SEEN_KEY = 'listing-tracker:last-seen:binance_us';
 
 const SAMPLE_EXCHANGE_INFO = {
   symbols: [
@@ -95,7 +95,7 @@ describe('BinanceAnnouncementClient', () => {
       const [announcement] = await client.getLatest();
 
       expect(announcement).toMatchObject({
-        exchangeSlug: 'binance',
+        exchangeSlug: 'binance_us',
         externalId: 'binance-listing:BTC',
         sourceUrl: 'https://www.binance.us/trade/BTC_USDT',
         announcedSymbol: 'BTC',
@@ -127,11 +127,11 @@ describe('BinanceAnnouncementClient', () => {
       const recordFailureSpy = jest.spyOn(circuitBreaker, 'recordFailure');
 
       await expect(client.getLatest()).rejects.toThrow(/HTTP 500/);
-      expect(recordFailureSpy).toHaveBeenCalledWith('listing-tracker:binance');
+      expect(recordFailureSpy).toHaveBeenCalledWith('listing-tracker:binance_us');
     });
 
     it('throws CircuitOpenError when circuit is open without calling fetch', async () => {
-      for (let i = 0; i < 5; i++) circuitBreaker.recordFailure('listing-tracker:binance');
+      for (let i = 0; i < 5; i++) circuitBreaker.recordFailure('listing-tracker:binance_us');
 
       await expect(client.getLatest()).rejects.toBeInstanceOf(CircuitOpenError);
       expect(fetchSpy).not.toHaveBeenCalled();
