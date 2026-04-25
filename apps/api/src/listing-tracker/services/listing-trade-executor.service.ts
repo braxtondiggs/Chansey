@@ -11,6 +11,7 @@ import { CoinSelectionService } from '../../coin-selection/coin-selection.servic
 import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { ExchangeKeyService } from '../../exchange/exchange-key/exchange-key.service';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
+import { formatSymbolForExchange } from '../../exchange/utils';
 import {
   ExitConfig,
   StopLossType,
@@ -241,28 +242,35 @@ export class ListingTradeExecutorService {
       return null;
     }
 
-    const checkedSlugs: string[] = [];
-    for (const key of activeKeys) {
-      const slug = key.exchange?.slug;
-      if (!slug) continue;
-      checkedSlugs.push(slug);
-      try {
+    const checkedSlugs = activeKeys.map((k) => k.exchange?.slug).filter((s): s is string => Boolean(s));
+
+    const results = await Promise.allSettled(
+      activeKeys.map(async (key) => {
+        const slug = key.exchange?.slug;
+        if (!slug) throw new Error('no slug');
         const quoteAsset = this.exchangeManagerService.getQuoteAsset(slug);
-        const pair = `${base}/${quoteAsset}`;
+        const rawPair = `${base}/${quoteAsset}`;
+        const pair = formatSymbolForExchange(slug, rawPair);
         const client = await this.exchangeManagerService.getExchangeClient(slug, user);
         await withExchangeRetryThrow(() => client.loadMarkets(), {
           logger: this.logger,
           operationName: `loadMarkets(${slug})`
         });
-        if (client.markets && client.markets[pair]) {
-          return { exchangeKey: key, symbol: pair };
+        if (!client.markets || !client.markets[pair]) {
+          throw new Error(`pair ${pair} not listed on ${slug}`);
         }
-      } catch (error) {
-        const err = toErrorInfo(error);
-        this.logger.debug(
-          `[listing] market probe failed for user=${user.id} slug=${slug} coin=${base}: ${err.message}`
-        );
+        return { exchangeKey: key, symbol: pair };
+      })
+    );
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === 'fulfilled') {
+        return result.value;
       }
+      const err = toErrorInfo(result.reason);
+      const slug = activeKeys[i].exchange?.slug ?? 'unknown';
+      this.logger.debug(`[listing] market probe failed for user=${user.id} slug=${slug} coin=${base}: ${err.message}`);
     }
 
     this.logger.warn(

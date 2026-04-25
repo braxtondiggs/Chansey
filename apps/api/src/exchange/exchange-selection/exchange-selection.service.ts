@@ -50,7 +50,7 @@ export class ExchangeSelectionService {
   /**
    * Select the best exchange key for a BUY order.
    * 1. Single active key → probe symbol support; throw if unsupported (no fallback)
-   * 2. Multi-key → filter by symbol support (price lookup, checked in parallel)
+   * 2. Multi-key → probe symbol support across keys in parallel; throw if none support it
    * 3. Return first supported key
    */
   async selectForBuy(userId: string, symbol: string): Promise<ExchangeKey> {
@@ -100,9 +100,12 @@ export class ExchangeSelectionService {
     const firstSupported = results.find((r): r is PromiseFulfilledResult<ExchangeKey> => r.status === 'fulfilled');
     if (firstSupported) return firstSupported.value;
 
-    // Fallback: return first active key (let the trade fail at execution if unsupported)
-    this.logger.warn(`No exchange supports symbol ${symbol} for user ${userId}, falling back to first active key`);
-    return activeKeys[0];
+    const checkedSlugs = activeKeys
+      .map((k) => k.exchange?.slug)
+      .filter((s): s is string => Boolean(s))
+      .join(',');
+    this.logger.warn(`No exchange supports symbol ${symbol} for user ${userId} (checked: ${checkedSlugs})`);
+    throw new InvalidSymbolException(symbol, checkedSlugs);
   }
 
   /**

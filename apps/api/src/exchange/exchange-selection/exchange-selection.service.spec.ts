@@ -138,15 +138,13 @@ describe('ExchangeSelectionService', () => {
       expect(exchangeManagerService.getPrice).toHaveBeenCalledWith('binance', 'BTC/USDT');
     });
 
-    it('falls back to first active key when no exchange supports the symbol', async () => {
-      const key1 = makeKey({ id: 'key-1' });
-      const key2 = makeKey({ id: 'key-2' });
+    it('throws InvalidSymbolException when no exchange supports the symbol', async () => {
+      const key1 = makeKey({ id: 'key-1', exchange: { slug: 'coinbase' } } as Partial<ExchangeKey>);
+      const key2 = makeKey({ id: 'key-2', exchange: { slug: 'binance' } } as Partial<ExchangeKey>);
       exchangeKeyService.findAll.mockResolvedValue([key1, key2]);
       exchangeManagerService.getPrice.mockRejectedValue(new Error('unsupported'));
 
-      const result = await service.selectForBuy(userId, symbol);
-
-      expect(result).toBe(key1);
+      await expect(service.selectForBuy(userId, symbol)).rejects.toBeInstanceOf(InvalidSymbolException);
     });
   });
 

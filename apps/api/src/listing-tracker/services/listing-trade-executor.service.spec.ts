@@ -124,6 +124,28 @@ describe('ListingTradeExecutorService', () => {
     expect(announcementRepo.update).toHaveBeenCalledWith({ id: 'ann-1' }, { dispatched: true });
   });
 
+  it('translates the pair to Kraken native symbols (BTC/USD → XBT/ZUSD)', async () => {
+    exchangeKeyService.findAll = jest
+      .fn()
+      .mockResolvedValue([{ id: 'key-kraken', isActive: true, exchange: { slug: 'kraken' } }]);
+    exchangeManagerService.getExchangeClient = jest.fn().mockResolvedValue(makeMarketsClient(['XBT/ZUSD']));
+
+    const cfg = getCfg('postAnnouncement');
+    await service.executeBuy({
+      user: buildUser(5),
+      coin: { id: 'coin-btc', symbol: 'BTC' } as Coin,
+      strategyType: ListingStrategyType.POST_ANNOUNCEMENT,
+      config: cfg
+    });
+
+    expect(tradeExecutionService.executeTradeSignal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'XBT/ZUSD',
+        exchangeKeyId: 'key-kraken'
+      })
+    );
+  });
+
   it('uses USD quote asset for coinbase-only users instead of a hardcoded /USDT', async () => {
     exchangeKeyService.findAll = jest
       .fn()
