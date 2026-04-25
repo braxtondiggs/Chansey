@@ -665,7 +665,7 @@ describe('BacktestWatchdogService', () => {
       expect(mockPipelineRepository.update).not.toHaveBeenCalled();
     });
 
-    it('should mark pipeline as FAILED when paper trading session is FAILED', async () => {
+    it('should surface session errorMessage when paper trading session is FAILED', async () => {
       const pipeline = {
         id: 'pipeline-pt-1',
         status: PipelineStatus.RUNNING,
@@ -675,7 +675,8 @@ describe('BacktestWatchdogService', () => {
       const failedSession = {
         id: 'pts-1',
         status: PaperTradingStatus.FAILED,
-        stoppedReason: 'watchdog_stale'
+        stoppedReason: 'error',
+        errorMessage: 'Recovery failed: Redis connection lost'
       };
       mockPipelineRepository.find.mockResolvedValue([pipeline]);
       mockPaperTradingSessionRepository.find.mockResolvedValue([failedSession]);
@@ -685,6 +686,34 @@ describe('BacktestWatchdogService', () => {
 
       expect(mockPipelineRepository.update).toHaveBeenCalledWith(
         { id: 'pipeline-pt-1', status: PipelineStatus.RUNNING, currentStage: PipelineStage.PAPER_TRADE },
+        expect.objectContaining({
+          status: PipelineStatus.FAILED,
+          failureReason: expect.stringContaining('Recovery failed: Redis connection lost')
+        })
+      );
+    });
+
+    it('falls back to stoppedReason when FAILED session has no errorMessage', async () => {
+      const pipeline = {
+        id: 'pipeline-pt-1b',
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: 'pts-1b'
+      };
+      const failedSession = {
+        id: 'pts-1b',
+        status: PaperTradingStatus.FAILED,
+        stoppedReason: 'watchdog_stale',
+        errorMessage: null
+      };
+      mockPipelineRepository.find.mockResolvedValue([pipeline]);
+      mockPaperTradingSessionRepository.find.mockResolvedValue([failedSession]);
+      mockPipelineRepository.update.mockResolvedValue({ affected: 1 });
+
+      await service.detectFailedPaperTradingPipelines();
+
+      expect(mockPipelineRepository.update).toHaveBeenCalledWith(
+        { id: 'pipeline-pt-1b', status: PipelineStatus.RUNNING, currentStage: PipelineStage.PAPER_TRADE },
         expect.objectContaining({
           status: PipelineStatus.FAILED,
           failureReason: expect.stringContaining('watchdog_stale')

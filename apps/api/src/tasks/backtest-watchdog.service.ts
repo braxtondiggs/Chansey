@@ -463,7 +463,7 @@ export class BacktestWatchdogService {
     const sessions =
       sessionIds.length > 0
         ? await this.paperTradingSessionRepository.find({
-            select: ['id', 'status', 'stoppedReason'],
+            select: ['id', 'status', 'stoppedReason', 'errorMessage'],
             where: { id: In(sessionIds) }
           })
         : [];
@@ -482,7 +482,7 @@ export class BacktestWatchdogService {
         if (!isBroken) continue;
 
         const reason = session
-          ? `Paper trading session ${session.id} ${session.status}: ${session.stoppedReason ?? 'unknown reason'}`
+          ? this.composePaperTradingFailureReason(session)
           : `Paper trading session ${pipeline.paperTradingSessionId} no longer exists`;
 
         this.logger.warn(`Marking pipeline ${pipeline.id} as FAILED — ${reason}`);
@@ -563,6 +563,20 @@ export class BacktestWatchdogService {
     if (marked > 0) {
       this.logger.log(`Orphaned paper-trade pipeline watchdog marked ${marked} pipeline(s) as FAILED`);
     }
+  }
+
+  /**
+   * Prefer the session's real errorMessage for FAILED sessions; the upstream
+   * markFailed() hardcodes stoppedReason to 'error', which would otherwise
+   * erase the diagnostic detail. STOPPED sessions still surface stoppedReason
+   * (e.g. max_drawdown, manual_stop) since that is the meaningful field there.
+   */
+  private composePaperTradingFailureReason(session: PaperTradingSession): string {
+    const detail =
+      session.status === PaperTradingStatus.FAILED
+        ? session.errorMessage?.trim() || session.stoppedReason || 'unknown reason'
+        : (session.stoppedReason ?? 'unknown reason');
+    return `Paper trading session ${session.id} ${session.status}: ${detail}`;
   }
 
   /**
