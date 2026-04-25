@@ -17,6 +17,7 @@ import { OptimizationRun, OptimizationStatus } from '../optimization/entities/op
 import { BacktestResultService } from '../order/backtest/backtest-result.service';
 import { backtestConfig } from '../order/backtest/backtest.config';
 import { Backtest, BacktestStatus, BacktestType } from '../order/backtest/backtest.entity';
+import { PaperTradingSession, PaperTradingStatus } from '../order/paper-trading/entities';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
 import { PIPELINE_EVENTS, PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { toErrorInfo } from '../shared/error.util';
@@ -32,6 +33,16 @@ const LIVE_REPLAY_THRESHOLD_MS = 120 * 60 * 1000;
 const PENDING_BACKTEST_THRESHOLD_MS = 30 * 60 * 1000;
 const OPTIMIZATION_THRESHOLD_MS = 360 * 60 * 1000; // 6 hours
 const PENDING_OPTIMIZATION_THRESHOLD_MS = 360 * 60 * 1000; // 6 hours
+
+/**
+ * Paper-trade pipeline reconciliation thresholds.
+ *
+ * Session-level heartbeat watchdog lives in PaperTradingRecoveryService (5-min cron,
+ * 10/20-min recovery/fail tiers). This watchdog only closes the pipeline-side loop
+ * when the session's own watchdog has already terminated it or when a pipeline was
+ * promoted to PAPER_TRADE without ever creating a session.
+ */
+const PAPER_TRADE_ORPHAN_THRESHOLD_MS = 30 * 60 * 1000;
 
 @Injectable()
 export class BacktestWatchdogService {
@@ -49,7 +60,9 @@ export class BacktestWatchdogService {
     private readonly eventEmitter: EventEmitter2,
     @InjectRepository(Backtest) private readonly backtestRepository: Repository<Backtest>,
     @InjectRepository(OptimizationRun) private readonly optimizationRunRepository: Repository<OptimizationRun>,
-    @InjectRepository(Pipeline) private readonly pipelineRepository: Repository<Pipeline>
+    @InjectRepository(Pipeline) private readonly pipelineRepository: Repository<Pipeline>,
+    @InjectRepository(PaperTradingSession)
+    private readonly paperTradingSessionRepository: Repository<PaperTradingSession>
   ) {}
 
   /**
@@ -421,6 +434,134 @@ export class BacktestWatchdogService {
 
     if (marked > 0) {
       this.logger.log(`Failed-backtest pipeline watchdog marked ${marked} pipeline(s) as FAILED`);
+    }
+  }
+
+  /**
+   * Detects RUNNING pipelines in PAPER_TRADE stage whose linked paper trading session
+   * has already reached a terminal failure state (FAILED, STOPPED) or been deleted.
+   * Mirrors detectFailedBacktestPipelines — the reconciliation safety net for cases
+   * where PaperTradingRecoveryService marked the session FAILED but the
+   * paper-trading.failed event never reached the pipeline listener.
+   *
+   * COMPLETED sessions are intentionally skipped here — those belong to a recovery
+   * path that re-emits paper-trading.completed so progression gates can run.
+   */
+  async detectFailedPaperTradingPipelines(): Promise<void> {
+    if (this.isWithinBootGrace()) return;
+
+    const candidates = await this.pipelineRepository.find({
+      select: ['id', 'status', 'currentStage', 'paperTradingSessionId'],
+      where: {
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: Not(IsNull())
+      }
+    });
+
+    const sessionIds = candidates.map((p) => p.paperTradingSessionId).filter((id): id is string => id != null);
+    const sessions =
+      sessionIds.length > 0
+        ? await this.paperTradingSessionRepository.find({
+            select: ['id', 'status', 'stoppedReason'],
+            where: { id: In(sessionIds) }
+          })
+        : [];
+    const sessionsById = new Map(sessions.map((s) => [s.id, s]));
+
+    let marked = 0;
+    for (const pipeline of candidates) {
+      try {
+        if (!pipeline.paperTradingSessionId) continue;
+        const session = sessionsById.get(pipeline.paperTradingSessionId);
+
+        // Pipeline is invalid when the session failed, was stopped without advancing,
+        // or no longer exists. ACTIVE/PAUSED/COMPLETED sessions are not our problem.
+        const isBroken =
+          !session || session.status === PaperTradingStatus.FAILED || session.status === PaperTradingStatus.STOPPED;
+        if (!isBroken) continue;
+
+        const reason = session
+          ? `Paper trading session ${session.id} ${session.status}: ${session.stoppedReason ?? 'unknown reason'}`
+          : `Paper trading session ${pipeline.paperTradingSessionId} no longer exists`;
+
+        this.logger.warn(`Marking pipeline ${pipeline.id} as FAILED — ${reason}`);
+
+        const result = await this.pipelineRepository.update(
+          { id: pipeline.id, status: PipelineStatus.RUNNING, currentStage: PipelineStage.PAPER_TRADE },
+          {
+            status: PipelineStatus.FAILED,
+            failureReason: reason,
+            completedAt: new Date()
+          }
+        );
+
+        if (result.affected === 0) {
+          this.logger.log(`Pipeline ${pipeline.id} already transitioned — skipping`);
+          continue;
+        }
+
+        marked++;
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(
+          `Failed to mark pipeline ${pipeline.id} with failed paper trading session as FAILED: ${err.message}`
+        );
+      }
+    }
+
+    if (marked > 0) {
+      this.logger.log(`Failed paper-trade pipeline watchdog marked ${marked} pipeline(s) as FAILED`);
+    }
+  }
+
+  /**
+   * Detects orphaned pipelines that advanced to PAPER_TRADE but never got a
+   * paper trading session attached (creation failed between stage transition and insert).
+   * Mirrors detectOrphanedOptimizePipelines.
+   */
+  async detectOrphanedPaperTradePipelines(): Promise<void> {
+    if (this.isWithinBootGrace()) return;
+
+    const cutoff = new Date(Date.now() - PAPER_TRADE_ORPHAN_THRESHOLD_MS);
+
+    const orphans = await this.pipelineRepository.find({
+      where: {
+        status: PipelineStatus.RUNNING,
+        currentStage: PipelineStage.PAPER_TRADE,
+        paperTradingSessionId: IsNull(),
+        updatedAt: LessThan(cutoff)
+      }
+    });
+
+    let marked = 0;
+    for (const pipeline of orphans) {
+      try {
+        this.logger.warn(`Marking orphaned pipeline ${pipeline.id} as FAILED (PAPER_TRADE stage, no session created)`);
+
+        const result = await this.pipelineRepository.update(
+          { id: pipeline.id, status: PipelineStatus.RUNNING, currentStage: PipelineStage.PAPER_TRADE },
+          {
+            status: PipelineStatus.FAILED,
+            failureReason: 'Orphaned: paper trading session never started',
+            completedAt: new Date()
+          }
+        );
+
+        if (result.affected === 0) {
+          this.logger.log(`Pipeline ${pipeline.id} already transitioned — skipping`);
+          continue;
+        }
+
+        marked++;
+      } catch (error: unknown) {
+        const err = toErrorInfo(error);
+        this.logger.error(`Failed to mark orphaned paper-trade pipeline ${pipeline.id} as FAILED: ${err.message}`);
+      }
+    }
+
+    if (marked > 0) {
+      this.logger.log(`Orphaned paper-trade pipeline watchdog marked ${marked} pipeline(s) as FAILED`);
     }
   }
 
