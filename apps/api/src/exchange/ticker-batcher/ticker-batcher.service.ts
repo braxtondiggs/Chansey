@@ -25,14 +25,15 @@ const SHUTDOWN_ERROR_MESSAGE = 'ticker-batcher shutting down';
 /**
  * TickerBatcherService
  *
- * Coalesces concurrent in-process ticker fetches for the same exchange into
- * a single `fetchTickers(union-of-symbols)` call per flush window. This
- * collapses the linear-in-users request volume that Binance.US rejects with
- * `-1102` when multiple sessions independently poll within ~100ms of each other.
+ * Coalesces concurrent in-process ticker fetches for the same exchange into a
+ * single no-args `fetchTickers()` call per flush window, then resolves each
+ * pending caller against the in-memory response. No `symbols` query param is
+ * sent — that param is the source of Binance.US `-1102` "malformed" rejections
+ * when CCXT serializes a `null` from a ghost/inactive market resolution.
  *
- * The batcher owns the exchange-hop only: CCXT call + retry + circuit +
- * symbol-market filtering. Callers retain their own Redis cache and stale /
- * fallback-exchange / DB-fallback chain. Clean boundary:
+ * The batcher owns the exchange-hop only: CCXT call + retry + circuit. Callers
+ * retain their own Redis cache and stale / fallback-exchange / DB-fallback
+ * chain. Clean boundary:
  *
  *   batcher  = protocol correctness
  *   caller   = staleness policy
@@ -215,19 +216,9 @@ export class TickerBatcherService implements OnModuleDestroy {
 
     try {
       const client = await this.exchangeManager.getPublicClient(slug);
-      const validPairs = await this.filterValidPairs(client, slug, rawSymbols);
+      const formattedPairs = this.formatPairs(slug, rawSymbols);
 
-      if (validPairs.length === 0) {
-        this.logger.warn(
-          `ticker_batch_flush(${slug}): none of ${rawSymbols.length} requested symbols exist on exchange`
-        );
-        for (const waiters of pending.values()) {
-          for (const waiter of waiters) waiter.resolve(undefined);
-        }
-        return;
-      }
-
-      const result = await withExchangeRetry(() => client.fetchTickers(validPairs.map((p) => p.formatted)), {
+      const result = await withExchangeRetry(() => client.fetchTickers(), {
         logger: this.logger,
         operationName: `fetchTickers(${slug})`,
         // Rate/weight limits are account-wide and client errors are
@@ -238,13 +229,13 @@ export class TickerBatcherService implements OnModuleDestroy {
 
       if (result.success && result.result) {
         this.circuitBreaker.recordSuccess(circuitKey);
-        this.resolveFromResponse(slug, pending, validPairs, result.result);
+        this.resolveFromResponse(slug, pending, formattedPairs, result.result);
 
         this.logger.debug(
           JSON.stringify({
             event: 'ticker_batch_flush',
             slug,
-            symbols: validPairs.length,
+            symbols: formattedPairs.length,
             coalescedCallers,
             durationMs: Date.now() - startedAt
           })
@@ -254,7 +245,7 @@ export class TickerBatcherService implements OnModuleDestroy {
 
       const err = result.error ?? new Error(`fetchTickers(${slug}) failed`);
       this.circuitBreaker.recordFailure(circuitKey);
-      this.handleBatchError(slug, err, pending, validPairs.length, result.attempts, startedAt, client, validPairs);
+      this.handleBatchError(slug, err, pending, formattedPairs.length, result.attempts, startedAt, client);
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
       this.circuitBreaker.recordFailure(circuitKey);
@@ -262,42 +253,20 @@ export class TickerBatcherService implements OnModuleDestroy {
     }
   }
 
-  private async filterValidPairs(
-    client: ccxt.Exchange,
-    slug: string,
-    rawSymbols: string[]
-  ): Promise<Array<{ raw: string; formatted: string }>> {
-    let marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
-    if (!marketsLoaded) {
-      try {
-        await client.loadMarkets();
-        marketsLoaded = Boolean(client.markets && Object.keys(client.markets).length > 0);
-      } catch (error: unknown) {
-        const info = toErrorInfo(error);
-        this.logger.warn(`loadMarkets(${slug}) failed, proceeding without symbol validation: ${info.message}`);
-      }
-    }
-
-    const formattedPairs = rawSymbols.map((raw) => ({
+  private formatPairs(slug: string, rawSymbols: string[]): Array<{ raw: string; formatted: string }> {
+    return rawSymbols.map((raw) => ({
       raw,
       formatted: formatSymbolForExchange(slug, raw)
     }));
-
-    if (!marketsLoaded) return formattedPairs;
-
-    const markets = client.markets as Record<string, unknown>;
-    return formattedPairs.filter(({ formatted }) => formatted in markets);
   }
 
   private resolveFromResponse(
     slug: string,
     pending: Map<string, PendingRequest[]>,
-    validPairs: Array<{ raw: string; formatted: string }>,
+    formattedPairs: Array<{ raw: string; formatted: string }>,
     tickers: Record<string, ccxt.Ticker>
   ): void {
-    const fulfilled = new Set<string>();
-
-    for (const { raw, formatted } of validPairs) {
+    for (const { raw, formatted } of formattedPairs) {
       const ticker = tickers[formatted];
       const waiters = pending.get(raw);
       if (!waiters) continue;
@@ -307,16 +276,10 @@ export class TickerBatcherService implements OnModuleDestroy {
         this.writeMemCache(slug, raw, batched);
         for (const waiter of waiters) waiter.resolve(batched);
       } else {
+        // Exchange doesn't list this symbol. Callers fall through to their own
+        // fallback chain (stale cache → fallback exchange → DB).
         for (const waiter of waiters) waiter.resolve(undefined);
       }
-      fulfilled.add(raw);
-    }
-
-    // Any symbol we filtered out of validPairs — resolve undefined (exchange
-    // doesn't list it). Callers fall through to their own fallback chain.
-    for (const [raw, waiters] of pending) {
-      if (fulfilled.has(raw)) continue;
-      for (const waiter of waiters) waiter.resolve(undefined);
     }
   }
 
@@ -347,8 +310,7 @@ export class TickerBatcherService implements OnModuleDestroy {
     symbolCount: number,
     attempts: number,
     startedAt: number,
-    client?: ccxt.Exchange,
-    validPairs?: Array<{ raw: string; formatted: string }>
+    client?: ccxt.Exchange
   ): void {
     const clientError = isClientError(err);
     const errorCodeMatch = err.message?.match(/"code"\s*:\s*(-?\d+)/);
@@ -364,8 +326,8 @@ export class TickerBatcherService implements OnModuleDestroy {
       message: err.message
     };
 
-    if (clientError && client && validPairs) {
-      this.logClientErrorOnce(slug, client, validPairs, err);
+    if (clientError && client) {
+      this.logClientErrorOnce(slug, client, err);
     } else if (clientError) {
       this.logThrottled(slug, () => this.logger.error(JSON.stringify({ ...payload, event: 'ticker_batch_rejected' })));
     } else {
@@ -378,51 +340,15 @@ export class TickerBatcherService implements OnModuleDestroy {
   }
 
   /**
-   * Throttled (1×/5min per exchange) evidence trap for Binance client-error
-   * rejections on a batch fetchTickers call. Captures *everything* CCXT already
-   * has in memory at the moment of failure so we can diagnose without guessing:
-   *
-   * - The exact URL CCXT sent (reveals param encoding, symbol list, query shape)
-   * - The raw response body from the exchange (often has extra context)
-   * - Selected response headers (`x-mbx-used-weight-1m`, `cf-ray`, `server`,
-   *   `x-cache`) — reveal rate-limit budget, Cloudflare routing, region hints
-   * - Our unified symbols AND the exchange-specific market IDs CCXT resolved
-   *   them to (mismatches here catch ghost/inactive markets)
-   * - Active vs total market counts (stale market cache detection)
-   *
-   * No extra network calls — every field is already populated by CCXT on the
-   * failing request. Safe to run inside the error path.
+   * Throttled (1×/5min per exchange) evidence trap for client-error rejections
+   * on the no-args `fetchTickers` call. Captures the request/response context
+   * CCXT already has in memory at the moment of failure — no extra network calls.
    */
-  private logClientErrorOnce(
-    slug: string,
-    client: ccxt.Exchange,
-    validPairs: Array<{ raw: string; formatted: string }>,
-    error: Error
-  ): void {
+  private logClientErrorOnce(slug: string, client: ccxt.Exchange, error: Error): void {
     this.logThrottled(slug, () => {
       try {
-        const formatted = validPairs.map((p) => p.formatted);
-        // Resolve each unified symbol to the exchange's internal market id. If this
-        // differs from what we expected (e.g. returns undefined for a ghost market),
-        // CCXT would serialize `[null, ...]` into the symbols param — explaining
-        // Binance's "malformed" rejection.
-        const marketIds = validPairs.map((p) => {
-          try {
-            return client.marketId(p.formatted);
-          } catch (e: unknown) {
-            return `<${(e as Error).message?.slice(0, 40) ?? 'resolve-failed'}>`;
-          }
-        });
-        const markets = client.markets ?? {};
-        const marketsTotal = Object.keys(markets).length;
-        const marketsActive = Object.values(markets).filter((m) => m && (m as { active?: boolean }).active).length;
-
-        // CCXT exposes the failing request/response on the exchange instance.
-        // Guard every access — any of these can be undefined if the throw happened
-        // before the response was parsed.
         const rawClient = client as unknown as {
           last_request_url?: string;
-          last_request_body?: string;
           last_http_response?: string;
           last_response_headers?: Record<string, string>;
         };
@@ -444,15 +370,10 @@ export class TickerBatcherService implements OnModuleDestroy {
 
         this.logger.error(
           JSON.stringify({
-            event: 'ticker_batch_client_error',
+            event: 'ticker_batch_no_args_client_error',
             message: `fetchTickers(${slug}) rejected by exchange as client error`,
             slug,
-            sent_symbols: formatted,
-            market_ids: marketIds,
-            markets_total: marketsTotal,
-            markets_active: marketsActive,
             last_request_url: (rawClient.last_request_url ?? '').slice(0, 500),
-            last_request_body: (rawClient.last_request_body ?? '').slice(0, 300),
             last_http_response: (rawClient.last_http_response ?? '').slice(0, 400),
             response_headers: headerSnapshot,
             error: error.message.slice(0, 400)
