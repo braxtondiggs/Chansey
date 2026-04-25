@@ -29,7 +29,7 @@ export const databaseConfig = registerAs(
       idleTimeoutMillis: parseInt(process.env.PG_POOL_IDLE_TIMEOUT_MS || '30000', 10),
       connectionTimeoutMillis: 90000,
       statement_timeout: 300000,
-      options: '-c work_mem=32MB',
+      options: '-c work_mem=32MB -c idle_in_transaction_session_timeout=1800000',
       keepAlive: true,
       keepAliveInitialDelayMillis: 30000,
       allowExitOnIdle: false
