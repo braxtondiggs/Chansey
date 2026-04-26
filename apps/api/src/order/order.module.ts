@@ -35,7 +35,6 @@ import { QuoteCurrencyResolverService } from './backtest/quote-currency-resolver
 import { BacktestContextFactory } from './backtest/shared/execution/backtest-context-factory.service';
 import { BacktestLoopRunner } from './backtest/shared/execution/backtest-loop-runner.service';
 import { OptimizationCoreService } from './backtest/shared/optimization/optimization-core.service';
-import { OptimizationIndicatorPrecomputeService } from './backtest/shared/optimization/optimization-indicator-precompute.service';
 import { BacktestSharedModule } from './backtest/shared/shared.module';
 import { SimulatedOrderFill } from './backtest/simulated-order-fill.entity';
 import { orderCleanupConfig } from './config/order-cleanup.config';
@@ -190,7 +189,6 @@ const BACKTEST_DEFAULTS = backtestConfig();
     BacktestEngine,
     BacktestLoopRunner,
     OptimizationCoreService,
-    OptimizationIndicatorPrecomputeService,
     BacktestProcessor,
     BacktestRecoveryService,
     LiveReplayProcessor,

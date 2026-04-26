@@ -13,12 +13,12 @@ import {
   ExitSignalProcessorService,
   FeeCalculatorService,
   ForcedExitService,
+  IndicatorPrecomputeService,
   MetricsAccumulatorService,
   MetricsCalculatorService,
   MultiTimeframeAggregatorService,
   OpportunitySellService,
   OptimizationCoreService,
-  OptimizationIndicatorPrecomputeService,
   type Portfolio,
   PortfolioStateService,
   PositionManagerService,
@@ -88,7 +88,7 @@ const createOptimizationCore = (algorithmRegistry: any = {}, ohlcService: any = 
     compositeRegimeService,
     slippageContextService,
     signalThrottle,
-    new OptimizationIndicatorPrecomputeService(algorithmRegistry),
+    new IndicatorPrecomputeService(algorithmRegistry),
     tradeExecutor,
     ohlcService
   );
@@ -140,7 +140,8 @@ const createTestEngine = (
     compositeRegimeService,
     slippageContextService,
     exitSignalProcessor,
-    metricsAccumulatorService
+    metricsAccumulatorService,
+    new IndicatorPrecomputeService({} as any)
   );
   const loopRunner = new BacktestLoopRunner(
     backtestStream,

@@ -19,6 +19,7 @@ export {
 } from './execution';
 export { ExitSignalProcessorService, ProcessExitSignalsOptions, ResolveExitTrackerOptions } from './exit-signals';
 export * from './exits';
+export * from './indicator-precompute.service';
 export * from './fees';
 export * from './filters';
 export * from './metrics';

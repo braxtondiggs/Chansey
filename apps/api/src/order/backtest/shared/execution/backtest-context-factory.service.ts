@@ -27,6 +27,7 @@ import { MarketDataReaderService, OHLCVData } from '../../market-data-reader.ser
 import { QuoteCurrencyResolverService } from '../../quote-currency-resolver.service';
 import { SeededRandom } from '../../seeded-random';
 import { ExitSignalProcessorService } from '../exit-signals';
+import { IndicatorPrecomputeService } from '../indicator-precompute.service';
 import { MetricsAccumulatorService } from '../metrics-accumulator';
 import { Portfolio, PortfolioStateService } from '../portfolio';
 import { MultiTimeframeAggregatorService, PriceWindowService } from '../price-window';
@@ -65,7 +66,8 @@ export class BacktestContextFactory {
     private readonly compositeRegimeSvc: CompositeRegimeService,
     private readonly slippageCtxSvc: SlippageContextService,
     private readonly exitSignalProcessorSvc: ExitSignalProcessorService,
-    private readonly metricsAccSvc: MetricsAccumulatorService
+    private readonly metricsAccSvc: MetricsAccumulatorService,
+    private readonly indicatorPrecompute: IndicatorPrecomputeService
   ) {}
 
   /**
@@ -141,6 +143,16 @@ export class BacktestContextFactory {
         }
       : { datasetId: options.dataset.id, deterministicSeed: options.deterministicSeed, backtestId: backtest.id };
 
+    // Precompute indicator series once for the full price window. Strategies
+    // that declare requirements via getIndicatorRequirements will read slices
+    // through getPrecomputedSlice() instead of hitting Redis per bar.
+    const precomputedIndicators = await this.indicatorPrecompute.precomputeIndicators(
+      backtest.algorithm.id,
+      (backtest.configSnapshot?.parameters as Record<string, unknown>) ?? {},
+      coins,
+      priceCtx
+    );
+
     // Assemble context
     const ctx = LoopContext.create({
       isLiveReplay,
@@ -189,7 +201,8 @@ export class BacktestContextFactory {
       timestamps,
       delistingDates,
       ...boundaries,
-      options
+      options,
+      precomputedIndicators
     });
 
     // Initialize incremental SMA for BTC regime detection

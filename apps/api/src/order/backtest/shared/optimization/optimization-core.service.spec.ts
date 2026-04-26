@@ -2,7 +2,6 @@ import { Test, type TestingModule } from '@nestjs/testing';
 
 import { type OptimizationBacktestConfig } from './optimization-backtest.interface';
 import { OptimizationCoreService } from './optimization-core.service';
-import { OptimizationIndicatorPrecomputeService } from './optimization-indicator-precompute.service';
 
 import { AlgorithmRegistry } from '../../../../algorithm/registry/algorithm-registry.service';
 import { AlgorithmNotRegisteredException } from '../../../../common/exceptions';
@@ -10,6 +9,7 @@ import { type OHLCCandle } from '../../../../ohlc/ohlc-candle.entity';
 import { OHLCService } from '../../../../ohlc/ohlc.service';
 import { TradeExecutorService } from '../execution/trade-executor.service';
 import { ExitSignalProcessorService } from '../exit-signals/exit-signal-processor.service';
+import { IndicatorPrecomputeService } from '../indicator-precompute.service';
 import { MetricsCalculatorService } from '../metrics';
 import { PortfolioStateService } from '../portfolio';
 import { PriceWindowService } from '../price-window';
@@ -93,7 +93,7 @@ describe('OptimizationCoreService', () => {
       filterSignals: jest.fn().mockReturnValue({ accepted: [], rejected: [] })
     };
     indicatorPrecompute = {
-      precomputeIndicatorsForOptimization: jest.fn().mockResolvedValue(undefined)
+      precomputeIndicators: jest.fn().mockResolvedValue(undefined)
     };
     tradeExecutor = {
       executeTrade: jest.fn()
@@ -115,7 +115,7 @@ describe('OptimizationCoreService', () => {
         { provide: CompositeRegimeService, useValue: compositeRegimeService },
         { provide: SlippageContextService, useValue: slippageContextService },
         { provide: SignalThrottleService, useValue: signalThrottle },
-        { provide: OptimizationIndicatorPrecomputeService, useValue: indicatorPrecompute },
+        { provide: IndicatorPrecomputeService, useValue: indicatorPrecompute },
         { provide: TradeExecutorService, useValue: tradeExecutor },
         { provide: OHLCService, useValue: ohlcService }
       ]
@@ -355,7 +355,7 @@ describe('OptimizationCoreService', () => {
       const result = await service.runOptimizationBacktestWithPrecomputed(baseConfig, coins, precomputed);
 
       expect(priceWindowService.filterCoinsWithSufficientData).toHaveBeenCalled();
-      expect(indicatorPrecompute.precomputeIndicatorsForOptimization).toHaveBeenCalled();
+      expect(indicatorPrecompute.precomputeIndicators).toHaveBeenCalled();
       expect(result.tradeCount).toBe(0);
     });
   });

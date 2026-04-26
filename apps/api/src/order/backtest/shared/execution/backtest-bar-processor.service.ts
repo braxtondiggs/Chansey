@@ -103,10 +103,17 @@ export class BacktestBarProcessor {
     const warmupRegime = ctx.btcCoin
       ? this.compositeRegimeSvc.computeCompositeRegime(ctx.btcCoin.id, ctx.priceCtx)
       : null;
-    const context = this.buildAlgorithmContext(ctx, priceData, timestamp, priceDataByTimeframe, {
-      compositeRegime: ctx.isLiveReplay ? undefined : warmupRegime?.compositeRegime,
-      volatilityRegime: ctx.isLiveReplay ? undefined : warmupRegime?.volatilityRegime
-    });
+    const context = this.buildAlgorithmContext(
+      ctx,
+      priceData,
+      timestamp,
+      priceDataByTimeframe,
+      {
+        compositeRegime: ctx.isLiveReplay ? undefined : warmupRegime?.compositeRegime,
+        volatilityRegime: ctx.isLiveReplay ? undefined : warmupRegime?.volatilityRegime
+      },
+      i
+    );
     try {
       await this.executeWithTimeout(
         this.algorithmRegistry.executeAlgorithm(ctx.backtest.algorithm.id, context),
@@ -200,10 +207,17 @@ export class BacktestBarProcessor {
       ? this.compositeRegimeSvc.computeCompositeRegime(ctx.btcCoin.id, ctx.priceCtx)
       : null;
 
-    const context = this.buildAlgorithmContext(ctx, priceData, timestamp, priceDataByTimeframe, {
-      compositeRegime: barRegimeResult?.compositeRegime,
-      volatilityRegime: barRegimeResult?.volatilityRegime
-    });
+    const context = this.buildAlgorithmContext(
+      ctx,
+      priceData,
+      timestamp,
+      priceDataByTimeframe,
+      {
+        compositeRegime: barRegimeResult?.compositeRegime,
+        volatilityRegime: barRegimeResult?.volatilityRegime
+      },
+      i
+    );
 
     const strategySignals = await this.executeAlgorithmWithRetry(ctx, i, timestamp, context);
 
@@ -440,7 +454,8 @@ export class BacktestBarProcessor {
     priceData: PriceSummaryByPeriod,
     timestamp: Date,
     priceDataByTimeframe: Partial<Record<PriceTimeframe, PriceSummaryByPeriod>>,
-    regime: Record<string, unknown>
+    regime: Record<string, unknown>,
+    currentTimestampIndex: number
   ) {
     const hasHigherTimeframes = Object.keys(priceDataByTimeframe).length > 0;
     return {
@@ -455,6 +470,8 @@ export class BacktestBarProcessor {
       })(),
       availableBalance: ctx.portfolio.cashBalance,
       metadata: ctx.algoMetadata,
+      precomputedIndicators: ctx.precomputedIndicators,
+      currentTimestampIndex,
       ...(hasHigherTimeframes
         ? {
             priceDataByTimeframe: {

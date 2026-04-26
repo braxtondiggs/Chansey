@@ -83,6 +83,8 @@ export interface LoopContextInit {
   effectiveTimestampCount: number;
   tradingTimestampCount: number;
   options: LoopRunnerOptions;
+  // Precomputed indicators (optional)
+  precomputedIndicators?: Record<string, Record<string, Float64Array>>;
 }
 
 /**
@@ -161,6 +163,9 @@ export class LoopContext {
   tradingTimestampCount: number;
   options: LoopRunnerOptions;
 
+  // Precomputed indicators (passed into AlgorithmContext per bar)
+  precomputedIndicators?: Record<string, Record<string, Float64Array>>;
+
   private constructor(init: LoopContextInit) {
     this.isLiveReplay = init.isLiveReplay;
     this.liveReplayOpts = init.liveReplayOpts;
@@ -202,6 +207,7 @@ export class LoopContext {
     this.effectiveTimestampCount = init.effectiveTimestampCount;
     this.tradingTimestampCount = init.tradingTimestampCount;
     this.options = init.options;
+    this.precomputedIndicators = init.precomputedIndicators;
   }
 
   static create(init: LoopContextInit): LoopContext {
