@@ -11,9 +11,10 @@ import { type BackfillProgress, type OHLCBackfillService } from '../services/ohl
 describe('OHLCGapDetectionTask', () => {
   let task: OHLCGapDetectionTask;
   let queue: { getRepeatableJobs: jest.Mock; add: jest.Mock };
+  let backfillQueue: { add: jest.Mock };
   let ohlcService: jest.Mocked<Pick<OHLCService, 'getCandleCountsByCoinInRange'>>;
   let symbolMapService: jest.Mocked<Pick<ExchangeSymbolMapService, 'getActiveSymbolMaps'>>;
-  let backfillService: jest.Mocked<Pick<OHLCBackfillService, 'getProgress' | 'startBackfill'>>;
+  let backfillService: jest.Mocked<Pick<OHLCBackfillService, 'getProgress'>>;
   let configService: { get: jest.Mock };
   let lockService: jest.Mocked<Pick<DistributedLockService, 'acquire' | 'release'>>;
 
@@ -61,6 +62,10 @@ describe('OHLCGapDetectionTask', () => {
       add: jest.fn().mockResolvedValue(undefined)
     };
 
+    backfillQueue = {
+      add: jest.fn().mockResolvedValue(undefined)
+    };
+
     ohlcService = {
       getCandleCountsByCoinInRange: jest.fn()
     } as unknown as jest.Mocked<Pick<OHLCService, 'getCandleCountsByCoinInRange'>>;
@@ -70,9 +75,8 @@ describe('OHLCGapDetectionTask', () => {
     } as unknown as jest.Mocked<Pick<ExchangeSymbolMapService, 'getActiveSymbolMaps'>>;
 
     backfillService = {
-      getProgress: jest.fn(),
-      startBackfill: jest.fn().mockResolvedValue('job-id')
-    } as unknown as jest.Mocked<Pick<OHLCBackfillService, 'getProgress' | 'startBackfill'>>;
+      getProgress: jest.fn()
+    } as unknown as jest.Mocked<Pick<OHLCBackfillService, 'getProgress'>>;
 
     configService = { get: jest.fn() };
 
@@ -83,6 +87,7 @@ describe('OHLCGapDetectionTask', () => {
 
     task = new OHLCGapDetectionTask(
       queue as any,
+      backfillQueue as any,
       ohlcService as any,
       symbolMapService as any,
       backfillService as any,
@@ -90,9 +95,6 @@ describe('OHLCGapDetectionTask', () => {
       lockService as any,
       { recordFailure: jest.fn() } as any
     );
-
-    // Speed up batched sleeps
-    jest.spyOn(task as any, 'sleep').mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -115,8 +117,8 @@ describe('OHLCGapDetectionTask', () => {
 
     expect(result.deficient).toBe(1);
     expect(result.queued).toBe(1);
-    expect(backfillService.startBackfill).toHaveBeenCalledWith('c1');
-    expect(backfillService.startBackfill).not.toHaveBeenCalledWith('c2');
+    expect(backfillQueue.add).toHaveBeenCalledWith('backfill', { coinId: 'c1' }, expect.any(Object));
+    expect(backfillQueue.add).not.toHaveBeenCalledWith('backfill', { coinId: 'c2' }, expect.any(Object));
   });
 
   it('treats coins absent from the count map as deficient (zero candles)', async () => {
@@ -130,7 +132,7 @@ describe('OHLCGapDetectionTask', () => {
 
     expect(result.deficient).toBe(1);
     expect(result.queued).toBe(1);
-    expect(backfillService.startBackfill).toHaveBeenCalledWith('c2');
+    expect(backfillQueue.add).toHaveBeenCalledWith('backfill', { coinId: 'c2' }, expect.any(Object));
   });
 
   it('skips coins with pending or in_progress backfill', async () => {
@@ -147,7 +149,7 @@ describe('OHLCGapDetectionTask', () => {
 
     expect(result.skippedInFlight).toBe(2);
     expect(result.queued).toBe(0);
-    expect(backfillService.startBackfill).not.toHaveBeenCalled();
+    expect(backfillQueue.add).not.toHaveBeenCalled();
   });
 
   it('skips coins with failed backfill within the last 24h', async () => {
@@ -162,7 +164,7 @@ describe('OHLCGapDetectionTask', () => {
 
     expect(result.recentFailures).toBe(1);
     expect(result.queued).toBe(0);
-    expect(backfillService.startBackfill).not.toHaveBeenCalled();
+    expect(backfillQueue.add).not.toHaveBeenCalled();
   });
 
   it('re-triggers failed backfills older than 24h', async () => {
@@ -181,7 +183,7 @@ describe('OHLCGapDetectionTask', () => {
 
     expect(result.recentFailures).toBe(0);
     expect(result.queued).toBe(1);
-    expect(backfillService.startBackfill).toHaveBeenCalledWith('c1');
+    expect(backfillQueue.add).toHaveBeenCalledWith('backfill', { coinId: 'c1' }, expect.any(Object));
   });
 
   it('caps queued backfills at 30 even when more coins are deficient', async () => {
@@ -194,7 +196,7 @@ describe('OHLCGapDetectionTask', () => {
 
     expect(result.deficient).toBe(50);
     expect(result.queued).toBe(30);
-    expect(backfillService.startBackfill).toHaveBeenCalledTimes(30);
+    expect(backfillQueue.add).toHaveBeenCalledTimes(30);
   });
 
   it('skips work when distributed lock cannot be acquired', async () => {
@@ -204,7 +206,7 @@ describe('OHLCGapDetectionTask', () => {
 
     expect(result).toMatchObject({ skipped: true, reason: 'lock_not_acquired' });
     expect(symbolMapService.getActiveSymbolMaps).not.toHaveBeenCalled();
-    expect(backfillService.startBackfill).not.toHaveBeenCalled();
+    expect(backfillQueue.add).not.toHaveBeenCalled();
     expect(lockService.release).not.toHaveBeenCalled();
   });
 
@@ -218,7 +220,7 @@ describe('OHLCGapDetectionTask', () => {
 
     await task.handleGapDetection(buildJob());
 
-    const callOrder = backfillService.startBackfill.mock.calls.map((c) => c[0]);
+    const callOrder = backfillQueue.add.mock.calls.map((c) => (c[1] as { coinId: string }).coinId);
     // Never (treated as 0) and old (2024) before recent (2025)
     expect(callOrder.indexOf('recent')).toBe(2);
   });

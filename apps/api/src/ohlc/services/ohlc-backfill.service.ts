@@ -54,6 +54,36 @@ export class OHLCBackfillService {
    * @returns Job ID for tracking
    */
   async startBackfill(coinId: string, startDate?: Date, endDate?: Date): Promise<string> {
+    const { jobId, symbol, start, end } = await this.prepareBackfill(coinId, startDate, endDate);
+
+    // Start the backfill in the background
+    this.performBackfill(coinId, symbol, start, end).catch((error: unknown) => {
+      const err = toErrorInfo(error);
+      this.logger.error(`Backfill failed for ${coinId}: ${err.message}`);
+    });
+
+    return jobId;
+  }
+
+  /**
+   * Run a backfill to completion. Unlike `startBackfill`, this awaits the
+   * underlying `performBackfill` so callers (e.g. a BullMQ worker) can bound
+   * concurrency and observe failures.
+   */
+  async runBackfill(coinId: string, startDate?: Date, endDate?: Date): Promise<void> {
+    const { symbol, start, end } = await this.prepareBackfill(coinId, startDate, endDate);
+    await this.performBackfill(coinId, symbol, start, end);
+  }
+
+  /**
+   * Resolve coin/symbol/date-range and persist initial backfill progress.
+   * Shared between `startBackfill` (fire-and-forget) and `runBackfill` (awaited).
+   */
+  private async prepareBackfill(
+    coinId: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<{ jobId: string; symbol: string; start: Date; end: Date }> {
     const coin = await this.coinService.getCoinById(coinId).catch(() => null);
     if (!coin) {
       throw new Error(`Coin not found: ${coinId}`);
@@ -83,13 +113,7 @@ export class OHLCBackfillService {
 
     await this.saveProgress(coinId, progress);
 
-    // Start the backfill in the background
-    this.performBackfill(coinId, symbol, start, end).catch((error: unknown) => {
-      const err = toErrorInfo(error);
-      this.logger.error(`Backfill failed for ${coinId}: ${err.message}`);
-    });
-
-    return jobId;
+    return { jobId, symbol, start, end };
   }
 
   /**

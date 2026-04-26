@@ -157,6 +157,60 @@ describe('OHLCBackfillService', () => {
     });
   });
 
+  describe('runBackfill', () => {
+    it('throws when coin not found', async () => {
+      coinService.getCoinById.mockRejectedValue(new Error('not found'));
+
+      await expect(service.runBackfill('btc')).rejects.toThrow('Coin not found: btc');
+    });
+
+    it('awaits performBackfill to completion', async () => {
+      coinService.getCoinById.mockResolvedValue({ id: 'btc', symbol: 'btc' } as any);
+      let resolved = false;
+      const performSpy = jest.spyOn(service as any, 'performBackfill').mockImplementation(async () => {
+        await Promise.resolve();
+        resolved = true;
+      });
+
+      await service.runBackfill('btc');
+
+      expect(performSpy).toHaveBeenCalledWith('btc', 'BTC/USD', expect.any(Date), expect.any(Date));
+      expect(resolved).toBe(true);
+    });
+
+    it('rethrows when performBackfill throws (so BullMQ records the failure)', async () => {
+      coinService.getCoinById.mockResolvedValue({ id: 'btc', symbol: 'btc' } as any);
+      jest.spyOn(service as any, 'performBackfill').mockRejectedValue(new Error('rate limited'));
+
+      await expect(service.runBackfill('btc')).rejects.toThrow('rate limited');
+    });
+
+    it("uses the symbol map's pair when an active mapping exists", async () => {
+      coinService.getCoinById.mockResolvedValue({ id: 'enj', symbol: 'enj' } as any);
+      symbolMapService.getSymbolMapsForCoins.mockResolvedValue([
+        { coinId: 'enj', symbol: 'ENJ/USDT', isActive: true, priority: 0 }
+      ] as any);
+      const performSpy = jest.spyOn(service as any, 'performBackfill').mockResolvedValue(undefined);
+
+      await service.runBackfill('enj');
+
+      expect(performSpy).toHaveBeenCalledWith('enj', 'ENJ/USDT', expect.any(Date), expect.any(Date));
+    });
+
+    it('persists initial pending progress to Redis before starting', async () => {
+      coinService.getCoinById.mockResolvedValue({ id: 'btc', symbol: 'btc' } as any);
+      jest.spyOn(service as any, 'performBackfill').mockResolvedValue(undefined);
+
+      await service.runBackfill('btc');
+
+      expect(cache.set).toHaveBeenCalledWith(
+        'ohlc:backfill:btc',
+        expect.stringContaining('"status":"pending"'),
+        expect.any(Number)
+      );
+    });
+  });
+
   describe('resumeBackfill', () => {
     it('throws when no progress exists', async () => {
       cache.get.mockResolvedValue(null);

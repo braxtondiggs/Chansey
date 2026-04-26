@@ -25,12 +25,11 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
   private static readonly EXPECTED_HOURLY_COUNT = 365 * 24;
   private static readonly DEFICIENCY_THRESHOLD = 0.95; // 95% of expected
   private static readonly MAX_BACKFILLS_PER_RUN = 30;
-  private static readonly BACKFILL_BATCH_SIZE = 3;
-  private static readonly BACKFILL_BATCH_DELAY_MS = 1000;
   private static readonly RECENT_FAILURE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
 
   constructor(
     @InjectQueue('ohlc-gap-detection-queue') private readonly gapQueue: Queue,
+    @InjectQueue('ohlc-backfill-queue') private readonly backfillQueue: Queue,
     private readonly ohlcService: OHLCService,
     private readonly symbolMapService: ExchangeSymbolMapService,
     private readonly backfillService: OHLCBackfillService,
@@ -62,35 +61,51 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
    * Sits after the existing 3AM/4AM maintenance burst.
    */
   private async scheduleGapDetectionJob() {
-    const repeatedJobs = await this.gapQueue.getRepeatableJobs();
-    const existingJob = repeatedJobs.find((job) => job.name === 'ohlc-gap-detection');
+    const lock = await this.lockService.acquire({
+      key: LOCK_KEYS.OHLC_GAP_DETECTION_SCHEDULE,
+      ttlMs: LOCK_DEFAULTS.SCHEDULE_LOCK_TTL_MS,
+      maxRetries: 2,
+      retryDelayMs: 500
+    });
 
-    if (existingJob) {
-      this.logger.log(`OHLC gap detection job already scheduled with pattern: ${existingJob.pattern}`);
+    if (!lock.acquired) {
+      this.logger.log('Another instance is scheduling OHLC gap detection job, skipping');
       return;
     }
 
-    const cronPattern = '0 5 * * *';
+    try {
+      const repeatedJobs = await this.gapQueue.getRepeatableJobs();
+      const existingJob = repeatedJobs.find((job) => job.name === 'ohlc-gap-detection');
 
-    await this.gapQueue.add(
-      'ohlc-gap-detection',
-      {
-        timestamp: new Date().toISOString(),
-        description: 'Scheduled OHLC gap detection job'
-      },
-      {
-        repeat: { pattern: cronPattern },
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 5000
-        },
-        removeOnComplete: 30,
-        removeOnFail: 20
+      if (existingJob) {
+        this.logger.log(`OHLC gap detection job already scheduled with pattern: ${existingJob.pattern}`);
+        return;
       }
-    );
 
-    this.logger.log(`OHLC gap detection job scheduled to run daily at 5:00 AM UTC`);
+      const cronPattern = '0 5 * * *';
+
+      await this.gapQueue.add(
+        'ohlc-gap-detection',
+        {
+          timestamp: new Date().toISOString(),
+          description: 'Scheduled OHLC gap detection job'
+        },
+        {
+          repeat: { pattern: cronPattern },
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000
+          },
+          removeOnComplete: 30,
+          removeOnFail: 20
+        }
+      );
+
+      this.logger.log(`OHLC gap detection job scheduled to run daily at 5:00 AM UTC`);
+    } finally {
+      await this.lockService.release(LOCK_KEYS.OHLC_GAP_DETECTION_SCHEDULE, lock.token);
+    }
   }
 
   // BullMQ: process incoming jobs
@@ -197,20 +212,20 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
 
       await job.updateProgress(80);
 
-      // Queue backfills in batches with delay between batches to avoid rate-limiting
-      for (let i = 0; i < queuedCoinIds.length; i += OHLCGapDetectionTask.BACKFILL_BATCH_SIZE) {
-        const batch = queuedCoinIds.slice(i, i + OHLCGapDetectionTask.BACKFILL_BATCH_SIZE);
-        await Promise.all(
-          batch.map((coinId) =>
-            this.backfillService.startBackfill(coinId).catch((error: unknown) => {
-              const err = toErrorInfo(error);
-              this.logger.warn(`Failed to trigger backfill for coin ${coinId}: ${err.message}`);
-            })
-          )
+      // Enqueue one job per deficient coin. Concurrency (≤2 simultaneous backfills
+      // cluster-wide) is enforced by the OHLCBackfillJobTask worker — no need to
+      // batch+sleep here.
+      for (const coinId of queuedCoinIds) {
+        await this.backfillQueue.add(
+          'backfill',
+          { coinId },
+          {
+            attempts: 2,
+            backoff: { type: 'exponential', delay: 5000 },
+            removeOnComplete: 100,
+            removeOnFail: 50
+          }
         );
-        if (i + OHLCGapDetectionTask.BACKFILL_BATCH_SIZE < queuedCoinIds.length) {
-          await this.sleep(OHLCGapDetectionTask.BACKFILL_BATCH_DELAY_MS);
-        }
       }
 
       await job.updateProgress(100);
@@ -267,9 +282,5 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
       }
     }
     return result;
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

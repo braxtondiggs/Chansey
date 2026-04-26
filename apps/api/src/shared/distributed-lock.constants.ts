@@ -2,6 +2,7 @@ export const LOCK_KEYS = {
   LIVE_TRADING: 'live-trading:execution-lock',
   OHLC_SYNC_SCHEDULE: 'ohlc-sync:schedule-lock',
   OHLC_GAP_DETECTION: 'ohlc:gap-detection-lock',
+  OHLC_GAP_DETECTION_SCHEDULE: 'ohlc:gap-detection-schedule-lock',
   SYMBOL_MAP_REFRESH: 'ohlc-sync:symbol-map-refresh-lock',
   COIN_SYNC: 'coin-sync:lock',
   /** @deprecated Replaced by COIN_MARKET_SYNC / COIN_METADATA_SYNC. Retained for one release so in-flight workers do not error. */
