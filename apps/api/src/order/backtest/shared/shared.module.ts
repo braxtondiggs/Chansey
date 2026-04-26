@@ -11,6 +11,7 @@ import {
 import { ExitSignalProcessorService } from './exit-signals';
 import { FeeCalculatorService } from './fees';
 import { SignalFilterChainService } from './filters';
+import { IndicatorPrecomputeService } from './indicator-precompute.service';
 import { MetricsCalculatorService } from './metrics';
 import { MetricsAccumulatorService } from './metrics-accumulator';
 import { OpportunitySellService } from './opportunity-selling';
@@ -60,6 +61,7 @@ import { PositionAnalysisService } from '../../services/position-analysis.servic
     BacktestBarProcessor,
     BacktestSignalTradeService,
     BarCheckpointCoordinator,
+    IndicatorPrecomputeService,
     RegimeGateService,
     VolatilityCalculator,
     SharpeRatioCalculator,
@@ -87,6 +89,7 @@ import { PositionAnalysisService } from '../../services/position-analysis.servic
     BacktestBarProcessor,
     BacktestSignalTradeService,
     BarCheckpointCoordinator,
+    IndicatorPrecomputeService,
     RegimeGateService,
     VolatilityCalculator,
     SharpeRatioCalculator,

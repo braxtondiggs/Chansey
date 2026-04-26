@@ -92,35 +92,40 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
           `timestamp=${context.timestamp?.toISOString?.() ?? 'unknown'}`
       );
 
-      for (const coin of context.coins) {
-        const priceHistory = context.priceData[coin.id];
+      const coinResults = await Promise.all(
+        context.coins.map(async (coin) => {
+          const priceHistory = context.priceData[coin.id];
 
-        if (!this.hasEnoughData(priceHistory, config)) {
-          continue;
+          if (!this.hasEnoughData(priceHistory, config)) return null;
+
+          const coinStart = Date.now();
+          const bands = await this.loadBollingerBands(coin, priceHistory, context, config, skipCache);
+          if (!bands) return null;
+
+          const bbDuration = Date.now() - coinStart;
+
+          const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, bands, config);
+          const chart = !isBacktest ? this.prepareChartData(priceHistory, bands, config) : undefined;
+
+          const totalCoinDuration = Date.now() - coinStart;
+          if (totalCoinDuration > 2000) {
+            this.logger.warn(
+              `BB Squeeze: slow coin processing for ${coin.symbol}: ${totalCoinDuration}ms total ` +
+                `(bb=${bbDuration}ms, chart=${totalCoinDuration - bbDuration}ms, ${priceHistory.length} prices)`
+            );
+          }
+
+          return { coinId: coin.id, signal, chart };
+        })
+      );
+
+      for (const result of coinResults) {
+        if (!result) continue;
+        if (result.signal && result.signal.confidence >= config.minConfidence) {
+          signals.push(result.signal);
         }
-
-        const coinStart = Date.now();
-
-        const bands = await this.loadBollingerBands(coin, priceHistory, context, config, skipCache);
-        if (!bands) continue;
-
-        const bbDuration = Date.now() - coinStart;
-
-        const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, bands, config);
-        if (signal && signal.confidence >= config.minConfidence) {
-          signals.push(signal);
-        }
-
-        if (!isBacktest) {
-          chartData[coin.id] = this.prepareChartData(priceHistory, bands, config);
-        }
-
-        const totalCoinDuration = Date.now() - coinStart;
-        if (totalCoinDuration > 2000) {
-          this.logger.warn(
-            `BB Squeeze: slow coin processing for ${coin.symbol}: ${totalCoinDuration}ms total ` +
-              `(bb=${bbDuration}ms, chart=${totalCoinDuration - bbDuration}ms, ${priceHistory.length} prices)`
-          );
+        if (result.chart) {
+          chartData[result.coinId] = result.chart;
         }
       }
 
@@ -290,9 +295,10 @@ export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implemen
 
     const bbDuration = Date.now() - coinStart;
     if (bbDuration > 1000) {
+      const cacheState = skipCache ? 'skipped' : bbResult.fromCache ? 'hit' : 'miss';
       this.logger.warn(
-        `BB Squeeze: slow calculateBollingerBands for ${coin.symbol}: ${bbDuration}ms ` +
-          `(${priceHistory.length} prices, cached=${bbResult.fromCache})`
+        `BB Squeeze: slow BB iteration for ${coin.symbol}: ${bbDuration}ms ` +
+          `(${priceHistory.length} prices, cache=${cacheState})`
       );
     }
 

@@ -1,22 +1,13 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 
-import { type OptimizationBacktestConfig } from './optimization-backtest.interface';
-import { OptimizationIndicatorPrecomputeService } from './optimization-indicator-precompute.service';
+import { IndicatorPrecomputeService } from './indicator-precompute.service';
+import { type PriceTrackingContext } from './price-window';
 
-import { AlgorithmRegistry } from '../../../../algorithm/registry/algorithm-registry.service';
-import { type PriceTrackingContext } from '../price-window';
+import { AlgorithmRegistry } from '../../../algorithm/registry/algorithm-registry.service';
 
-describe('OptimizationIndicatorPrecomputeService', () => {
-  let service: OptimizationIndicatorPrecomputeService;
+describe('IndicatorPrecomputeService', () => {
+  let service: IndicatorPrecomputeService;
   let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
-
-  const makeConfig = (overrides: Partial<OptimizationBacktestConfig> = {}): OptimizationBacktestConfig => ({
-    algorithmId: 'test-001',
-    parameters: {},
-    startDate: new Date('2024-01-01'),
-    endDate: new Date('2024-06-01'),
-    ...overrides
-  });
 
   const makePrices = (count: number) =>
     Array.from({ length: count }, (_, i) => ({
@@ -44,7 +35,7 @@ describe('OptimizationIndicatorPrecomputeService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        OptimizationIndicatorPrecomputeService,
+        IndicatorPrecomputeService,
         {
           provide: AlgorithmRegistry,
           useValue: {
@@ -54,22 +45,22 @@ describe('OptimizationIndicatorPrecomputeService', () => {
       ]
     }).compile();
 
-    service = module.get(OptimizationIndicatorPrecomputeService);
+    service = module.get(IndicatorPrecomputeService);
     algorithmRegistry = module.get(AlgorithmRegistry);
   });
 
-  describe('precomputeIndicatorsForOptimization', () => {
+  describe('precomputeIndicators', () => {
     it('should return undefined when strategy lookup throws', async () => {
       algorithmRegistry.getStrategyForAlgorithm.mockRejectedValue(new Error('Not found'));
 
-      const result = await service.precomputeIndicatorsForOptimization(makeConfig(), [], emptyPriceCtx);
+      const result = await service.precomputeIndicators('test-001', {}, [], emptyPriceCtx);
       expect(result).toBeUndefined();
     });
 
     it('should return undefined when strategy has no getIndicatorRequirements', async () => {
       algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({} as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(makeConfig(), coins, makePriceCtx('coin-1', 30));
+      const result = await service.precomputeIndicators('test-001', {}, coins, makePriceCtx('coin-1', 30));
       expect(result).toBeUndefined();
     });
 
@@ -78,7 +69,7 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         getIndicatorRequirements: () => []
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(makeConfig(), coins, makePriceCtx('coin-1', 30));
+      const result = await service.precomputeIndicators('test-001', {}, coins, makePriceCtx('coin-1', 30));
       expect(result).toBeUndefined();
     });
 
@@ -89,7 +80,7 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(makeConfig(), coins, emptyPriceCtx);
+      const result = await service.precomputeIndicators('test-001', {}, coins, emptyPriceCtx);
       expect(result).toBeUndefined();
     });
 
@@ -100,28 +91,23 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      // Only 10 prices but period is 50
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { emaPeriod: 50 } }),
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { emaPeriod: 50 },
         coins,
         makePriceCtx('coin-1', 10)
       );
       expect(result).toBeUndefined();
     });
 
-    it('should use defaultParams when config parameter is missing', async () => {
+    it('should use defaultParams when parameters object is missing the key', async () => {
       algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
         getIndicatorRequirements: () => [
           { type: 'EMA' as const, paramKeys: ['emaPeriod'], defaultParams: { emaPeriod: 5 } }
         ]
       } as any);
 
-      // No emaPeriod in config.parameters — should fall back to default 5
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: {} }),
-        coins,
-        makePriceCtx('coin-1', 20)
-      );
+      const result = await service.precomputeIndicators('test-001', {}, coins, makePriceCtx('coin-1', 20));
 
       expect(result).toBeDefined();
       expect(result?.['coin-1']['ema_5']).toBeInstanceOf(Float64Array);
@@ -134,8 +120,9 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { emaPeriod: 10 } }),
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { emaPeriod: 10 },
         coins,
         makePriceCtx('coin-1', 30)
       );
@@ -143,7 +130,6 @@ describe('OptimizationIndicatorPrecomputeService', () => {
       expect(result).toBeDefined();
       expect(result?.['coin-1']['ema_10']).toBeInstanceOf(Float64Array);
       expect(result?.['coin-1']['ema_10'].length).toBe(30);
-      // First values should be NaN (padding), later values should be numeric
       expect(result?.['coin-1']['ema_10'][29]).not.toBeNaN();
     });
 
@@ -154,8 +140,9 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { smaPeriod: 10 } }),
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { smaPeriod: 10 },
         coins,
         makePriceCtx('coin-1', 30)
       );
@@ -171,8 +158,9 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { rsiPeriod: 14 } }),
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { rsiPeriod: 14 },
         coins,
         makePriceCtx('coin-1', 30)
       );
@@ -192,8 +180,9 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { macdFast: 12, macdSlow: 26, macdSignal: 9 } }),
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { macdFast: 12, macdSlow: 26, macdSignal: 9 },
         coins,
         makePriceCtx('coin-1', 50)
       );
@@ -217,8 +206,9 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { bbPeriod: 20, bbStdDev: 2 } }),
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { bbPeriod: 20, bbStdDev: 2 },
         coins,
         makePriceCtx('coin-1', 40)
       );
@@ -240,8 +230,9 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { atrPeriod: 14 } }),
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { atrPeriod: 14 },
         coins,
         makePriceCtx('coin-1', 30)
       );
@@ -258,14 +249,14 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { emaPeriod: 10 } }),
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { emaPeriod: 10 },
         coins,
         makePriceCtx('coin-1', 30)
       );
 
       expect(result).toBeDefined();
-      // Should only have one ema_10 key, not fail or produce duplicates
       expect(Object.keys(result?.['coin-1'] ?? {}).filter((k) => k === 'ema_10')).toHaveLength(1);
     });
 
@@ -291,11 +282,7 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         windowsByCoin: new Map()
       };
 
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { emaPeriod: 5 } }),
-        multiCoins,
-        priceCtx
-      );
+      const result = await service.precomputeIndicators('test-001', { emaPeriod: 5 }, multiCoins, priceCtx);
 
       expect(result?.['coin-1']['ema_5'].length).toBe(20);
       expect(result?.['coin-2']['ema_5'].length).toBe(15);
@@ -304,7 +291,6 @@ describe('OptimizationIndicatorPrecomputeService', () => {
     it('should silently skip indicators that throw during computation', async () => {
       algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
         getIndicatorRequirements: () => [
-          // MACD with bad params that may cause calculator to throw
           {
             type: 'MACD' as const,
             paramKeys: ['fast', 'slow', 'sig'],
@@ -314,13 +300,13 @@ describe('OptimizationIndicatorPrecomputeService', () => {
         ]
       } as any);
 
-      const result = await service.precomputeIndicatorsForOptimization(
-        makeConfig({ parameters: { fast: 0, slow: 0, sig: 0, emaPeriod: 5 } }),
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { fast: 0, slow: 0, sig: 0, emaPeriod: 5 },
         coins,
         makePriceCtx('coin-1', 30)
       );
 
-      // Should still produce the EMA even if MACD failed
       expect(result).toBeDefined();
       expect(result?.['coin-1']['ema_5']).toBeInstanceOf(Float64Array);
     });

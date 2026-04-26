@@ -1,6 +1,8 @@
 export const LOCK_KEYS = {
   LIVE_TRADING: 'live-trading:execution-lock',
   OHLC_SYNC_SCHEDULE: 'ohlc-sync:schedule-lock',
+  OHLC_GAP_DETECTION: 'ohlc:gap-detection-lock',
+  OHLC_GAP_DETECTION_SCHEDULE: 'ohlc:gap-detection-schedule-lock',
   SYMBOL_MAP_REFRESH: 'ohlc-sync:symbol-map-refresh-lock',
   COIN_SYNC: 'coin-sync:lock',
   /** @deprecated Replaced by COIN_MARKET_SYNC / COIN_METADATA_SYNC. Retained for one release so in-flight workers do not error. */
@@ -23,6 +25,7 @@ export const LOCK_KEYS = {
 export const LOCK_DEFAULTS = {
   LIVE_TRADING_TTL_MS: 5 * 60 * 1000, // 5 minutes
   SCHEDULE_LOCK_TTL_MS: 30 * 1000, // 30 seconds for scheduling operations
+  OHLC_GAP_DETECTION_TTL_MS: 30 * 60 * 1000, // 30 minutes — counting + queueing is fast; lock guards multi-instance scheduling
   COIN_SYNC_TTL_MS: 45 * 60 * 1000, // 45 minutes — observed ~34.8 min, ~30% buffer
   COIN_DETAIL_TTL_MS: 5 * 60 * 60 * 1000, // 5 hours — observed runtime ~3h 46m (1500 coins × 2.5s/batch + 429 retries); ~33% buffer
   COIN_MARKET_SYNC_TTL_MS: 45 * 60 * 1000, // 45 minutes — up to ~25 min on fresh install (500 coins × per-coin chart backfill) + batched markets + snapshot + 30s cooldown, ~80% headroom

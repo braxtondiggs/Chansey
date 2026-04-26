@@ -32,6 +32,7 @@ describe('OHLCBackfillService', () => {
   let coinService: jest.Mocked<CoinService>;
   let exchangeService: jest.Mocked<ExchangeService>;
   let configService: { get: jest.Mock };
+  let backfillQueue: { add: jest.Mock };
 
   beforeEach(() => {
     cache = {
@@ -67,6 +68,10 @@ describe('OHLCBackfillService', () => {
       get: jest.fn()
     };
 
+    backfillQueue = {
+      add: jest.fn().mockResolvedValue({ id: 'queue-job-1' })
+    };
+
     service = new OHLCBackfillService(
       cache,
       ohlcService,
@@ -74,7 +79,8 @@ describe('OHLCBackfillService', () => {
       exchangeOHLC,
       coinService,
       exchangeService,
-      configService as any
+      configService as any,
+      backfillQueue as any
     );
   });
 
@@ -91,7 +97,6 @@ describe('OHLCBackfillService', () => {
 
     it('returns job ID and saves initial progress', async () => {
       coinService.getCoinById.mockResolvedValue({ id: 'btc', symbol: 'btc' } as any);
-      jest.spyOn(service as any, 'performBackfill').mockResolvedValue(undefined);
 
       const jobId = await service.startBackfill('btc');
 
@@ -103,27 +108,41 @@ describe('OHLCBackfillService', () => {
       );
     });
 
-    it('uses provided start and end dates', async () => {
+    it('enqueues a backfill job with resolved symbol and ISO dates', async () => {
       coinService.getCoinById.mockResolvedValue({ id: 'btc', symbol: 'btc' } as any);
-      const performSpy = jest.spyOn(service as any, 'performBackfill').mockResolvedValue(undefined);
       const start = new Date('2023-06-01T00:00:00Z');
       const end = new Date('2023-12-01T00:00:00Z');
 
       await service.startBackfill('btc', start, end);
 
-      expect(performSpy).toHaveBeenCalledWith('btc', 'BTC/USD', start, end);
+      expect(backfillQueue.add).toHaveBeenCalledWith(
+        'backfill',
+        {
+          coinId: 'btc',
+          symbol: 'BTC/USD',
+          startDate: start.toISOString(),
+          endDate: end.toISOString()
+        },
+        expect.objectContaining({
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 5000 }
+        })
+      );
     });
 
-    it("uses the symbol map's pair when an active mapping exists", async () => {
+    it("enqueues with the symbol map's pair when an active mapping exists", async () => {
       coinService.getCoinById.mockResolvedValue({ id: 'enj', symbol: 'enj' } as any);
       symbolMapService.getSymbolMapsForCoins.mockResolvedValue([
         { coinId: 'enj', symbol: 'ENJ/USDT', isActive: true, priority: 0 }
       ] as any);
-      const performSpy = jest.spyOn(service as any, 'performBackfill').mockResolvedValue(undefined);
 
       await service.startBackfill('enj');
 
-      expect(performSpy).toHaveBeenCalledWith('enj', 'ENJ/USDT', expect.any(Date), expect.any(Date));
+      expect(backfillQueue.add).toHaveBeenCalledWith(
+        'backfill',
+        expect.objectContaining({ coinId: 'enj', symbol: 'ENJ/USDT' }),
+        expect.any(Object)
+      );
       expect(cache.set).toHaveBeenCalledWith(
         'ohlc:backfill:enj',
         expect.stringContaining('"coinSymbol":"ENJ/USDT"'),
@@ -134,11 +153,14 @@ describe('OHLCBackfillService', () => {
     it('falls back to {SYM}/USD when no active mapping exists', async () => {
       coinService.getCoinById.mockResolvedValue({ id: 'btc', symbol: 'btc' } as any);
       symbolMapService.getSymbolMapsForCoins.mockResolvedValue([]);
-      const performSpy = jest.spyOn(service as any, 'performBackfill').mockResolvedValue(undefined);
 
       await service.startBackfill('btc');
 
-      expect(performSpy).toHaveBeenCalledWith('btc', 'BTC/USD', expect.any(Date), expect.any(Date));
+      expect(backfillQueue.add).toHaveBeenCalledWith(
+        'backfill',
+        expect.objectContaining({ coinId: 'btc', symbol: 'BTC/USD' }),
+        expect.any(Object)
+      );
     });
 
     it('uses the first mapping returned (DB orders by priority ASC)', async () => {
@@ -149,11 +171,56 @@ describe('OHLCBackfillService', () => {
         { coinId: 'btc', symbol: 'BTC/USD', isActive: true, priority: 0 },
         { coinId: 'btc', symbol: 'BTC/USDT', isActive: true, priority: 1 }
       ] as any);
+
+      await service.startBackfill('btc');
+
+      expect(backfillQueue.add).toHaveBeenCalledWith(
+        'backfill',
+        expect.objectContaining({ coinId: 'btc', symbol: 'BTC/USD' }),
+        expect.any(Object)
+      );
+    });
+
+    it('does not invoke performBackfill directly (worker is sole entry point)', async () => {
+      coinService.getCoinById.mockResolvedValue({ id: 'btc', symbol: 'btc' } as any);
       const performSpy = jest.spyOn(service as any, 'performBackfill').mockResolvedValue(undefined);
 
       await service.startBackfill('btc');
 
-      expect(performSpy).toHaveBeenCalledWith('btc', 'BTC/USD', expect.any(Date), expect.any(Date));
+      expect(performSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('runBackfill', () => {
+    const start = new Date('2024-01-01T00:00:00Z');
+    const end = new Date('2024-01-02T00:00:00Z');
+
+    it('awaits performBackfill to completion with passed-through args', async () => {
+      let resolved = false;
+      const performSpy = jest.spyOn(service as any, 'performBackfill').mockImplementation(async () => {
+        await Promise.resolve();
+        resolved = true;
+      });
+
+      await service.runBackfill('btc', 'BTC/USD', start, end);
+
+      expect(performSpy).toHaveBeenCalledWith('btc', 'BTC/USD', start, end);
+      expect(resolved).toBe(true);
+    });
+
+    it('rethrows when performBackfill throws (so BullMQ records the failure)', async () => {
+      jest.spyOn(service as any, 'performBackfill').mockRejectedValue(new Error('rate limited'));
+
+      await expect(service.runBackfill('btc', 'BTC/USD', start, end)).rejects.toThrow('rate limited');
+    });
+
+    it('does not re-resolve symbol map (caller already did)', async () => {
+      jest.spyOn(service as any, 'performBackfill').mockResolvedValue(undefined);
+
+      await service.runBackfill('enj', 'ENJ/USDT', start, end);
+
+      expect(symbolMapService.getSymbolMapsForCoins).not.toHaveBeenCalled();
+      expect(coinService.getCoinById).not.toHaveBeenCalled();
     });
   });
 
@@ -354,20 +421,22 @@ describe('OHLCBackfillService', () => {
       ]);
     });
 
-    it('skips forward when no candles returned', async () => {
+    it('advances past zero-candle hours but throws once the loop ends with no writes', async () => {
       exchangeOHLC.fetchOHLCWithFallback
         .mockResolvedValueOnce({ success: true, candles: [], exchangeSlug: 'binance_us' })
         .mockResolvedValueOnce({ success: true, candles: [], exchangeSlug: 'binance_us' });
 
-      await (service as any).performBackfill(
-        'btc',
-        'BTC/USD',
-        new Date('2024-01-01T00:00:00Z'),
-        new Date('2024-01-01T01:30:00Z')
-      );
+      await expect(
+        (service as any).performBackfill(
+          'btc',
+          'BTC/USD',
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-01T01:30:00Z')
+        )
+      ).rejects.toThrow(/No candles returned/);
 
       expect(ohlcService.upsertCandles).not.toHaveBeenCalled();
-      // Should have advanced past the end date after 2 one-hour skips
+      // Cursor advanced past end date after 2 one-hour skips, then post-loop zero-candles throw fired.
       expect(exchangeOHLC.fetchOHLCWithFallback).toHaveBeenCalledTimes(2);
     });
 
@@ -431,7 +500,7 @@ describe('OHLCBackfillService', () => {
       );
     });
 
-    it('marks status as failed and resets currentDate to fromDate when no candles were written', async () => {
+    it('throws when zero candles produced so BullMQ records failure', async () => {
       exchangeOHLC.fetchOHLCWithFallback.mockResolvedValue({
         success: false,
         candles: [],
@@ -440,7 +509,9 @@ describe('OHLCBackfillService', () => {
       });
 
       const fromDate = new Date('2024-01-01T00:00:00Z');
-      await (service as any).performBackfill('enj', 'ENJ/USD', fromDate, new Date('2024-01-01T02:00:00Z'));
+      await expect(
+        (service as any).performBackfill('enj', 'ENJ/USD', fromDate, new Date('2024-01-01T02:00:00Z'))
+      ).rejects.toThrow(/No candles returned/);
 
       const failedWrite = cache.set.mock.calls.find(
         ([, value]) => typeof value === 'string' && value.includes('"status":"failed"')

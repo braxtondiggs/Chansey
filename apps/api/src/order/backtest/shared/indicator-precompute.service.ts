@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { OptimizationBacktestConfig } from './optimization-backtest.interface';
+import { PriceTrackingContext } from './price-window';
 
 import {
   ATRCalculator,
@@ -9,14 +9,13 @@ import {
   MACDCalculator,
   RSICalculator,
   SMACalculator
-} from '../../../../algorithm/indicators/calculators';
-import { AlgorithmRegistry } from '../../../../algorithm/registry/algorithm-registry.service';
-import { Coin } from '../../../../coin/coin.entity';
-import { PriceTrackingContext } from '../price-window';
+} from '../../../algorithm/indicators/calculators';
+import { AlgorithmRegistry } from '../../../algorithm/registry/algorithm-registry.service';
+import { Coin } from '../../../coin/coin.entity';
 
 @Injectable()
-export class OptimizationIndicatorPrecomputeService {
-  private readonly logger = new Logger('OptimizationIndicatorPrecomputeService');
+export class IndicatorPrecomputeService {
+  private readonly logger = new Logger('IndicatorPrecomputeService');
 
   constructor(private readonly algorithmRegistry: AlgorithmRegistry) {}
 
@@ -25,20 +24,21 @@ export class OptimizationIndicatorPrecomputeService {
    * Eliminates per-timestamp IndicatorService calls (MD5 hashing + Redis I/O).
    * Returns a map: coinId -> indicatorKey -> full padded number array.
    */
-  async precomputeIndicatorsForOptimization(
-    config: OptimizationBacktestConfig,
+  async precomputeIndicators(
+    algorithmId: string,
+    parameters: Record<string, unknown>,
     coins: Coin[],
     priceCtx: PriceTrackingContext
   ): Promise<Record<string, Record<string, Float64Array>> | undefined> {
     let strategy;
     try {
-      strategy = await this.algorithmRegistry.getStrategyForAlgorithm(config.algorithmId);
+      strategy = await this.algorithmRegistry.getStrategyForAlgorithm(algorithmId);
     } catch {
       return undefined;
     }
     if (!strategy?.getIndicatorRequirements) return undefined;
 
-    const requirements = strategy.getIndicatorRequirements(config.parameters);
+    const requirements = strategy.getIndicatorRequirements(parameters);
     if (requirements.length === 0) return undefined;
 
     const result: Record<string, Record<string, Float64Array>> = {};
@@ -63,7 +63,7 @@ export class OptimizationIndicatorPrecomputeService {
       for (const req of requirements) {
         // Resolve parameter values from config, falling back to defaults
         const resolveParam = (key: string): number => {
-          const val = config.parameters[key];
+          const val = parameters[key];
           return typeof val === 'number' && isFinite(val) ? val : req.defaultParams[key];
         };
 

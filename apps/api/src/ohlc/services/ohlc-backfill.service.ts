@@ -1,7 +1,9 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { Queue } from 'bullmq';
 import { Cache } from 'cache-manager';
 
 import { ExchangeOHLCService } from './exchange-ohlc.service';
@@ -46,14 +48,56 @@ export class OHLCBackfillService {
     private readonly coinService: CoinService,
     @Inject(forwardRef(() => ExchangeService))
     private readonly exchangeService: ExchangeService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    @InjectQueue('ohlc-backfill-queue') private readonly backfillQueue: Queue
   ) {}
 
   /**
-   * Start backfill for a specific coin
+   * Enqueue a backfill job. Worker concurrency in `OHLCBackfillJobTask` is the
+   * single chokepoint that bounds exchange-side load — all callers should funnel
+   * through here rather than invoking `performBackfill` directly.
    * @returns Job ID for tracking
    */
   async startBackfill(coinId: string, startDate?: Date, endDate?: Date): Promise<string> {
+    const { jobId, symbol, start, end } = await this.prepareBackfill(coinId, startDate, endDate);
+
+    await this.backfillQueue.add(
+      'backfill',
+      {
+        coinId,
+        symbol,
+        startDate: start.toISOString(),
+        endDate: end.toISOString()
+      },
+      {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 100,
+        removeOnFail: 50
+      }
+    );
+
+    return jobId;
+  }
+
+  /**
+   * Worker entry point. `prepareBackfill` already ran in `startBackfill`, so
+   * the resolved symbol and date range are passed through job data to avoid
+   * a duplicate symbol-map lookup.
+   */
+  async runBackfill(coinId: string, symbol: string, start: Date, end: Date): Promise<void> {
+    await this.performBackfill(coinId, symbol, start, end);
+  }
+
+  /**
+   * Resolve coin/symbol/date-range and persist initial backfill progress.
+   * Shared between `startBackfill` (fire-and-forget) and `runBackfill` (awaited).
+   */
+  private async prepareBackfill(
+    coinId: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<{ jobId: string; symbol: string; start: Date; end: Date }> {
     const coin = await this.coinService.getCoinById(coinId).catch(() => null);
     if (!coin) {
       throw new Error(`Coin not found: ${coinId}`);
@@ -83,13 +127,7 @@ export class OHLCBackfillService {
 
     await this.saveProgress(coinId, progress);
 
-    // Start the backfill in the background
-    this.performBackfill(coinId, symbol, start, end).catch((error: unknown) => {
-      const err = toErrorInfo(error);
-      this.logger.error(`Backfill failed for ${coinId}: ${err.message}`);
-    });
-
-    return jobId;
+    return { jobId, symbol, start, end };
   }
 
   /**
@@ -331,9 +369,9 @@ export class OHLCBackfillService {
     }
 
     // Zero candles across the full range means the pair is wrong, delisted, or the exchange has
-    // no history. Mark failed so the manual resume endpoint (with a re-resolved symbol) can
-    // re-attempt instead of silently treating a no-op run as successful. Reset currentDate to
-    // fromDate so a resume has a full range to retry against the fresh symbol.
+    // no history. Throw so the queued worker records the failure (and BullMQ retries) instead of
+    // silently treating a no-op run as successful. Reset currentDate to fromDate so a resume has
+    // a full range to retry against the fresh symbol.
     if (totalCandles === 0) {
       const error = `No candles returned for ${symbol} between ${fromDate.toISOString()} and ${toDate.toISOString()}`;
       await this.updateProgress(coinId, {
@@ -343,7 +381,7 @@ export class OHLCBackfillService {
         error
       });
       this.logger.warn(`Backfill produced 0 candles for ${coinId} (${symbol}) — marking failed`);
-      return;
+      throw new Error(error);
     }
 
     // Mark as complete

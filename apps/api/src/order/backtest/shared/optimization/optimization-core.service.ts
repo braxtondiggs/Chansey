@@ -7,7 +7,6 @@ import {
   OptimizationBacktestResult,
   PrecomputedWindowData
 } from './optimization-backtest.interface';
-import { OptimizationIndicatorPrecomputeService } from './optimization-indicator-precompute.service';
 import { calculateOptimizationMetrics } from './optimization-metrics.util';
 
 import { AlgorithmRegistry } from '../../../../algorithm/registry/algorithm-registry.service';
@@ -22,6 +21,7 @@ import { mapStrategySignal } from '../execution/backtest-loop-runner.types';
 import { getMinHoldMs } from '../execution/trade-executor.helpers';
 import { TradeExecutorService } from '../execution/trade-executor.service';
 import { ExitSignalProcessorService, ProcessExitSignalsCallbacks } from '../exit-signals/exit-signal-processor.service';
+import { IndicatorPrecomputeService } from '../indicator-precompute.service';
 import { MetricsCalculatorService } from '../metrics';
 import { Portfolio, PortfolioStateService } from '../portfolio';
 import { PriceTrackingContext, PriceWindowService } from '../price-window';
@@ -83,7 +83,7 @@ export class OptimizationCoreService {
     private readonly compositeRegimeService: CompositeRegimeService,
     private readonly slippageContextService: SlippageContextService,
     private readonly signalThrottle: SignalThrottleService,
-    private readonly indicatorPrecompute: OptimizationIndicatorPrecomputeService,
+    private readonly indicatorPrecompute: IndicatorPrecomputeService,
     private readonly tradeExecutor: TradeExecutorService,
     @Inject(forwardRef(() => OHLCService))
     private readonly ohlcService: OHLCService
@@ -183,8 +183,9 @@ export class OptimizationCoreService {
     }
 
     // Precompute indicators only for coins that passed the filter
-    const precomputedIndicators = await this.indicatorPrecompute.precomputeIndicatorsForOptimization(
-      config,
+    const precomputedIndicators = await this.indicatorPrecompute.precomputeIndicators(
+      config.algorithmId,
+      config.parameters,
       loopCoins,
       priceCtx
     );
@@ -229,8 +230,9 @@ export class OptimizationCoreService {
     const priceCtx = this.priceWindowService.initPriceTracking(historicalPrices, coinIds);
 
     // Precompute indicators once for the full price series (bypass Redis)
-    const precomputedIndicators = await this.indicatorPrecompute.precomputeIndicatorsForOptimization(
-      config,
+    const precomputedIndicators = await this.indicatorPrecompute.precomputeIndicators(
+      config.algorithmId,
+      config.parameters,
       coins,
       priceCtx
     );

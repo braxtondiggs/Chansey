@@ -167,9 +167,12 @@ export class PaperTradingMarketDataService {
     const staleKey = `${cacheKey}:stale`;
     const stale = await this.cacheManager.get<PriceData>(staleKey);
     if (stale) {
-      this.logger.warn(
-        `${circuitOpen ? 'Circuit open' : 'Batcher fetch exhausted'} for ${symbol} on ${exchangeSlug}. Using stale cached price.`
-      );
+      const message = `${circuitOpen ? 'Circuit open' : 'Batcher fetch exhausted'} for ${symbol} on ${exchangeSlug}. Using stale cached price.`;
+      if (circuitOpen) {
+        this.logger.debug(message);
+      } else {
+        this.logger.warn(message);
+      }
       return { ...stale, source: `${stale.source}:stale` };
     }
 
@@ -251,12 +254,15 @@ export class PaperTradingMarketDataService {
     const partialMisses = uncachedSymbols.filter((s) => !results.has(s));
 
     if (partialMisses.length > 0) {
-      this.logger.warn(
-        fetchError
-          ? `${circuitOpen ? 'Circuit open' : 'Batcher fetch exhausted'} for ${exchangeSlug}. ` +
-              `Falling back for ${partialMisses.length} symbol(s).`
-          : `Batcher returned partial data for ${exchangeSlug}. Falling back for ${partialMisses.length} symbol(s).`
-      );
+      const message = fetchError
+        ? `${circuitOpen ? 'Circuit open' : 'Batcher fetch exhausted'} for ${exchangeSlug}. ` +
+          `Falling back for ${partialMisses.length} symbol(s).`
+        : `Batcher returned partial data for ${exchangeSlug}. Falling back for ${partialMisses.length} symbol(s).`;
+      if (circuitOpen) {
+        this.logger.debug(message);
+      } else {
+        this.logger.warn(message);
+      }
 
       // Phase 1: parallel stale-cache (Redis) — cheap
       const afterStale = await this.recoverFromStaleCache(exchangeSlug, partialMisses, results);
