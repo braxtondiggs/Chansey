@@ -236,6 +236,32 @@ export class OHLCService {
   }
 
   /**
+   * Bulk count candles per coin within a date range. Returns a Map keyed by coinId.
+   * Coins with zero candles in the range are absent from the result.
+   * Uses a single GROUP BY query covered by the (coinId, timestamp, exchangeId) index.
+   */
+  async getCandleCountsByCoinInRange(coinIds: string[], startDate: Date, endDate: Date): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    if (coinIds.length === 0) return counts;
+
+    const rows = await this.ohlcRepository
+      .createQueryBuilder('candle')
+      .select('candle.coinId', 'coinId')
+      .addSelect('COUNT(*)', 'count')
+      .where('candle.coinId IN (:...coinIds)', { coinIds })
+      .andWhere('candle.timestamp >= :startDate', { startDate })
+      .andWhere('candle.timestamp < :endDate', { endDate })
+      .groupBy('candle.coinId')
+      .getRawMany<{ coinId: string; count: string }>();
+
+    for (const row of rows) {
+      counts.set(row.coinId, parseInt(row.count, 10));
+    }
+
+    return counts;
+  }
+
+  /**
    * Get all unique coin IDs that have candle data
    */
   async getCoinsWithCandleData(): Promise<string[]> {
