@@ -243,7 +243,7 @@ describe('PaperTradingEngineService', () => {
     const result = await service.processTick(makeSession({ tickCount: 10 }), exchangeKey);
 
     expect(resolveSymbolUniverse).toHaveBeenCalledTimes(1);
-    expect(marketDataService.getPrices).toHaveBeenCalledWith('binance', ['BTC/USD', 'ETH/USD']);
+    expect(marketDataService.getPrices).toHaveBeenCalledWith('binance', ['BTC/USD', 'ETH/USD'], 'session-1');
     expect(snapshotService.save).toHaveBeenCalledTimes(1);
     expect(result.processed).toBe(true);
   });
@@ -258,7 +258,8 @@ describe('PaperTradingEngineService', () => {
     expect(resolveSymbolUniverse).toHaveBeenCalledTimes(1);
     expect(marketDataService.getPrices).toHaveBeenCalledWith(
       'binance',
-      expect.arrayContaining(['BNB/USD', 'BTC/USD', 'ETH/USD'])
+      expect.arrayContaining(['BNB/USD', 'BTC/USD', 'ETH/USD']),
+      'session-1'
     );
   });
 

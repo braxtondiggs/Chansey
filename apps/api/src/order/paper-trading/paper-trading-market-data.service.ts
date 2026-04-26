@@ -14,6 +14,7 @@ import { CoinSelectionService } from '../../coin-selection/coin-selection.servic
 import { EXCHANGE_QUOTE_CURRENCY } from '../../exchange/constants';
 import { ExchangeManagerService } from '../../exchange/exchange-manager.service';
 import { TickerBatcherService } from '../../exchange/ticker-batcher/ticker-batcher.service';
+import { ExchangeSymbolMapService } from '../../ohlc/services/exchange-symbol-map.service';
 import { tickerCircuitKey } from '../../shared/circuit-breaker.constants';
 import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
 import { toErrorInfo } from '../../shared/error.util';
@@ -30,6 +31,9 @@ export class PaperTradingMarketDataService {
   private readonly cacheTtlMs: number;
   private readonly symbolUniverseCache = new Map<string, { symbols: string[]; cachedAt: number }>();
   private readonly SYMBOL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  // Dedupe key: `${sessionId}:${coinId}`. First DB-fallback hit per pair logs warn,
+  // subsequent hits log debug — degraded coins otherwise generate one warn per tick.
+  private readonly dbPriceLoggedSessions = new Set<string>();
 
   constructor(
     @Inject(paperTradingConfig.KEY) private readonly config: ConfigType<typeof paperTradingConfig>,
@@ -38,7 +42,8 @@ export class PaperTradingMarketDataService {
     private readonly coinSelectionService: CoinSelectionService,
     private readonly coinService: CoinService,
     private readonly circuitBreaker: CircuitBreakerService,
-    private readonly tickerBatcher: TickerBatcherService
+    private readonly tickerBatcher: TickerBatcherService,
+    private readonly symbolMapService: ExchangeSymbolMapService
   ) {
     this.cacheTtlMs = config.priceCacheTtlMs;
   }
@@ -47,7 +52,14 @@ export class PaperTradingMarketDataService {
     return tickerCircuitKey(exchangeSlug);
   }
 
-  /** Resolve symbol universe from user's coin selections, falling back to risk-level coins. */
+  /**
+   * Resolve symbol universe for the session's bound exchange.
+   *
+   * Routes coin selections (and the risk-level fallback) through `exchange_symbol_map`
+   * so the universe only contains pairs that actually trade on the user's exchange.
+   * Coins without an active mapping for `session.exchangeKey.exchange.id` are dropped —
+   * trying to fetch them generates a warn-storm with no fallback that could ever succeed.
+   */
   async resolveSymbolUniverse(session: PaperTradingSession, quoteCurrency: string): Promise<string[]> {
     const fallback = [`BTC/${quoteCurrency}`, `ETH/${quoteCurrency}`];
 
@@ -62,15 +74,27 @@ export class PaperTradingMarketDataService {
       return fallback;
     }
 
+    const sessionExchangeId = session.exchangeKey?.exchange?.id;
+    if (!sessionExchangeId) {
+      this.logger.warn(
+        `Session ${session.id}: no exchange bound to exchangeKey, using BTC/ETH fallback (cannot consult symbol map)`
+      );
+      return fallback;
+    }
+
     // Tier 1: user's explicit coin selections
     try {
       const selections = await this.coinSelectionService.getCoinSelectionsByUser(session.user, [
         CoinSelectionRelations.COIN
       ]);
       if (selections.length > 0) {
-        const symbols = selections.map((s) => `${s.coin.symbol.toUpperCase()}/${quoteCurrency}`);
-        this.symbolUniverseCache.set(cacheKey, { symbols, cachedAt: Date.now() });
-        return symbols;
+        const coinIds = selections.map((s) => s.coin.id);
+        const symbolByCoinId = await this.buildSymbolMap(coinIds, sessionExchangeId);
+        const symbols = this.collectSymbols(selections, symbolByCoinId, session.id, 'selection');
+        if (symbols.length > 0) {
+          this.symbolUniverseCache.set(cacheKey, { symbols, cachedAt: Date.now() });
+          return symbols;
+        }
       }
     } catch (error: unknown) {
       const err = toErrorInfo(error);
@@ -81,9 +105,18 @@ export class PaperTradingMarketDataService {
     try {
       const coins = await this.coinService.getCoinsByRiskLevel(session.user);
       if (coins.length > 0) {
-        const symbols = coins.map((c) => `${c.symbol.toUpperCase()}/${quoteCurrency}`);
-        this.symbolUniverseCache.set(cacheKey, { symbols, cachedAt: Date.now() });
-        return symbols;
+        const coinIds = coins.map((c) => c.id);
+        const symbolByCoinId = await this.buildSymbolMap(coinIds, sessionExchangeId);
+        const symbols = this.collectSymbols(
+          coins.map((c) => ({ coin: c })),
+          symbolByCoinId,
+          session.id,
+          'risk-level'
+        );
+        if (symbols.length > 0) {
+          this.symbolUniverseCache.set(cacheKey, { symbols, cachedAt: Date.now() });
+          return symbols;
+        }
       }
     } catch (error: unknown) {
       const err = toErrorInfo(error);
@@ -98,6 +131,48 @@ export class PaperTradingMarketDataService {
     return fallback;
   }
 
+  /** Build coinId → trading symbol map for the session's exchange. */
+  private async buildSymbolMap(coinIds: string[], sessionExchangeId: string): Promise<Map<string, string>> {
+    if (coinIds.length === 0) return new Map();
+    const mappings = await this.symbolMapService.getSymbolMapsForCoins(coinIds);
+    const result = new Map<string, string>();
+    for (const m of mappings) {
+      if (m.exchangeId !== sessionExchangeId) continue;
+      // First mapping wins — getSymbolMapsForCoins is ordered by priority ASC.
+      if (!result.has(m.coinId)) result.set(m.coinId, m.symbol);
+    }
+    return result;
+  }
+
+  /**
+   * Filter selections/coins to those with an active mapping on the session's exchange.
+   * Logs dropped coins at debug — not warn — since this is expected for users whose
+   * connected exchange doesn't list every coin in their selection set.
+   */
+  private collectSymbols(
+    items: { coin: { id: string; symbol: string } }[],
+    symbolByCoinId: Map<string, string>,
+    sessionId: string,
+    source: 'selection' | 'risk-level'
+  ): string[] {
+    const symbols: string[] = [];
+    const dropped: string[] = [];
+    for (const item of items) {
+      const mapped = symbolByCoinId.get(item.coin.id);
+      if (mapped) {
+        symbols.push(mapped);
+      } else {
+        dropped.push(item.coin.symbol.toUpperCase());
+      }
+    }
+    if (dropped.length > 0) {
+      this.logger.debug(
+        `Session ${sessionId}: dropped ${dropped.length} ${source} coin(s) without active symbol map for session exchange (${dropped.slice(0, 10).join(', ')}${dropped.length > 10 ? '…' : ''})`
+      );
+    }
+    return symbols;
+  }
+
   /** Remove cached symbol universes for sessions that are no longer active. */
   sweepOrphaned(activeSessionIds: Set<string>): number {
     let swept = 0;
@@ -106,6 +181,12 @@ export class PaperTradingMarketDataService {
       if (!activeSessionIds.has(sessionId)) {
         this.symbolUniverseCache.delete(key);
         swept++;
+      }
+    }
+    for (const key of this.dbPriceLoggedSessions) {
+      const [sid] = key.split(':');
+      if (!activeSessionIds.has(sid)) {
+        this.dbPriceLoggedSessions.delete(key);
       }
     }
     return swept;
@@ -117,6 +198,11 @@ export class PaperTradingMarketDataService {
         this.symbolUniverseCache.delete(key);
       }
     }
+    for (const key of this.dbPriceLoggedSessions) {
+      if (key.startsWith(`${sessionId}:`)) {
+        this.dbPriceLoggedSessions.delete(key);
+      }
+    }
   }
 
   /**
@@ -124,7 +210,7 @@ export class PaperTradingMarketDataService {
    * which coalesces concurrent callers and owns the circuit-breaker state
    * for the exchange hop. Falls back to stale cache → alternate exchange → DB.
    */
-  async getCurrentPrice(exchangeSlug: string, symbol: string): Promise<PriceData> {
+  async getCurrentPrice(exchangeSlug: string, symbol: string, sessionId?: string): Promise<PriceData> {
     const cacheKey = `paper-trading:price:${exchangeSlug}:${symbol}`;
 
     const cached = await this.cacheManager.get<PriceData>(cacheKey);
@@ -179,7 +265,7 @@ export class PaperTradingMarketDataService {
       return fallbackPrice;
     }
 
-    const dbPrice = await this.tryDatabasePrice(symbol);
+    const dbPrice = await this.tryDatabasePrice(symbol, sessionId);
     if (dbPrice) {
       return dbPrice;
     }
@@ -194,7 +280,7 @@ export class PaperTradingMarketDataService {
    * Get prices for multiple symbols. Routes through the batcher for a single
    * coalesced exchange hop per flush window.
    */
-  async getPrices(exchangeSlug: string, symbols: string[]): Promise<Map<string, PriceData>> {
+  async getPrices(exchangeSlug: string, symbols: string[], sessionId?: string): Promise<Map<string, PriceData>> {
     const results = new Map<string, PriceData>();
 
     const cacheResults = await Promise.all(
@@ -262,7 +348,7 @@ export class PaperTradingMarketDataService {
       const afterStale = await this.recoverFromStaleCache(exchangeSlug, partialMisses, results);
       // Phase 2: parallel fallback-exchange + DB — only for what stale cache missed
       if (afterStale.length > 0) {
-        await this.recoverFromExternalFallback(exchangeSlug, afterStale, results);
+        await this.recoverFromExternalFallback(exchangeSlug, afterStale, results, sessionId);
       }
     }
 
@@ -386,7 +472,8 @@ export class PaperTradingMarketDataService {
   private async recoverFromExternalFallback(
     exchangeSlug: string,
     symbols: string[],
-    results: Map<string, PriceData>
+    results: Map<string, PriceData>,
+    sessionId?: string
   ): Promise<void> {
     await Promise.all(
       symbols.map(async (symbol) => {
@@ -397,7 +484,7 @@ export class PaperTradingMarketDataService {
           await this.cacheManager.set(staleKey, fallbackPrice, STALE_CACHE_TTL_MS);
           return;
         }
-        const dbPrice = await this.tryDatabasePrice(symbol);
+        const dbPrice = await this.tryDatabasePrice(symbol, sessionId);
         if (dbPrice) {
           results.set(symbol, dbPrice);
         }
@@ -409,13 +496,20 @@ export class PaperTradingMarketDataService {
    * Last-resort fallback using the coin's stored price from the database.
    * May be hours stale but prevents hard failure.
    */
-  private async tryDatabasePrice(symbol: string): Promise<PriceData | null> {
+  private async tryDatabasePrice(symbol: string, sessionId?: string): Promise<PriceData | null> {
     const [base] = symbol.split('/');
 
     try {
       const coin = await this.coinService.getCoinBySymbol(base, undefined, false);
       if (coin?.currentPrice != null) {
-        this.logger.warn(`Using DB coin.currentPrice for ${symbol} (coinId: ${coin.id})`);
+        const message = `Using DB coin.currentPrice for ${symbol} (coinId: ${coin.id})`;
+        const dedupeKey = sessionId ? `${sessionId}:${coin.id}` : null;
+        if (dedupeKey && this.dbPriceLoggedSessions.has(dedupeKey)) {
+          this.logger.debug(message);
+        } else {
+          this.logger.warn(message);
+          if (dedupeKey) this.dbPriceLoggedSessions.add(dedupeKey);
+        }
         return {
           symbol,
           price: coin.currentPrice,
