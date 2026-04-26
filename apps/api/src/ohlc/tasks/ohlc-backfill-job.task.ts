@@ -10,6 +10,9 @@ import { OHLCBackfillService } from '../services/ohlc-backfill.service';
 
 interface OHLCBackfillJobData {
   coinId: string;
+  symbol: string;
+  startDate: string; // ISO
+  endDate: string; // ISO
 }
 
 @Processor('ohlc-backfill-queue')
@@ -34,12 +37,13 @@ export class OHLCBackfillJobTask extends FailSafeWorkerHost implements OnModuleI
   }
 
   async process(job: Job<OHLCBackfillJobData>) {
-    this.logger.log(`Processing backfill job ${job.id} for coin ${job.data.coinId}`);
+    const { coinId, symbol, startDate, endDate } = job.data;
+    this.logger.log(`Processing backfill job ${job.id} for coin ${coinId}`);
     try {
-      await this.backfillService.runBackfill(job.data.coinId);
+      await this.backfillService.runBackfill(coinId, symbol, new Date(startDate), new Date(endDate));
     } catch (error: unknown) {
       const err = toErrorInfo(error);
-      this.logger.error(`Backfill job ${job.id} failed for coin ${job.data.coinId}: ${err.message}`, err.stack);
+      this.logger.error(`Backfill job ${job.id} failed for coin ${coinId}: ${err.message}`, err.stack);
       throw error;
     }
   }

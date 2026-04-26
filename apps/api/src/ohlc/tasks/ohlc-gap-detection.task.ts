@@ -26,10 +26,12 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
   private static readonly DEFICIENCY_THRESHOLD = 0.95; // 95% of expected
   private static readonly MAX_BACKFILLS_PER_RUN = 30;
   private static readonly RECENT_FAILURE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
+  // BullMQ default lock duration is 30s and a typical backfill run is minutes, not an hour.
+  // If `updatedAt` hasn't advanced in 60 minutes, the worker is almost certainly dead.
+  private static readonly IN_FLIGHT_STALE_MS = 60 * 60 * 1000; // 1h — assume worker died
 
   constructor(
     @InjectQueue('ohlc-gap-detection-queue') private readonly gapQueue: Queue,
-    @InjectQueue('ohlc-backfill-queue') private readonly backfillQueue: Queue,
     private readonly ohlcService: OHLCService,
     private readonly symbolMapService: ExchangeSymbolMapService,
     private readonly backfillService: OHLCBackfillService,
@@ -152,7 +154,8 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
           deficient: 0,
           queued: 0,
           skippedInFlight: 0,
-          recentFailures: 0
+          recentFailures: 0,
+          recentCompletions: 0
         };
       }
 
@@ -191,6 +194,7 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
       let queued = 0;
       let skippedInFlight = 0;
       let recentFailures = 0;
+      let recentCompletions = 0;
       const queuedCoinIds: string[] = [];
 
       for (const mapping of deficientMappings) {
@@ -205,6 +209,10 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
           recentFailures++;
           continue;
         }
+        if (eligibility === 'recent_completion') {
+          recentCompletions++;
+          continue;
+        }
 
         queuedCoinIds.push(mapping.coinId);
         queued++;
@@ -212,26 +220,16 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
 
       await job.updateProgress(80);
 
-      // Enqueue one job per deficient coin. Concurrency (≤2 simultaneous backfills
-      // cluster-wide) is enforced by the OHLCBackfillJobTask worker — no need to
-      // batch+sleep here.
+      // Concurrency (≤2 simultaneous backfills cluster-wide) is enforced inside
+      // OHLCBackfillService via the ohlc-backfill-queue worker.
       for (const coinId of queuedCoinIds) {
-        await this.backfillQueue.add(
-          'backfill',
-          { coinId },
-          {
-            attempts: 2,
-            backoff: { type: 'exponential', delay: 5000 },
-            removeOnComplete: 100,
-            removeOnFail: 50
-          }
-        );
+        await this.backfillService.startBackfill(coinId);
       }
 
       await job.updateProgress(100);
 
       this.logger.log(
-        `Queued backfills: ${queued}, skipped (in-flight): ${skippedInFlight}, recent-failure: ${recentFailures}, deficient total: ${deficientMappings.length}`
+        `Queued backfills: ${queued}, skipped (in-flight): ${skippedInFlight}, recent-failure: ${recentFailures}, recent-completion: ${recentCompletions}, deficient total: ${deficientMappings.length}`
       );
 
       return {
@@ -239,7 +237,8 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
         deficient: deficientMappings.length,
         queued,
         skippedInFlight,
-        recentFailures
+        recentFailures,
+        recentCompletions
       };
     } finally {
       await this.lockService.release(LOCK_KEYS.OHLC_GAP_DETECTION, lock.token);
@@ -248,23 +247,35 @@ export class OHLCGapDetectionTask extends FailSafeWorkerHost implements OnModule
 
   /**
    * Determine whether a coin is eligible for a new backfill.
-   * - 'in_flight': pending/in_progress — skip
+   * - 'in_flight': pending/in_progress with fresh updatedAt — skip
    * - 'recent_failure': failed within last 24h — skip to avoid hammering
-   * - 'eligible': no progress, completed, or failed >24h ago
+   * - 'recent_completion': completed within last 24h — skip cooldown so a coin
+   *   that legitimately can't reach the 95% threshold (e.g. listed <1yr) doesn't
+   *   re-queue every day
+   * - 'eligible': no progress, fresh failed/completed >24h ago, or stale in_flight
    */
-  private async checkBackfillEligibility(coinId: string): Promise<'in_flight' | 'recent_failure' | 'eligible'> {
+  private async checkBackfillEligibility(
+    coinId: string
+  ): Promise<'in_flight' | 'recent_failure' | 'recent_completion' | 'eligible'> {
     const progress = await this.backfillService.getProgress(coinId);
     if (!progress) return 'eligible';
 
+    const ageMs = Date.now() - progress.updatedAt.getTime();
+
     if (progress.status === 'pending' || progress.status === 'in_progress') {
+      if (ageMs >= OHLCGapDetectionTask.IN_FLIGHT_STALE_MS) {
+        // Stale — worker likely died. Allow re-queue.
+        return 'eligible';
+      }
       return 'in_flight';
     }
 
-    if (progress.status === 'failed') {
-      const ageMs = Date.now() - progress.updatedAt.getTime();
-      if (ageMs < OHLCGapDetectionTask.RECENT_FAILURE_WINDOW_MS) {
-        return 'recent_failure';
-      }
+    if (progress.status === 'failed' && ageMs < OHLCGapDetectionTask.RECENT_FAILURE_WINDOW_MS) {
+      return 'recent_failure';
+    }
+
+    if (progress.status === 'completed' && ageMs < OHLCGapDetectionTask.RECENT_FAILURE_WINDOW_MS) {
+      return 'recent_completion';
     }
 
     return 'eligible';

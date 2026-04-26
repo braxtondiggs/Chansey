@@ -20,19 +20,33 @@ describe('OHLCBackfillJobTask', () => {
     jest.clearAllMocks();
   });
 
-  it('process invokes runBackfill with the job coinId', async () => {
-    const job = { id: 'job-1', name: 'backfill', data: { coinId: 'btc' } } as Job<{ coinId: string }>;
+  const buildJob = () =>
+    ({
+      id: 'job-1',
+      name: 'backfill',
+      data: {
+        coinId: 'btc',
+        symbol: 'BTC/USD',
+        startDate: '2024-01-01T00:00:00.000Z',
+        endDate: '2024-01-02T00:00:00.000Z'
+      }
+    }) as Job<{ coinId: string; symbol: string; startDate: string; endDate: string }>;
 
-    await task.process(job);
+  it('process invokes runBackfill with resolved symbol and date range', async () => {
+    await task.process(buildJob());
 
-    expect(backfillService.runBackfill).toHaveBeenCalledWith('btc');
+    expect(backfillService.runBackfill).toHaveBeenCalledWith(
+      'btc',
+      'BTC/USD',
+      new Date('2024-01-01T00:00:00.000Z'),
+      new Date('2024-01-02T00:00:00.000Z')
+    );
   });
 
   it('process rethrows when runBackfill throws so BullMQ records the failure', async () => {
     backfillService.runBackfill.mockRejectedValue(new Error('exchange unreachable'));
-    const job = { id: 'job-1', name: 'backfill', data: { coinId: 'btc' } } as Job<{ coinId: string }>;
 
-    await expect(task.process(job)).rejects.toThrow('exchange unreachable');
+    await expect(task.process(buildJob())).rejects.toThrow('exchange unreachable');
   });
 
   it('onModuleInit sets worker concurrency to 2', () => {
