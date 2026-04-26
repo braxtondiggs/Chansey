@@ -394,6 +394,155 @@ describe('BollingerBandSqueezeStrategy', () => {
       expect(indicatorService.calculateBollingerBands).not.toHaveBeenCalled();
     });
 
+    it('processes multiple coins concurrently rather than sequentially', async () => {
+      const prices = createMockPrices(40);
+
+      let inFlight = 0;
+      let maxInFlight = 0;
+      indicatorService.calculateBollingerBands.mockImplementation(async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        inFlight--;
+        return {
+          upper: Array(40).fill(NaN),
+          middle: Array(40).fill(NaN),
+          lower: Array(40).fill(NaN),
+          pb: Array(40).fill(NaN),
+          bandwidth: Array(40).fill(NaN),
+          validCount: 0,
+          period: 20,
+          stdDev: 2,
+          fromCache: false
+        };
+      });
+
+      const context: AlgorithmContext = {
+        coins: [
+          { id: 'btc', symbol: 'BTC', name: 'Bitcoin' },
+          { id: 'eth', symbol: 'ETH', name: 'Ethereum' },
+          { id: 'sol', symbol: 'SOL', name: 'Solana' }
+        ] as any,
+        priceData: { btc: prices as any, eth: prices as any, sol: prices as any },
+        timestamp: new Date(),
+        config: {}
+      };
+
+      await strategy.execute(context);
+
+      expect(indicatorService.calculateBollingerBands).toHaveBeenCalledTimes(3);
+      expect(maxInFlight).toBeGreaterThan(1);
+    });
+
+    it('logs cache=skipped when indicator cache is bypassed (live-replay)', async () => {
+      const prices = createMockPrices(40);
+      const warnSpy = jest.spyOn(strategy['logger'], 'warn').mockImplementation(() => undefined);
+
+      indicatorService.calculateBollingerBands.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        return {
+          upper: Array(40).fill(NaN),
+          middle: Array(40).fill(NaN),
+          lower: Array(40).fill(NaN),
+          pb: Array(40).fill(NaN),
+          bandwidth: Array(40).fill(NaN),
+          validCount: 0,
+          period: 20,
+          stdDev: 2,
+          fromCache: false
+        };
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: {},
+        metadata: { isLiveReplay: true, backtestId: 'bt-1' }
+      };
+
+      await strategy.execute(context);
+
+      const skippedLogged = warnSpy.mock.calls.some(
+        (args) => typeof args[0] === 'string' && (args[0] as string).includes('cache=skipped')
+      );
+      expect(skippedLogged).toBe(true);
+
+      warnSpy.mockRestore();
+    });
+
+    it('logs cache=miss when cache is consulted but missed (live/paper)', async () => {
+      const prices = createMockPrices(40);
+      const warnSpy = jest.spyOn(strategy['logger'], 'warn').mockImplementation(() => undefined);
+
+      indicatorService.calculateBollingerBands.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        return {
+          upper: Array(40).fill(NaN),
+          middle: Array(40).fill(NaN),
+          lower: Array(40).fill(NaN),
+          pb: Array(40).fill(NaN),
+          bandwidth: Array(40).fill(NaN),
+          validCount: 0,
+          period: 20,
+          stdDev: 2,
+          fromCache: false
+        };
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: {}
+      };
+
+      await strategy.execute(context);
+
+      const missLogged = warnSpy.mock.calls.some(
+        (args) => typeof args[0] === 'string' && (args[0] as string).includes('cache=miss')
+      );
+      expect(missLogged).toBe(true);
+
+      warnSpy.mockRestore();
+    });
+
+    it('logs cache=hit when calculator reports fromCache=true', async () => {
+      const prices = createMockPrices(40);
+      const warnSpy = jest.spyOn(strategy['logger'], 'warn').mockImplementation(() => undefined);
+
+      indicatorService.calculateBollingerBands.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        return {
+          upper: Array(40).fill(NaN),
+          middle: Array(40).fill(NaN),
+          lower: Array(40).fill(NaN),
+          pb: Array(40).fill(NaN),
+          bandwidth: Array(40).fill(NaN),
+          validCount: 0,
+          period: 20,
+          stdDev: 2,
+          fromCache: true
+        };
+      });
+
+      const context: AlgorithmContext = {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: {}
+      };
+
+      await strategy.execute(context);
+
+      const hitLogged = warnSpy.mock.calls.some(
+        (args) => typeof args[0] === 'string' && (args[0] as string).includes('cache=hit')
+      );
+      expect(hitLogged).toBe(true);
+
+      warnSpy.mockRestore();
+    });
+
     it('should return no signals when bandwidth is normal (no squeeze)', async () => {
       const prices = createMockPrices(40);
 
