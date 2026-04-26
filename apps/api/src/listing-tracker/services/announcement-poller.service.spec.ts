@@ -209,6 +209,31 @@ describe('AnnouncementPollerService', () => {
       expect(announcementRepo.save).toHaveBeenCalledWith(expect.objectContaining({ coinId: 'mapped-coin-id' }));
     });
 
+    it('leaves coinId null when CoinGecko slug only resolves to an [OLD]/delisted local row', async () => {
+      // Symbol-based local lookup returns [] (the OLD row was filtered out by the SQL predicate).
+      // CoinGecko returns one match, but the slug-based findOne *also* applies the OLD/delistedAt
+      // filter — so the deprecated row is excluded there too and the call resolves to null.
+      coinRepo.find = jest.fn().mockResolvedValue([]);
+      coinRepo.findOne = jest.fn().mockResolvedValue(null);
+      gecko.client.coins.list.get = jest.fn().mockResolvedValue([{ id: 'war-deprecated', symbol: 'war' }]);
+
+      const binance = makeClient('binance', [{ ...sample, announcedSymbol: 'WAR' }]);
+      const poller = build([binance, makeClient('coinbase', []), makeClient('kraken', [])]);
+
+      const results = await poller.pollAll();
+
+      expect(results[0].inserted[0].coinId).toBeNull();
+      expect(coinRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            slug: 'war-deprecated',
+            delistedAt: expect.anything(),
+            name: expect.anything()
+          })
+        })
+      );
+    });
+
     it('leaves coinId null when symbol matches multiple CoinGecko coins (ambiguous)', async () => {
       coinRepo.find = jest.fn().mockResolvedValue([]);
       coinRepo.findOne = jest.fn().mockResolvedValue(null);

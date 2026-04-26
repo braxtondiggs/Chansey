@@ -225,7 +225,13 @@ export class AnnouncementPollerService {
       }
 
       const geckoId = matches[0];
-      const local = await this.coinRepo.findOne({ where: { slug: geckoId } });
+      const local = await this.coinRepo.findOne({
+        where: {
+          slug: geckoId,
+          delistedAt: IsNull(),
+          name: Not(ILike('%[old]%'))
+        }
+      });
       return local?.id ?? null;
     } catch (error) {
       const err = toErrorInfo(error);

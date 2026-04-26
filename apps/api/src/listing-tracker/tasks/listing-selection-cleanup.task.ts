@@ -155,35 +155,30 @@ export class ListingSelectionCleanupTask extends FailSafeWorkerHost implements O
         positionsByCoin.set(p.coinId, list);
       }
 
-      const keepCoinIds = new Set<string>();
+      const staleIds: string[] = [];
       for (const sel of selections) {
         const coinId = sel.coin.id;
         const positionsForCoin = positionsByCoin.get(coinId) ?? [];
 
         if (positionsForCoin.length === 0) {
           const createdAt = createdAtById.get(sel.id);
-          if (!createdAt || createdAt.getTime() >= graceCutoff) {
-            // No position yet but still inside the grace window — keep.
-            keepCoinIds.add(coinId);
+          if (createdAt && createdAt.getTime() < graceCutoff) {
+            // No position and outside the grace window — stale.
+            staleIds.push(sel.id);
           }
           continue;
         }
 
         const hasNonTerminal = positionsForCoin.some((p) => !TERMINAL_POSITION_STATUSES.includes(p.status));
-        if (hasNonTerminal) keepCoinIds.add(coinId);
+        if (!hasNonTerminal) staleIds.push(sel.id);
       }
 
-      const candidatesForRemoval = selections.length - keepCoinIds.size;
-      if (candidatesForRemoval === 0) continue;
+      if (staleIds.length === 0) continue;
 
-      const result = await this.coinSelectionService.bulkDeleteAutomaticSelections(
-        userId,
-        CoinSelectionSource.LISTING,
-        keepCoinIds
-      );
-      const removed = (result?.affected as number | undefined) ?? candidatesForRemoval;
+      const result = await this.coinSelectionService.bulkDeleteSelectionsByIds(userId, staleIds);
+      const removed = (result?.affected as number | undefined) ?? staleIds.length;
       totalRemoved += removed;
-      this.logger.log(`Listing cleanup user ${userId}: removed ${removed} selection(s), kept ${keepCoinIds.size}`);
+      this.logger.log(`Listing cleanup user ${userId}: removed ${removed}/${selections.length} selection(s)`);
     }
 
     return { usersProcessed: byUser.size, coinsRemoved: totalRemoved };

@@ -56,7 +56,7 @@ describe('ListingSelectionCleanupTask', () => {
     };
 
     coinSelectionService = {
-      bulkDeleteAutomaticSelections: jest.fn().mockResolvedValue({ affected: 0 })
+      bulkDeleteSelectionsByIds: jest.fn().mockResolvedValue({ affected: 0 })
     };
 
     const queue = { getRepeatableJobs: jest.fn().mockResolvedValue([]), add: jest.fn() } as any;
@@ -93,7 +93,7 @@ describe('ListingSelectionCleanupTask', () => {
   it('returns 0 when there are no listing selections', async () => {
     const result = await task.process(makeJob());
     expect(result).toEqual({ usersProcessed: 0, coinsRemoved: 0 });
-    expect(coinSelectionService.bulkDeleteAutomaticSelections).not.toHaveBeenCalled();
+    expect(coinSelectionService.bulkDeleteSelectionsByIds).not.toHaveBeenCalled();
   });
 
   it('ignores non-matching job names', async () => {
@@ -111,14 +111,10 @@ describe('ListingSelectionCleanupTask', () => {
     const result = await task.process(makeJob());
 
     expect(result).toEqual({ usersProcessed: 1, coinsRemoved: 0 });
-    expect(coinSelectionService.bulkDeleteAutomaticSelections).toHaveBeenCalledWith(
+    expect(coinSelectionService.bulkDeleteSelectionsByIds).toHaveBeenCalledWith(
       'u1',
-      CoinSelectionSource.LISTING,
-      // keepCoinIds is empty — c1 is fully terminal.
-      expect.any(Set)
+      expect.arrayContaining(['sel-1'])
     );
-    const callArgs = coinSelectionService.bulkDeleteAutomaticSelections.mock.calls[0];
-    expect((callArgs[2] as Set<string>).size).toBe(0);
   });
 
   it('keeps selections that have at least one non-terminal position (no delete call)', async () => {
@@ -129,7 +125,7 @@ describe('ListingSelectionCleanupTask', () => {
     const result = await task.process(makeJob());
 
     // All coins kept → bulkDelete is skipped (no DB roundtrip needed).
-    expect(coinSelectionService.bulkDeleteAutomaticSelections).not.toHaveBeenCalled();
+    expect(coinSelectionService.bulkDeleteSelectionsByIds).not.toHaveBeenCalled();
     expect(result).toEqual({ usersProcessed: 1, coinsRemoved: 0 });
   });
 
@@ -139,7 +135,7 @@ describe('ListingSelectionCleanupTask', () => {
 
     await task.process(makeJob());
 
-    expect(coinSelectionService.bulkDeleteAutomaticSelections).not.toHaveBeenCalled();
+    expect(coinSelectionService.bulkDeleteSelectionsByIds).not.toHaveBeenCalled();
   });
 
   it('deletes orphaned selections older than the grace period', async () => {
@@ -148,8 +144,10 @@ describe('ListingSelectionCleanupTask', () => {
 
     await task.process(makeJob());
 
-    const callArgs = coinSelectionService.bulkDeleteAutomaticSelections.mock.calls[0];
-    expect((callArgs[2] as Set<string>).size).toBe(0);
+    expect(coinSelectionService.bulkDeleteSelectionsByIds).toHaveBeenCalledWith(
+      'u1',
+      expect.arrayContaining(['sel-1'])
+    );
   });
 
   it('processes multiple users independently — only deletes for users with stale rows', async () => {
@@ -162,12 +160,40 @@ describe('ListingSelectionCleanupTask', () => {
 
     expect(result?.usersProcessed).toBe(2);
     // Only u1 has a row to delete; u2 is fully kept so no call.
-    expect(coinSelectionService.bulkDeleteAutomaticSelections).toHaveBeenCalledTimes(1);
-    expect(coinSelectionService.bulkDeleteAutomaticSelections).toHaveBeenCalledWith(
+    expect(coinSelectionService.bulkDeleteSelectionsByIds).toHaveBeenCalledTimes(1);
+    expect(coinSelectionService.bulkDeleteSelectionsByIds).toHaveBeenCalledWith(
       'u1',
-      CoinSelectionSource.LISTING,
-      expect.any(Set)
+      expect.arrayContaining(['sel-1'])
     );
+  });
+
+  it('does not delete a selection inserted after the snapshot is loaded', async () => {
+    // sel-1 is observed by the sweep and is stale. sel-2 is inserted concurrently
+    // *after* the snapshot is loaded — it must not appear in the delete payload.
+    addSelection({ id: 'sel-1', userId: 'u1', coinId: 'c1', ageHours: 200 });
+    addPosition('u1', 'c1', ListingPositionStatus.EXITED_TP);
+
+    // Mimic a concurrent insert: the find() returns only sel-1 (the snapshot),
+    // but a new row appears in the underlying store immediately after.
+    selectionRepo.find = jest.fn().mockImplementationOnce(() => {
+      const snapshot = [...selectionsStore];
+      // Insert a brand-new selection *after* the snapshot is captured.
+      selectionsStore.push({
+        id: 'sel-2-concurrent',
+        user: { id: 'u1' },
+        coin: { id: 'c2' },
+        createdAt: new Date()
+      });
+      return Promise.resolve(snapshot);
+    });
+
+    await task.process(makeJob());
+
+    expect(coinSelectionService.bulkDeleteSelectionsByIds).toHaveBeenCalledTimes(1);
+    const [calledUserId, calledIds] = coinSelectionService.bulkDeleteSelectionsByIds.mock.calls[0];
+    expect(calledUserId).toBe('u1');
+    expect(calledIds).toEqual(['sel-1']);
+    expect(calledIds).not.toContain('sel-2-concurrent');
   });
 
   it('uses the LISTING source filter and AUTOMATIC type filter when querying', async () => {
