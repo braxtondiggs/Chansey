@@ -179,7 +179,8 @@ export class AnnouncementPollerService {
         symbol: normalized,
         delistedAt: IsNull(),
         name: Not(ILike('%[old]%'))
-      }
+      },
+      take: 6
     });
 
     if (candidates.length === 1) return candidates[0].id;

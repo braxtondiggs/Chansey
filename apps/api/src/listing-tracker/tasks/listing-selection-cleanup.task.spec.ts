@@ -28,15 +28,14 @@ describe('ListingSelectionCleanupTask', () => {
   let positionsStore: FakePosition[];
 
   const makeSelectionRepo = () => {
-    const find = jest.fn().mockImplementation(() => Promise.resolve(selectionsStore));
     const createQueryBuilder = jest.fn().mockReturnValue({
-      select: jest.fn().mockReturnThis(),
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
-      getRawMany: jest
-        .fn()
-        .mockImplementation(() => Promise.resolve(selectionsStore.map((s) => ({ id: s.id, createdAt: s.createdAt }))))
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockImplementation(() => Promise.resolve(selectionsStore))
     });
-    return { find, createQueryBuilder };
+    return { createQueryBuilder };
   };
 
   beforeEach(() => {
@@ -46,12 +45,16 @@ describe('ListingSelectionCleanupTask', () => {
     selectionRepo = makeSelectionRepo();
 
     // typeorm's In(arr) returns a FindOperator whose array is exposed via `.value`.
+    const unwrap = (container: any): string[] => {
+      if (Array.isArray(container)) return container;
+      if (container && Array.isArray(container.value)) return container.value;
+      return [container];
+    };
     positionRepo = {
       find: jest.fn().mockImplementation(({ where }: any) => {
-        const userId = where.userId;
-        const container = where.coinId;
-        const ids: string[] = Array.isArray(container) ? container : (container?.value ?? []);
-        return Promise.resolve(positionsStore.filter((p) => p.userId === userId && ids.includes(p.coinId)));
+        const userIds = unwrap(where.userId);
+        const coinIds = unwrap(where.coinId);
+        return Promise.resolve(positionsStore.filter((p) => userIds.includes(p.userId) && coinIds.includes(p.coinId)));
       })
     };
 
@@ -100,7 +103,7 @@ describe('ListingSelectionCleanupTask', () => {
     addSelection({ id: 'sel-1', userId: 'u1', coinId: 'c1', ageHours: 100 });
     const result = await task.process(makeJob('something-else'));
     expect(result).toBeUndefined();
-    expect(selectionRepo.find).not.toHaveBeenCalled();
+    expect(selectionRepo.createQueryBuilder).not.toHaveBeenCalled();
   });
 
   it('deletes selections whose only positions are all in terminal states', async () => {
@@ -173,18 +176,24 @@ describe('ListingSelectionCleanupTask', () => {
     addSelection({ id: 'sel-1', userId: 'u1', coinId: 'c1', ageHours: 200 });
     addPosition('u1', 'c1', ListingPositionStatus.EXITED_TP);
 
-    // Mimic a concurrent insert: the find() returns only sel-1 (the snapshot),
+    // Mimic a concurrent insert: getMany() returns only sel-1 (the snapshot),
     // but a new row appears in the underlying store immediately after.
-    selectionRepo.find = jest.fn().mockImplementationOnce(() => {
-      const snapshot = [...selectionsStore];
-      // Insert a brand-new selection *after* the snapshot is captured.
-      selectionsStore.push({
-        id: 'sel-2-concurrent',
-        user: { id: 'u1' },
-        coin: { id: 'c2' },
-        createdAt: new Date()
-      });
-      return Promise.resolve(snapshot);
+    selectionRepo.createQueryBuilder = jest.fn().mockReturnValueOnce({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockImplementationOnce(() => {
+        const snapshot = [...selectionsStore];
+        // Insert a brand-new selection *after* the snapshot is captured.
+        selectionsStore.push({
+          id: 'sel-2-concurrent',
+          user: { id: 'u1' },
+          coin: { id: 'c2' },
+          createdAt: new Date()
+        });
+        return Promise.resolve(snapshot);
+      })
     });
 
     await task.process(makeJob());
@@ -200,15 +209,19 @@ describe('ListingSelectionCleanupTask', () => {
     addSelection({ id: 'sel-1', userId: 'u1', coinId: 'c1', ageHours: 200 });
     addPosition('u1', 'c1', ListingPositionStatus.EXITED_TP);
 
+    // Capture the QueryBuilder mock so we can inspect its where/andWhere calls.
+    const qb = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockImplementation(() => Promise.resolve(selectionsStore))
+    };
+    selectionRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
     await task.process(makeJob());
 
-    expect(selectionRepo.find).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          type: CoinSelectionType.AUTOMATIC,
-          source: CoinSelectionSource.LISTING
-        })
-      })
-    );
+    expect(qb.where).toHaveBeenCalledWith('cs.type = :type', { type: CoinSelectionType.AUTOMATIC });
+    expect(qb.andWhere).toHaveBeenCalledWith('cs.source = :source', { source: CoinSelectionSource.LISTING });
   });
 });

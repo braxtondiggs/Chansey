@@ -110,24 +110,20 @@ export class ListingSelectionCleanupTask extends FailSafeWorkerHost implements O
    *  - otherwise delete it
    */
   async runSweep(): Promise<{ usersProcessed: number; coinsRemoved: number }> {
-    const listingSelections = await this.selectionRepo.find({
-      where: { type: CoinSelectionType.AUTOMATIC, source: CoinSelectionSource.LISTING },
-      relations: ['coin', 'user'],
-      withDeleted: false
-    });
+    // `createdAt` is `select: false` on the entity — opt in via `addSelect` so the
+    // grace-window check below has the data without a second round-trip.
+    const listingSelections = await this.selectionRepo
+      .createQueryBuilder('cs')
+      .leftJoinAndSelect('cs.coin', 'coin')
+      .leftJoinAndSelect('cs.user', 'user')
+      .addSelect('cs.createdAt')
+      .where('cs.type = :type', { type: CoinSelectionType.AUTOMATIC })
+      .andWhere('cs.source = :source', { source: CoinSelectionSource.LISTING })
+      .getMany();
 
     if (listingSelections.length === 0) {
       return { usersProcessed: 0, coinsRemoved: 0 };
     }
-
-    // Created date is `select: false` on the entity — fetch it explicitly per row.
-    const ids = listingSelections.map((s) => s.id);
-    const createdRows = await this.selectionRepo
-      .createQueryBuilder('cs')
-      .select(['cs.id AS id', 'cs."createdAt" AS "createdAt"'])
-      .where('cs.id IN (:...ids)', { ids })
-      .getRawMany<{ id: string; createdAt: Date }>();
-    const createdAtById = new Map(createdRows.map((r) => [r.id, new Date(r.createdAt)]));
 
     // Group selections by user.
     const byUser = new Map<string, CoinSelection[]>();
@@ -138,37 +134,43 @@ export class ListingSelectionCleanupTask extends FailSafeWorkerHost implements O
       byUser.set(userId, list);
     }
 
+    // Single batched position fetch across all users — `In(userIds) + In(coinIds)`
+    // is intentionally Cartesian; the (userId → coinId) lookup map below discards
+    // the cross-user noise correctly.
+    const userIds = [...byUser.keys()];
+    const allCoinIds = [...new Set(listingSelections.map((s) => s.coin.id))];
+    const positions = userIds.length
+      ? await this.positionRepo.find({
+          where: { userId: In(userIds), coinId: In(allCoinIds) }
+        })
+      : [];
+
+    const positionsByUserAndCoin = new Map<string, Map<string, ListingTradePosition[]>>();
+    for (const p of positions) {
+      let byCoin = positionsByUserAndCoin.get(p.userId);
+      if (!byCoin) {
+        byCoin = new Map<string, ListingTradePosition[]>();
+        positionsByUserAndCoin.set(p.userId, byCoin);
+      }
+      const list = byCoin.get(p.coinId) ?? [];
+      list.push(p);
+      byCoin.set(p.coinId, list);
+    }
+
     const graceCutoff = Date.now() - LISTING_ORPHAN_GRACE_HOURS * 60 * 60 * 1000;
     let totalRemoved = 0;
 
     for (const [userId, selections] of byUser) {
-      const coinIds = selections.map((s) => s.coin.id);
-      const positions = await this.positionRepo.find({
-        where: { userId, coinId: In(coinIds) }
-      });
-
-      // Group positions by coinId.
-      const positionsByCoin = new Map<string, ListingTradePosition[]>();
-      for (const p of positions) {
-        const list = positionsByCoin.get(p.coinId) ?? [];
-        list.push(p);
-        positionsByCoin.set(p.coinId, list);
-      }
-
+      const positionsByCoin = positionsByUserAndCoin.get(userId) ?? new Map<string, ListingTradePosition[]>();
       const staleIds: string[] = [];
       for (const sel of selections) {
-        const coinId = sel.coin.id;
-        const positionsForCoin = positionsByCoin.get(coinId) ?? [];
-
+        const positionsForCoin = positionsByCoin.get(sel.coin.id) ?? [];
         if (positionsForCoin.length === 0) {
-          const createdAt = createdAtById.get(sel.id);
-          if (createdAt && createdAt.getTime() < graceCutoff) {
-            // No position and outside the grace window — stale.
+          if (sel.createdAt && sel.createdAt.getTime() < graceCutoff) {
             staleIds.push(sel.id);
           }
           continue;
         }
-
         const hasNonTerminal = positionsForCoin.some((p) => !TERMINAL_POSITION_STATUSES.includes(p.status));
         if (!hasNonTerminal) staleIds.push(sel.id);
       }
