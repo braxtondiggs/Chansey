@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import Redis from 'ioredis';
-import { Repository } from 'typeorm';
+import { ILike, IsNull, Not, Repository } from 'typeorm';
 
 import { Coin } from '../../coin/coin.entity';
 import { CircuitBreakerService } from '../../shared/circuit-breaker.service';
@@ -170,8 +170,29 @@ export class AnnouncementPollerService {
     getGeckoIndex?: () => Promise<Map<string, string[]>>
   ): Promise<string | null> {
     const normalized = symbol.toLowerCase();
-    const local = await this.coinRepo.findOne({ where: { symbol: normalized } });
-    if (local) return local.id;
+
+    // Filter out delisted/legacy rows so a stale "[OLD]" entry can't shadow a freshly-listed token
+    // sharing the same symbol. The CoinGecko fallback below already handles ambiguity correctly;
+    // mirror that behavior here for the local table.
+    const candidates = await this.coinRepo.find({
+      where: {
+        symbol: normalized,
+        delistedAt: IsNull(),
+        name: Not(ILike('%[old]%'))
+      }
+    });
+
+    if (candidates.length === 1) return candidates[0].id;
+    if (candidates.length > 1) {
+      this.logger.warn(
+        `Local symbol '${normalized}' matched ${candidates.length} coins — leaving announcement unmapped (candidates: ${candidates
+          .slice(0, 5)
+          .map((c) => c.id)
+          .join(', ')}${candidates.length > 5 ? '…' : ''})`
+      );
+      return null;
+    }
+
     return this.resolveFromCoinGecko(normalized, getGeckoIndex);
   }
 

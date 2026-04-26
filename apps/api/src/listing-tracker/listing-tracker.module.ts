@@ -21,6 +21,7 @@ import { ListingTradeExecutorService } from './services/listing-trade-executor.s
 import { AnnouncementPollTask, LISTING_ANNOUNCEMENT_POLL_QUEUE } from './tasks/announcement-poll.task';
 import { CrossListingTickerSeedTask, LISTING_CROSS_LISTING_SEED_QUEUE } from './tasks/cross-listing-ticker-seed.task';
 import { LISTING_SCORE_QUEUE, ListingScoreTask } from './tasks/listing-score.task';
+import { LISTING_SELECTION_CLEANUP_QUEUE, ListingSelectionCleanupTask } from './tasks/listing-selection-cleanup.task';
 import { LISTING_TIME_STOP_QUEUE, ListingTimeStopTask } from './tasks/listing-time-stop.task';
 import { ListingTradeExecutionTask } from './tasks/listing-trade-execution.task';
 
@@ -28,6 +29,7 @@ import { BalanceModule } from '../balance/balance.module';
 import { Coin } from '../coin/coin.entity';
 import { ExchangeTickerFetcherService } from '../coin/ticker-pairs/services/exchange-ticker-fetcher.service';
 import { TickerPairs } from '../coin/ticker-pairs/ticker-pairs.entity';
+import { CoinSelection } from '../coin-selection/coin-selection.entity';
 import { CoinSelectionModule } from '../coin-selection/coin-selection.module';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
 import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
@@ -45,7 +47,8 @@ const LISTING_QUEUES = [
   LISTING_SCORE_QUEUE,
   LISTING_TRADE_EXECUTION_QUEUE,
   LISTING_TIME_STOP_QUEUE,
-  LISTING_CROSS_LISTING_SEED_QUEUE
+  LISTING_CROSS_LISTING_SEED_QUEUE,
+  LISTING_SELECTION_CLEANUP_QUEUE
 ];
 
 /**
@@ -66,6 +69,7 @@ const LISTING_QUEUES = [
       ListingCandidate,
       ListingTradePosition,
       Coin,
+      CoinSelection,
       TickerPairs,
       Exchange,
       ExchangeKey,
@@ -103,6 +107,7 @@ const LISTING_QUEUES = [
     ListingScoreTask,
     ListingTradeExecutionTask,
     ListingTimeStopTask,
+    ListingSelectionCleanupTask,
     CrossListingTickerSeedTask,
     // Listeners
     ListingExitListener
