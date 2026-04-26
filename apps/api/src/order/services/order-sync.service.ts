@@ -28,6 +28,15 @@ import {
   extractFuturesFields
 } from '../utils/order-mapping.util';
 
+// Stagger between per-symbol calls inside `fetchFromExchange`. fetchOrders /
+// fetchMyTrades are weight 10 on Binance.US — at 250ms we send ~240/min, leaving
+// headroom under the 1200 weight/min budget for concurrent OHLC + ticker traffic.
+// The existing `withExchangeRetry` weight-limit handler still covers the residual
+// case where multiple paths collide and trip -1003.
+const PER_SYMBOL_STAGGER_MS = 250;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 @Injectable()
 export class OrderSyncService {
   private readonly logger = new Logger(OrderSyncService.name);
@@ -191,7 +200,8 @@ export class OrderSyncService {
 
       const allItems: T[] = [];
 
-      for (const symbol of activeSymbols) {
+      for (let i = 0; i < activeSymbols.length; i++) {
+        const symbol = activeSymbols[i];
         const result = await withExchangeRetry(() => fetchFn(symbol, since), {
           logger: this.logger,
           operationName: `${operationName}(${symbol})`
@@ -203,6 +213,9 @@ export class OrderSyncService {
           this.logger.log(
             `Failed to fetch ${operationName} for ${symbol}: ${result.error?.message ?? 'Unknown error'}`
           );
+        }
+        if (i < activeSymbols.length - 1) {
+          await sleep(PER_SYMBOL_STAGGER_MS);
         }
       }
 
