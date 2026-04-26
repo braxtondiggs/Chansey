@@ -214,7 +214,7 @@ export class PaperTradingEngineService {
     }
 
     const exchangeSlug = exchangeKey.exchange?.slug ?? 'binance_us';
-    const prices = await this.marketDataService.getPrices(exchangeSlug, allSymbols);
+    const prices = await this.marketDataService.getPrices(exchangeSlug, allSymbols, session.id);
     const priceMap: Record<string, number> = {};
     for (const [symbol, priceData] of prices) {
       priceMap[symbol] = priceData.price;

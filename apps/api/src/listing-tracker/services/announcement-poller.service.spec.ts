@@ -27,7 +27,10 @@ describe('AnnouncementPollerService', () => {
       create: jest.fn().mockImplementation((x) => x),
       save: jest.fn().mockImplementation((x) => ({ id: 'ann-id', ...x }))
     };
-    coinRepo = { findOne: jest.fn().mockResolvedValue({ id: 'coin-id' }) };
+    coinRepo = {
+      find: jest.fn().mockResolvedValue([{ id: 'coin-id' }]),
+      findOne: jest.fn().mockResolvedValue({ id: 'coin-id' })
+    };
     redis = {
       smembers: jest.fn().mockResolvedValue([]),
       pipeline: jest.fn().mockReturnValue({
@@ -144,13 +147,58 @@ describe('AnnouncementPollerService', () => {
     expect(results[1].inserted).toHaveLength(1);
   });
 
+  describe('local symbol resolution', () => {
+    it('skips delisted/[OLD] candidates and falls through to CoinGecko', async () => {
+      // Repository filters delistedAt + name ILIKE '%[old]%' for us — simulate that by returning [].
+      coinRepo.find = jest.fn().mockResolvedValue([]);
+      coinRepo.findOne = jest.fn().mockResolvedValue({ id: 'mapped-coin-id' });
+      gecko.client.coins.list.get = jest.fn().mockResolvedValue([{ id: 'war-token', symbol: 'war' }]);
+
+      const binance = makeClient('binance', [{ ...sample, announcedSymbol: 'WAR' }]);
+      const poller = build([binance, makeClient('coinbase', []), makeClient('kraken', [])]);
+
+      const results = await poller.pollAll();
+
+      expect(coinRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ symbol: 'war' })
+        })
+      );
+      expect(results[0].inserted[0].coinId).toBe('mapped-coin-id');
+    });
+
+    it('leaves coinId null when local symbol matches multiple non-deprecated coins', async () => {
+      coinRepo.find = jest.fn().mockResolvedValue([
+        { id: 'coin-a', symbol: 'foo' },
+        { id: 'coin-b', symbol: 'foo' }
+      ]);
+      const binance = makeClient('binance', [{ ...sample, announcedSymbol: 'FOO' }]);
+      const poller = build([binance, makeClient('coinbase', []), makeClient('kraken', [])]);
+
+      const results = await poller.pollAll();
+
+      expect(results[0].inserted[0].coinId).toBeNull();
+      // Should not fall through to CoinGecko for ambiguous local matches.
+      expect(gecko.client.coins.list.get).not.toHaveBeenCalled();
+    });
+
+    it('returns the single non-deprecated match without consulting CoinGecko', async () => {
+      coinRepo.find = jest.fn().mockResolvedValue([{ id: 'live-coin', symbol: 'war' }]);
+      const binance = makeClient('binance', [{ ...sample, announcedSymbol: 'WAR' }]);
+      const poller = build([binance, makeClient('coinbase', []), makeClient('kraken', [])]);
+
+      const results = await poller.pollAll();
+
+      expect(results[0].inserted[0].coinId).toBe('live-coin');
+      expect(gecko.client.coins.list.get).not.toHaveBeenCalled();
+    });
+  });
+
   describe('CoinGecko fallback resolution', () => {
     it('resolves coinId from CoinGecko when local lookup misses and exactly one symbol matches', async () => {
-      // Local lookup misses on the symbol query, but hits on the subsequent slug query.
-      coinRepo.findOne = jest
-        .fn()
-        .mockResolvedValueOnce(null) // symbol lookup
-        .mockResolvedValueOnce({ id: 'mapped-coin-id' }); // slug lookup
+      // Local symbol lookup misses (find returns []), but the subsequent gecko slug findOne hits.
+      coinRepo.find = jest.fn().mockResolvedValue([]);
+      coinRepo.findOne = jest.fn().mockResolvedValue({ id: 'mapped-coin-id' });
       gecko.client.coins.list.get = jest.fn().mockResolvedValue([{ id: 'chipper', symbol: 'chip', name: 'Chip' }]);
 
       const binance = makeClient('binance', [{ ...sample, announcedSymbol: 'CHIP' }]);
@@ -161,7 +209,33 @@ describe('AnnouncementPollerService', () => {
       expect(announcementRepo.save).toHaveBeenCalledWith(expect.objectContaining({ coinId: 'mapped-coin-id' }));
     });
 
+    it('leaves coinId null when CoinGecko slug only resolves to an [OLD]/delisted local row', async () => {
+      // Symbol-based local lookup returns [] (the OLD row was filtered out by the SQL predicate).
+      // CoinGecko returns one match, but the slug-based findOne *also* applies the OLD/delistedAt
+      // filter — so the deprecated row is excluded there too and the call resolves to null.
+      coinRepo.find = jest.fn().mockResolvedValue([]);
+      coinRepo.findOne = jest.fn().mockResolvedValue(null);
+      gecko.client.coins.list.get = jest.fn().mockResolvedValue([{ id: 'war-deprecated', symbol: 'war' }]);
+
+      const binance = makeClient('binance', [{ ...sample, announcedSymbol: 'WAR' }]);
+      const poller = build([binance, makeClient('coinbase', []), makeClient('kraken', [])]);
+
+      const results = await poller.pollAll();
+
+      expect(results[0].inserted[0].coinId).toBeNull();
+      expect(coinRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            slug: 'war-deprecated',
+            delistedAt: expect.anything(),
+            name: expect.anything()
+          })
+        })
+      );
+    });
+
     it('leaves coinId null when symbol matches multiple CoinGecko coins (ambiguous)', async () => {
+      coinRepo.find = jest.fn().mockResolvedValue([]);
       coinRepo.findOne = jest.fn().mockResolvedValue(null);
       gecko.client.coins.list.get = jest.fn().mockResolvedValue([
         { id: 'chipper', symbol: 'chip' },
@@ -176,6 +250,7 @@ describe('AnnouncementPollerService', () => {
     });
 
     it('caches the CoinGecko list in Redis and reuses it on subsequent calls', async () => {
+      coinRepo.find = jest.fn().mockResolvedValue([]);
       coinRepo.findOne = jest.fn().mockResolvedValue(null);
       gecko.client.coins.list.get = jest.fn().mockResolvedValue([{ id: 'foo', symbol: 'foo' }]);
 

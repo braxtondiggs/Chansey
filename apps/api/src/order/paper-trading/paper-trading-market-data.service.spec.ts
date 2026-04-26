@@ -23,6 +23,7 @@ const createService = (
     coinService: any;
     circuitBreaker: any;
     tickerBatcher: any;
+    symbolMapService: any;
   }> = {}
 ) => {
   const cacheManager = overrides.cacheManager ?? {
@@ -54,6 +55,10 @@ const createService = (
     getTickers: jest.fn()
   };
 
+  const symbolMapService = overrides.symbolMapService ?? {
+    getSymbolMapsForCoins: jest.fn().mockResolvedValue([])
+  };
+
   return {
     service: new PaperTradingMarketDataService(
       config as any,
@@ -62,14 +67,16 @@ const createService = (
       coinSelectionService as any,
       coinService as any,
       circuitBreaker as any,
-      tickerBatcher as any
+      tickerBatcher as any,
+      symbolMapService as any
     ),
     cacheManager,
     exchangeManager,
     coinSelectionService,
     coinService,
     circuitBreaker,
-    tickerBatcher
+    tickerBatcher,
+    symbolMapService
   };
 };
 
@@ -421,14 +428,12 @@ describe('PaperTradingMarketDataService', () => {
       };
       const tickerBatcher = {
         getTicker: jest.fn(),
-        getTickers: jest
-          .fn()
-          .mockResolvedValue(
-            new Map<string, BatchedTicker>([
-              ['BTC/USDT', mkBatched({ symbol: 'BTC/USDT', price: 45000, source: 'binance' })]
-              // ETH/USDT missing from response
-            ])
-          )
+        getTickers: jest.fn().mockResolvedValue(
+          new Map<string, BatchedTicker>([
+            ['BTC/USDT', mkBatched({ symbol: 'BTC/USDT', price: 45000, source: 'binance' })]
+            // ETH/USDT missing from response
+          ])
+        )
       };
 
       const { service } = createService({ cacheManager, tickerBatcher });
@@ -452,14 +457,12 @@ describe('PaperTradingMarketDataService', () => {
               ? Promise.resolve(mkBatched({ symbol: 'ETH/USD', price: 2400, source: 'gdax' }))
               : Promise.resolve(undefined)
           ),
-        getTickers: jest
-          .fn()
-          .mockResolvedValue(
-            new Map<string, BatchedTicker>([
-              ['BTC/USDT', mkBatched({ symbol: 'BTC/USDT', price: 45000, source: 'binance' })]
-              // ETH/USDT missing from response
-            ])
-          )
+        getTickers: jest.fn().mockResolvedValue(
+          new Map<string, BatchedTicker>([
+            ['BTC/USDT', mkBatched({ symbol: 'BTC/USDT', price: 45000, source: 'binance' })]
+            // ETH/USDT missing from response
+          ])
+        )
       };
 
       const { service } = createService({ cacheManager, tickerBatcher });
@@ -562,13 +565,37 @@ describe('PaperTradingMarketDataService', () => {
   });
 
   describe('resolveSymbolUniverse', () => {
-    const makeSession = (id = 'sess-1', userId = 'user-1'): any => ({ id, user: { id: userId } });
+    const SESSION_EXCHANGE_ID = 'binance-us-exchange-id';
+    const makeSession = (id = 'sess-1', userId = 'user-1', exchangeId: string | null = SESSION_EXCHANGE_ID): any => ({
+      id,
+      user: { id: userId },
+      exchangeKey: exchangeId ? { exchange: { id: exchangeId, slug: 'binance_us' } } : { exchange: null }
+    });
 
-    it('returns coin selection symbols and caches them', async () => {
+    const makeMappings = (entries: Array<[string, string, string?]>) =>
+      entries.map(([coinId, symbol, exchangeId]) => ({
+        coinId,
+        symbol,
+        exchangeId: exchangeId ?? SESSION_EXCHANGE_ID,
+        priority: 0,
+        isActive: true
+      }));
+
+    it('returns coin selection symbols routed through the symbol map and caches them', async () => {
       const coinSelectionService = {
-        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }, { coin: { symbol: 'eth' } }])
+        getCoinSelectionsByUser: jest
+          .fn()
+          .mockResolvedValue([{ coin: { id: 'btc-id', symbol: 'btc' } }, { coin: { id: 'eth-id', symbol: 'eth' } }])
       };
-      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService });
+      const symbolMapService = {
+        getSymbolMapsForCoins: jest.fn().mockResolvedValue(
+          makeMappings([
+            ['btc-id', 'BTC/USD'],
+            ['eth-id', 'ETH/USD']
+          ])
+        )
+      };
+      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService, symbolMapService });
       const session = makeSession();
 
       const result = await service.resolveSymbolUniverse(session, 'USD');
@@ -580,10 +607,46 @@ describe('PaperTradingMarketDataService', () => {
       expect(mockCs.getCoinSelectionsByUser).toHaveBeenCalledTimes(1);
     });
 
-    it('falls back to risk-level coins when selections empty', async () => {
+    it('drops coins without an active mapping for the session exchange', async () => {
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([
+          { coin: { id: 'btc-id', symbol: 'btc' } },
+          // WAR is mapped to a different exchange — must be dropped.
+          { coin: { id: 'war-id', symbol: 'war' } }
+        ])
+      };
+      const symbolMapService = {
+        getSymbolMapsForCoins: jest
+          .fn()
+          .mockResolvedValue([
+            ...makeMappings([['btc-id', 'BTC/USD']]),
+            ...makeMappings([['war-id', 'WAR/USDT', 'kraken-exchange-id']])
+          ])
+      };
+      const { service } = createService({ coinSelectionService, symbolMapService });
+
+      const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
+
+      expect(result).toEqual(['BTC/USD']);
+    });
+
+    it('falls back to risk-level coins (mapped through symbol map) when selections empty', async () => {
       const coinSelectionService = { getCoinSelectionsByUser: jest.fn().mockResolvedValue([]) };
-      const coinService = { getCoinsByRiskLevel: jest.fn().mockResolvedValue([{ symbol: 'sol' }, { symbol: 'dot' }]) };
-      const { service } = createService({ coinSelectionService, coinService });
+      const coinService = {
+        getCoinsByRiskLevel: jest.fn().mockResolvedValue([
+          { id: 'sol-id', symbol: 'sol' },
+          { id: 'dot-id', symbol: 'dot' }
+        ])
+      };
+      const symbolMapService = {
+        getSymbolMapsForCoins: jest.fn().mockResolvedValue(
+          makeMappings([
+            ['sol-id', 'SOL/USD'],
+            ['dot-id', 'DOT/USD']
+          ])
+        )
+      };
+      const { service } = createService({ coinSelectionService, coinService, symbolMapService });
 
       const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
 
@@ -595,9 +658,12 @@ describe('PaperTradingMarketDataService', () => {
       jest.spyOn(Date, 'now').mockImplementation(() => fakeNow);
 
       const coinSelectionService = {
-        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }])
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { id: 'btc-id', symbol: 'btc' } }])
       };
-      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService });
+      const symbolMapService = {
+        getSymbolMapsForCoins: jest.fn().mockResolvedValue(makeMappings([['btc-id', 'BTC/USD']]))
+      };
+      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService, symbolMapService });
       const session = makeSession();
 
       await service.resolveSymbolUniverse(session, 'USD');
@@ -630,9 +696,12 @@ describe('PaperTradingMarketDataService', () => {
 
     it('clearSymbolCache removes the cached entry so next call re-queries', async () => {
       const coinSelectionService = {
-        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }])
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { id: 'btc-id', symbol: 'btc' } }])
       };
-      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService });
+      const symbolMapService = {
+        getSymbolMapsForCoins: jest.fn().mockResolvedValue(makeMappings([['btc-id', 'BTC/USD']]))
+      };
+      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService, symbolMapService });
       const session = makeSession();
 
       await service.resolveSymbolUniverse(session, 'USD');
@@ -652,12 +721,28 @@ describe('PaperTradingMarketDataService', () => {
       expect(mockCs.getCoinSelectionsByUser).not.toHaveBeenCalled();
     });
 
+    it('returns BTC/ETH fallback when session has no exchange bound to its key', async () => {
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { id: 'btc-id', symbol: 'btc' } }])
+      };
+      const { service, coinSelectionService: mockCs } = createService({ coinSelectionService });
+      const session = makeSession('sess-no-exchange', 'user-1', null);
+
+      const result = await service.resolveSymbolUniverse(session, 'USD');
+
+      expect(result).toEqual(['BTC/USD', 'ETH/USD']);
+      expect(mockCs.getCoinSelectionsByUser).not.toHaveBeenCalled();
+    });
+
     it('falls through to risk-level coins when coin selection service throws', async () => {
       const coinSelectionService = {
         getCoinSelectionsByUser: jest.fn().mockRejectedValue(new Error('DB connection lost'))
       };
-      const coinService = { getCoinsByRiskLevel: jest.fn().mockResolvedValue([{ symbol: 'sol' }]) };
-      const { service } = createService({ coinSelectionService, coinService });
+      const coinService = { getCoinsByRiskLevel: jest.fn().mockResolvedValue([{ id: 'sol-id', symbol: 'sol' }]) };
+      const symbolMapService = {
+        getSymbolMapsForCoins: jest.fn().mockResolvedValue(makeMappings([['sol-id', 'SOL/USD']]))
+      };
+      const { service } = createService({ coinSelectionService, coinService, symbolMapService });
 
       const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
       expect(result).toEqual(['SOL/USD']);
@@ -671,16 +756,54 @@ describe('PaperTradingMarketDataService', () => {
       const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
       expect(result).toEqual(['BTC/USD', 'ETH/USD']);
     });
+
+    it('falls through to risk-level coins when no selection coin maps to session exchange', async () => {
+      // All Tier-1 coins are mapped to a different exchange, so no symbols come back.
+      const coinSelectionService = {
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { id: 'war-id', symbol: 'war' } }])
+      };
+      const coinService = {
+        getCoinsByRiskLevel: jest.fn().mockResolvedValue([{ id: 'btc-id', symbol: 'btc' }])
+      };
+      const symbolMapService = {
+        getSymbolMapsForCoins: jest.fn().mockImplementation((coinIds: string[]) => {
+          if (coinIds.includes('war-id')) {
+            return Promise.resolve(makeMappings([['war-id', 'WAR/USDT', 'kraken-exchange-id']]));
+          }
+          return Promise.resolve(makeMappings([['btc-id', 'BTC/USD']]));
+        })
+      };
+      const { service } = createService({ coinSelectionService, coinService, symbolMapService });
+
+      const result = await service.resolveSymbolUniverse(makeSession(), 'USD');
+      expect(result).toEqual(['BTC/USD']);
+    });
   });
 
   describe('sweepOrphaned', () => {
-    const makeSession = (id: string): any => ({ id, user: { id: 'u-1' } });
+    const SESSION_EXCHANGE_ID = 'binance-us-exchange-id';
+    const makeSession = (id: string): any => ({
+      id,
+      user: { id: 'u-1' },
+      exchangeKey: { exchange: { id: SESSION_EXCHANGE_ID, slug: 'binance_us' } }
+    });
+
+    const setupServices = () => ({
+      coinSelectionService: {
+        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { id: 'btc-id', symbol: 'btc' } }])
+      },
+      symbolMapService: {
+        getSymbolMapsForCoins: jest
+          .fn()
+          .mockResolvedValue([
+            { coinId: 'btc-id', symbol: 'BTC/USD', exchangeId: SESSION_EXCHANGE_ID, priority: 0, isActive: true }
+          ])
+      }
+    });
 
     it('removes cached entries for sessions not in active set', async () => {
-      const coinSelectionService = {
-        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }])
-      };
-      const { service } = createService({ coinSelectionService });
+      const { coinSelectionService, symbolMapService } = setupServices();
+      const { service } = createService({ coinSelectionService, symbolMapService });
 
       await service.resolveSymbolUniverse(makeSession('s-1'), 'USD');
       await service.resolveSymbolUniverse(makeSession('s-2'), 'USD');
@@ -698,13 +821,111 @@ describe('PaperTradingMarketDataService', () => {
     });
 
     it('returns 0 when all sessions are active', async () => {
-      const coinSelectionService = {
-        getCoinSelectionsByUser: jest.fn().mockResolvedValue([{ coin: { symbol: 'btc' } }])
-      };
-      const { service } = createService({ coinSelectionService });
+      const { coinSelectionService, symbolMapService } = setupServices();
+      const { service } = createService({ coinSelectionService, symbolMapService });
 
       await service.resolveSymbolUniverse(makeSession('s-1'), 'USD');
       expect(service.sweepOrphaned(new Set(['s-1']))).toBe(0);
+    });
+  });
+
+  describe('DB price fallback dedupe', () => {
+    const makeCacheManager = () => ({ get: jest.fn().mockResolvedValue(null), set: jest.fn() });
+    const makeFailingTickerBatcher = () => ({
+      getTicker: jest.fn().mockRejectedValue(new Error('ETIMEDOUT')),
+      getTickers: jest.fn().mockRejectedValue(new Error('ETIMEDOUT'))
+    });
+    const makeCoinService = (coinId = 'coin-1', currentPrice: number | null = 42000) => ({
+      getCoinsByRiskLevel: jest.fn(),
+      getCoinBySymbol: jest.fn().mockResolvedValue(currentPrice == null ? null : { id: coinId, currentPrice })
+    });
+
+    it('logs warn once per (sessionId, coinId) and downgrades subsequent hits to debug', async () => {
+      const { service } = createService({
+        cacheManager: makeCacheManager(),
+        tickerBatcher: makeFailingTickerBatcher(),
+        coinService: makeCoinService()
+      });
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
+      const debugSpy = jest.spyOn(service['logger'], 'debug');
+
+      await service.getPrices('binance', ['BTC/USDT'], 'session-A');
+      await service.getPrices('binance', ['BTC/USDT'], 'session-A');
+      await service.getPrices('binance', ['BTC/USDT'], 'session-A');
+
+      const dbWarnCalls = warnSpy.mock.calls.filter((c) => String(c[0]).startsWith('Using DB coin.currentPrice'));
+      const dbDebugCalls = debugSpy.mock.calls.filter((c) => String(c[0]).startsWith('Using DB coin.currentPrice'));
+      expect(dbWarnCalls).toHaveLength(1);
+      expect(dbDebugCalls).toHaveLength(2);
+    });
+
+    it('tracks dedupe state independently per session', async () => {
+      const { service } = createService({
+        cacheManager: makeCacheManager(),
+        tickerBatcher: makeFailingTickerBatcher(),
+        coinService: makeCoinService()
+      });
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
+
+      await service.getPrices('binance', ['BTC/USDT'], 'session-A');
+      await service.getPrices('binance', ['BTC/USDT'], 'session-B');
+
+      const dbWarnCalls = warnSpy.mock.calls.filter((c) => String(c[0]).startsWith('Using DB coin.currentPrice'));
+      expect(dbWarnCalls).toHaveLength(2);
+    });
+
+    it('still logs warn every time when sessionId is omitted (backwards compatible)', async () => {
+      const { service } = createService({
+        cacheManager: makeCacheManager(),
+        tickerBatcher: makeFailingTickerBatcher(),
+        coinService: makeCoinService()
+      });
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
+
+      await service.getPrices('binance', ['BTC/USDT']);
+      await service.getPrices('binance', ['BTC/USDT']);
+
+      const dbWarnCalls = warnSpy.mock.calls.filter((c) => String(c[0]).startsWith('Using DB coin.currentPrice'));
+      expect(dbWarnCalls).toHaveLength(2);
+    });
+
+    it('sweepOrphaned clears dedupe state for inactive sessions, re-emitting warn next tick', async () => {
+      const { service } = createService({
+        cacheManager: makeCacheManager(),
+        tickerBatcher: makeFailingTickerBatcher(),
+        coinService: makeCoinService()
+      });
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
+
+      await service.getPrices('binance', ['BTC/USDT'], 'session-A');
+      service.sweepOrphaned(new Set());
+      await service.getPrices('binance', ['BTC/USDT'], 'session-A');
+
+      const dbWarnCalls = warnSpy.mock.calls.filter((c) => String(c[0]).startsWith('Using DB coin.currentPrice'));
+      expect(dbWarnCalls).toHaveLength(2);
+    });
+
+    it('clearSymbolCache clears dedupe state for the targeted session only', async () => {
+      const { service } = createService({
+        cacheManager: makeCacheManager(),
+        tickerBatcher: makeFailingTickerBatcher(),
+        coinService: makeCoinService()
+      });
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
+      const debugSpy = jest.spyOn(service['logger'], 'debug');
+
+      await service.getPrices('binance', ['BTC/USDT'], 'session-A');
+      await service.getPrices('binance', ['BTC/USDT'], 'session-B');
+      service.clearSymbolCache('session-A');
+      await service.getPrices('binance', ['BTC/USDT'], 'session-A');
+      await service.getPrices('binance', ['BTC/USDT'], 'session-B');
+
+      const dbWarnCalls = warnSpy.mock.calls.filter((c) => String(c[0]).startsWith('Using DB coin.currentPrice'));
+      const dbDebugCalls = debugSpy.mock.calls.filter((c) => String(c[0]).startsWith('Using DB coin.currentPrice'));
+      // session-A: warn (1st), then warn again after clear (3rd) = 2 warns
+      // session-B: warn (2nd), then debug (4th, dedupe still active) = 1 warn + 1 debug
+      expect(dbWarnCalls).toHaveLength(3);
+      expect(dbDebugCalls).toHaveLength(1);
     });
   });
 

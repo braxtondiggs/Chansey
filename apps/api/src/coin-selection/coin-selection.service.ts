@@ -161,6 +161,22 @@ export class CoinSelectionService {
     return qb.execute();
   }
 
+  /**
+   * Delete coin_selection rows by primary id, scoped to the user.
+   * Use this when the caller already knows exactly which rows it observed
+   * (avoids the load-then-NOT-IN race in `bulkDeleteAutomaticSelections`).
+   */
+  async bulkDeleteSelectionsByIds(userId: string, ids: string[]) {
+    if (ids.length === 0) return { affected: 0 };
+    return this.coinSelection
+      .createQueryBuilder()
+      .delete()
+      .from(CoinSelection)
+      .where('"userId" = :userId', { userId })
+      .andWhere('id IN (:...ids)', { ids })
+      .execute();
+  }
+
   async deleteCoinSelectionItem(selectionId: string, userId: string) {
     const selection = await this.coinSelection.findOne({
       where: { id: selectionId, user: { id: userId } },

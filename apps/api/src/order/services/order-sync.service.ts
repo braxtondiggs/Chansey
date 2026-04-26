@@ -28,6 +28,18 @@ import {
   extractFuturesFields
 } from '../utils/order-mapping.util';
 
+// Per-symbol stagger inside `fetchFromExchange`. CCXT's `enableRateLimit: true`
+// (set in `ccxt-client.util.ts`) with Binance's `rateLimit: 50ms` already gates
+// weight-10 calls (`fetchOrders`, `fetchMyTrades`) to a ~500ms minimum spacing
+// internally — so the effective rate is ~120 calls/min × 10 = ~1200 weight/min,
+// right at the budget. The 250ms JS sleep is a small additive cushion that
+// matters only if CCXT's rate limiter degrades; it does NOT by itself reduce
+// the call rate below CCXT's floor. The existing `withExchangeRetry` weight-
+// limit handler covers any residual -1003 from concurrent OHLC/ticker traffic.
+const PER_SYMBOL_STAGGER_MS = 250;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 @Injectable()
 export class OrderSyncService {
   private readonly logger = new Logger(OrderSyncService.name);
@@ -191,7 +203,8 @@ export class OrderSyncService {
 
       const allItems: T[] = [];
 
-      for (const symbol of activeSymbols) {
+      for (let i = 0; i < activeSymbols.length; i++) {
+        const symbol = activeSymbols[i];
         const result = await withExchangeRetry(() => fetchFn(symbol, since), {
           logger: this.logger,
           operationName: `${operationName}(${symbol})`
@@ -203,6 +216,9 @@ export class OrderSyncService {
           this.logger.log(
             `Failed to fetch ${operationName} for ${symbol}: ${result.error?.message ?? 'Unknown error'}`
           );
+        }
+        if (i < activeSymbols.length - 1) {
+          await sleep(PER_SYMBOL_STAGGER_MS);
         }
       }
 
