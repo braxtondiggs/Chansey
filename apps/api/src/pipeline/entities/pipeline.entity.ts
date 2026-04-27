@@ -156,11 +156,11 @@ export class Pipeline {
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   @ApiProperty({ description: 'Market regime at time of scoring', required: false })
-  scoringRegime?: string;
+  scoringRegime?: string | null;
 
   @Column({ type: 'jsonb', nullable: true })
   @ApiProperty({ description: 'Component score breakdown', required: false })
-  scoreDetails?: Record<string, unknown>;
+  scoreDetails?: Record<string, unknown> | null;
 
   @IsString()
   @IsOptional()

@@ -293,8 +293,8 @@ export class PipelineProgressionService {
     if (scoring) {
       pipeline.pipelineScore = scoring.overallScore ?? null;
       pipeline.scoreGrade = scoring.grade ?? null;
-      pipeline.scoringRegime = scoring.regime ?? undefined;
-      pipeline.scoreDetails = (scoring.componentScores as unknown as Record<string, unknown>) ?? undefined;
+      pipeline.scoringRegime = scoring.regime ?? null;
+      pipeline.scoreDetails = (scoring.componentScores as unknown as Record<string, unknown>) ?? null;
     }
 
     await this.pipelineRepository.save(pipeline);
@@ -381,6 +381,8 @@ export class PipelineProgressionService {
     pipeline.recommendation = DeploymentRecommendation.INCONCLUSIVE_RETRY;
     pipeline.pipelineScore = null;
     pipeline.scoreGrade = null;
+    pipeline.scoringRegime = null;
+    pipeline.scoreDetails = null;
     pipeline.failureReason = null;
 
     await this.pipelineRepository.save(pipeline);

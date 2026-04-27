@@ -27,7 +27,7 @@ export class BackfillCompletedPipelineScores1777305900678 implements MigrationIn
       WHERE status = 'COMPLETED'
         AND "pipelineScore" IS NOT NULL
         AND "stageResults"->'scoring'->>'overallScore' IS NOT NULL
-        AND ("pipelineScore")::text = ("stageResults"->'scoring'->>'overallScore')
+        AND "pipelineScore" = ("stageResults"->'scoring'->>'overallScore')::numeric
         AND (recommendation IS NULL OR recommendation <> 'INCONCLUSIVE_RETRY')
     `);
   }

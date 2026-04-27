@@ -27,6 +27,15 @@ export class LiveTradeSummaryDto {
 
   @ApiProperty({ description: 'Total number of unique users with active algorithms', example: 15 })
   activeUsers: number;
+
+  @ApiProperty({ description: 'Total signals emitted across live + paper trading', example: 190502 })
+  signalsTotal: number;
+
+  @ApiProperty({ description: 'Signals that resulted in placed/simulated trades', example: 568 })
+  signalsPlaced: number;
+
+  @ApiProperty({ description: 'Signal → trade conversion percentage', example: 0.3 })
+  signalConversionPct: number;
 }
 
 /**
@@ -53,6 +62,9 @@ export class TopPerformingAlgorithmDto {
 
   @ApiProperty({ description: 'Average slippage in basis points', example: 10.5 })
   avgSlippageBps: number;
+
+  @ApiPropertyOptional({ description: 'Signal → trade conversion percentage for this algorithm', example: 0.3 })
+  signalConversionPct?: number;
 }
 
 /**
@@ -102,6 +114,45 @@ export class AlertsSummaryDto {
 }
 
 /**
+ * Single rejection-reason breakdown row
+ */
+export class SignalRejectionReasonDto {
+  @ApiProperty({ description: 'Machine-readable rejection reason code', example: 'SIGNAL_THROTTLED' })
+  reasonCode: string;
+
+  @ApiProperty({ description: 'Number of signals rejected for this reason', example: 180133 })
+  count: number;
+
+  @ApiProperty({ description: 'Share of total signals rejected for this reason', example: 94.6 })
+  pct: number;
+}
+
+/**
+ * Signal → trade conversion panel for the overview dashboard.
+ * Aggregates live + paper trading signals so operators can spot
+ * filter-chain misconfiguration before it shows up as poor performance.
+ */
+export class SignalConversionPanelDto {
+  @ApiProperty({ description: 'Total signals emitted', example: 190502 })
+  totalSignals: number;
+
+  @ApiProperty({ description: 'Signals that resulted in placed/simulated trades', example: 568 })
+  placedSignals: number;
+
+  @ApiProperty({ description: 'Signals rejected/blocked/failed', example: 189934 })
+  rejectedSignals: number;
+
+  @ApiProperty({ description: 'Conversion percentage (placed / total * 100)', example: 0.3 })
+  conversionPct: number;
+
+  @ApiProperty({
+    description: 'Top 5 rejection reasons sorted by count descending',
+    type: [SignalRejectionReasonDto]
+  })
+  topRejectionReasons: SignalRejectionReasonDto[];
+}
+
+/**
  * Complete overview response for live trade monitoring dashboard
  */
 export class LiveTradeOverviewDto {
@@ -116,4 +167,7 @@ export class LiveTradeOverviewDto {
 
   @ApiProperty({ description: 'Alerts summary' })
   alertsSummary: AlertsSummaryDto;
+
+  @ApiProperty({ description: 'Signal → trade conversion metrics' })
+  signalConversion: SignalConversionPanelDto;
 }

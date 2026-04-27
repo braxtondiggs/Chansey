@@ -18,7 +18,9 @@ export const DEFAULT_THRESHOLDS: AlertThresholdsDto = {
   totalReturnWarning: 20,
   totalReturnCritical: 40,
   slippageWarningBps: 30,
-  slippageCriticalBps: 50
+  slippageCriticalBps: 50,
+  signalConversionWarning: 5,
+  signalConversionCritical: 1
 };
 
 /** Whitelist mapping for safe sort column access (prevents SQL injection) */

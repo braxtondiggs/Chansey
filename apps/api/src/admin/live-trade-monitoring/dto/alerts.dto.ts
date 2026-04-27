@@ -105,6 +105,12 @@ export class AlertThresholdsDto {
 
   @ApiProperty({ description: 'Slippage critical threshold', example: 50 })
   slippageCriticalBps: number;
+
+  @ApiProperty({ description: 'Signal conversion warning threshold (percentage)', example: 5 })
+  signalConversionWarning: number;
+
+  @ApiProperty({ description: 'Signal conversion critical threshold (percentage)', example: 1 })
+  signalConversionCritical: number;
 }
 
 /**

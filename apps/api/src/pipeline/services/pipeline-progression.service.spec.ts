@@ -704,8 +704,12 @@ describe('PipelineProgressionService', () => {
       expect(ts).toBeLessThanOrEqual(after);
     });
 
-    it('keeps score columns null even when stageResults.scoring is populated', async () => {
+    it('clears all score columns even when previously populated by LIVE_REPLAY', async () => {
       const pipeline = makePipeline({
+        pipelineScore: 80,
+        scoreGrade: 'A',
+        scoringRegime: 'normal',
+        scoreDetails: { sharpe: 90 },
         stageResults: {
           scoring: {
             overallScore: 80,
@@ -725,6 +729,8 @@ describe('PipelineProgressionService', () => {
 
       expect(pipeline.pipelineScore).toBeNull();
       expect(pipeline.scoreGrade).toBeNull();
+      expect(pipeline.scoringRegime).toBeNull();
+      expect(pipeline.scoreDetails).toBeNull();
     });
   });
 });
