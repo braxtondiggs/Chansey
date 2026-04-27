@@ -90,7 +90,8 @@ describe('OptimizationCoreService', () => {
     signalThrottle = {
       resolveConfig: jest.fn().mockReturnValue({}),
       createState: jest.fn().mockReturnValue({}),
-      filterSignals: jest.fn().mockReturnValue({ accepted: [], rejected: [] })
+      filterSignals: jest.fn().mockReturnValue({ accepted: [], rejected: [] }),
+      markExecuted: jest.fn()
     };
     indicatorPrecompute = {
       precomputeIndicators: jest.fn().mockResolvedValue(undefined)

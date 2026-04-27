@@ -84,6 +84,7 @@ const createService = (overrides: Overrides = {}) => {
 
   const throttleService = {
     filter: jest.fn().mockImplementation((_id: string, signals: any[]) => ({ accepted: signals, rejected: [] })),
+    markExecuted: jest.fn(),
     clear: jest.fn(),
     has: jest.fn(),
     restore: jest.fn(),
@@ -455,6 +456,94 @@ describe('PaperTradingEngineService', () => {
 
       expect(opportunitySelling.attempt).not.toHaveBeenCalled();
       expect(result.ordersExecuted).toBe(0);
+    });
+  });
+
+  describe('throttle daily-cap accounting and unresolvable-symbol pre-filter', () => {
+    it('rejects signals for unpriced symbols with SYMBOL_RESOLUTION_FAILED before the throttle runs', async () => {
+      // Algorithm emits a BUY for SPX, but the price map has only BTC.
+      const { service, signalService, throttleService, algorithmRegistry } = createService({
+        accounts: [{ currency: 'USD', available: 10000, total: 10000 }],
+        prices: { 'BTC/USD': 50000 } // SPX/USD intentionally absent
+      });
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [
+          { type: SignalType.BUY, coinId: 'SPX', strength: 0.1, confidence: 0.8, reason: 'unresolvable' },
+          { type: SignalType.BUY, coinId: 'BTC', strength: 0.1, confidence: 0.8, reason: 'good' }
+        ]
+      });
+
+      await service.processTick(makeSession(), exchangeKey);
+
+      // SPX gets rejected BEFORE the throttle, with SYMBOL_RESOLUTION_FAILED
+      expect(signalService.markRejected).toHaveBeenCalledWith(
+        expect.anything(),
+        SignalReasonCode.SYMBOL_RESOLUTION_FAILED
+      );
+      // The throttle only sees the resolvable BTC signal
+      const throttleCall = throttleService.filter.mock.calls[0];
+      const filteredInput = throttleCall[1] as any[];
+      expect(filteredInput).toHaveLength(1);
+      expect(filteredInput[0].symbol).toBe('BTC/USD');
+    });
+
+    it('marks the throttle as executed only after a successful order fills', async () => {
+      const { service, throttleService, orderExecutor, algorithmRegistry } = createService();
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [
+          { type: SignalType.BUY, coinId: 'BTC', strength: 0.1, quantity: 0.1, confidence: 0.8, reason: 'entry' }
+        ]
+      });
+      orderExecutor.execute.mockResolvedValue({
+        status: 'success',
+        order: { id: 'o-1', executedPrice: 50000, filledQuantity: 0.1 }
+      });
+
+      await service.processTick(makeSession(), exchangeKey);
+
+      expect(throttleService.markExecuted).toHaveBeenCalledTimes(1);
+      expect(throttleService.markExecuted).toHaveBeenCalledWith('session-1', expect.any(Number));
+    });
+
+    it('does NOT mark the throttle as executed when the order is rejected', async () => {
+      const { service, throttleService, orderExecutor, algorithmRegistry } = createService();
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [
+          { type: SignalType.BUY, coinId: 'BTC', strength: 0.1, quantity: 0.1, confidence: 0.8, reason: 'entry' }
+        ]
+      });
+      // Executor reports no_price (the same status that previously burned a slot)
+      orderExecutor.execute.mockResolvedValue({ status: 'no_price', order: null });
+
+      await service.processTick(makeSession(), exchangeKey);
+
+      expect(throttleService.markExecuted).not.toHaveBeenCalled();
+    });
+
+    it('does NOT mark the throttle as executed for risk-control bypass signals', async () => {
+      const { service, throttleService, orderExecutor, algorithmRegistry } = createService({
+        accounts: [
+          { currency: 'USD', available: 5000, total: 5000 },
+          { currency: 'BTC', available: 1, total: 1, averageCost: 40000 }
+        ]
+      });
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [
+          { type: SignalType.STOP_LOSS, coinId: 'BTC', strength: 1.0, quantity: 0.5, confidence: 1.0, reason: 'sl' }
+        ]
+      });
+      orderExecutor.execute.mockResolvedValue({
+        status: 'success',
+        order: { id: 'o-sl', executedPrice: 50000, filledQuantity: 0.5 }
+      });
+
+      await service.processTick(makeSession(), exchangeKey);
+
+      expect(throttleService.markExecuted).not.toHaveBeenCalled();
     });
   });
 

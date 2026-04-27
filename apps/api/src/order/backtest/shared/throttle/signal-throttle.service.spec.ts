@@ -140,14 +140,37 @@ describe('SignalThrottleService', () => {
     });
 
     describe('daily trade limit', () => {
+      // Daily-cap accounting moved out of filterSignals into markExecuted, so
+      // these scenarios now mirror what callers do: filter, then mark each
+      // accepted (non-bypass) signal as executed before the next batch.
+      const filterAndMark = (
+        signals: TradingSignal[],
+        state: ReturnType<typeof service.createState>,
+        cfg: SignalThrottleConfig,
+        ts: number
+      ) => {
+        const result = service.filterSignals(signals, state, cfg, ts);
+        for (const s of result.accepted) {
+          if (
+            !s.originalType ||
+            (s.originalType !== AlgoSignalType.STOP_LOSS &&
+              s.originalType !== AlgoSignalType.TAKE_PROFIT &&
+              s.originalType !== AlgoSignalType.SHORT_EXIT)
+          ) {
+            service.markExecuted(state, ts);
+          }
+        }
+        return result;
+      };
+
       it('signals suppressed after maxTradesPerDay reached', () => {
         const state = service.createState();
         const limitConfig: SignalThrottleConfig = { ...config, maxTradesPerDay: 2, cooldownMs: 0 };
 
-        service.filterSignals([makeBuy('btc')], state, limitConfig, BASE_TIME);
-        service.filterSignals([makeBuy('eth')], state, limitConfig, BASE_TIME + 1000);
+        filterAndMark([makeBuy('btc')], state, limitConfig, BASE_TIME);
+        filterAndMark([makeBuy('eth')], state, limitConfig, BASE_TIME + 1000);
 
-        const { accepted } = service.filterSignals([makeBuy('sol')], state, limitConfig, BASE_TIME + 2000);
+        const { accepted } = filterAndMark([makeBuy('sol')], state, limitConfig, BASE_TIME + 2000);
         expect(accepted).toHaveLength(0);
       });
 
@@ -155,10 +178,10 @@ describe('SignalThrottleService', () => {
         const state = service.createState();
         const limitConfig: SignalThrottleConfig = { ...config, maxTradesPerDay: 2, cooldownMs: 0 };
 
-        service.filterSignals([makeBuy('btc')], state, limitConfig, BASE_TIME);
-        service.filterSignals([makeBuy('eth')], state, limitConfig, BASE_TIME + 1000);
+        filterAndMark([makeBuy('btc')], state, limitConfig, BASE_TIME);
+        filterAndMark([makeBuy('eth')], state, limitConfig, BASE_TIME + 1000);
 
-        const { accepted } = service.filterSignals([makeBuy('sol')], state, limitConfig, BASE_TIME + ONE_DAY + 1);
+        const { accepted } = filterAndMark([makeBuy('sol')], state, limitConfig, BASE_TIME + ONE_DAY + 1);
         expect(accepted).toHaveLength(1);
       });
 
@@ -167,9 +190,30 @@ describe('SignalThrottleService', () => {
         const noCap: SignalThrottleConfig = { ...config, maxTradesPerDay: 0, cooldownMs: 0 };
 
         for (let i = 0; i < 20; i++) {
-          const { accepted } = service.filterSignals([makeBuy(`coin-${i}`)], state, noCap, BASE_TIME + i);
+          const { accepted } = filterAndMark([makeBuy(`coin-${i}`)], state, noCap, BASE_TIME + i);
           expect(accepted).toHaveLength(1);
         }
+      });
+
+      it('filterSignals alone does NOT burn the daily cap until markExecuted is called', () => {
+        const state = service.createState();
+        const limitConfig: SignalThrottleConfig = { ...config, maxTradesPerDay: 2, cooldownMs: 0 };
+
+        // Accepting two signals without calling markExecuted should leave cap untouched
+        service.filterSignals([makeBuy('btc')], state, limitConfig, BASE_TIME);
+        service.filterSignals([makeBuy('eth')], state, limitConfig, BASE_TIME + 1000);
+        expect(state.tradeTimestamps).toEqual([]);
+
+        // A third signal still passes — cap was never burned
+        const { accepted } = service.filterSignals([makeBuy('sol')], state, limitConfig, BASE_TIME + 2000);
+        expect(accepted).toHaveLength(1);
+      });
+
+      it('markExecuted updates the rolling 24h window', () => {
+        const state = service.createState();
+        service.markExecuted(state, BASE_TIME);
+        service.markExecuted(state, BASE_TIME + 1000);
+        expect(state.tradeTimestamps).toEqual([BASE_TIME, BASE_TIME + 1000]);
       });
     });
 
@@ -190,9 +234,11 @@ describe('SignalThrottleService', () => {
         ['SHORT_EXIT', AlgoSignalType.SHORT_EXIT, () => makeShortExit('btc')]
       ] as const)('%s bypasses daily limit', (_label, expectedType, makeSignal) => {
         const state = service.createState();
-        // Fill daily cap with a normal trade
+        // Fill daily cap with a normal trade. filterSignals no longer auto-bumps
+        // the rolling window — the caller must mark execution explicitly.
         const noCooldownStrict: SignalThrottleConfig = { ...strictConfig, cooldownMs: 0 };
         service.filterSignals([makeBuy('btc')], state, noCooldownStrict, BASE_TIME);
+        service.markExecuted(state, BASE_TIME);
 
         // Risk-control signal still passes despite daily cap reached
         const { accepted } = service.filterSignals([makeSignal()], state, noCooldownStrict, BASE_TIME + ONE_HOUR);
@@ -218,6 +264,7 @@ describe('SignalThrottleService', () => {
         const state = service.createState();
         const capConfig: SignalThrottleConfig = { cooldownMs: 0, maxTradesPerDay: 2, minSellPercent: 0.5 };
 
+        // Bypass signals never call markExecuted in callers, so cap stays untouched.
         service.filterSignals([makeStopLoss('btc')], state, capConfig, BASE_TIME);
         service.filterSignals([makeTakeProfit('eth')], state, capConfig, BASE_TIME + 1000);
 
@@ -305,11 +352,15 @@ describe('SignalThrottleService', () => {
       });
     });
 
-    it('should update state.lastSignalTime and state.tradeTimestamps on accepted signals', () => {
+    it('should update state.lastSignalTime on accepted signals; tradeTimestamps only via markExecuted', () => {
       const state = service.createState();
       service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
 
       expect(state.lastSignalTime['btc:BUY']).toBe(BASE_TIME);
+      // filterSignals no longer touches tradeTimestamps — that's markExecuted's job.
+      expect(state.tradeTimestamps).toEqual([]);
+
+      service.markExecuted(state, BASE_TIME);
       expect(state.tradeTimestamps).toEqual([BASE_TIME]);
     });
   });
@@ -423,6 +474,8 @@ describe('SignalThrottleService', () => {
     it('roundtrip preserves state', () => {
       const state = service.createState();
       service.filterSignals([makeBuy('btc'), makeSell('eth', 0.8, 0.6)], state, DEFAULT_THROTTLE_CONFIG, BASE_TIME);
+      service.markExecuted(state, BASE_TIME);
+      service.markExecuted(state, BASE_TIME);
 
       const serialized = service.serialize(state);
       const restored = service.deserialize(serialized);

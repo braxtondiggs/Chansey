@@ -533,29 +533,37 @@ describe('ATRTrailingStopStrategy', () => {
       expect(signal.metadata?.stopLevel).toBeCloseTo(94.5, 1);
     });
 
-    it('should suppress entry signal when stop cooldown is active', async () => {
+    it('should still emit entry on a single trend flip with the default cooldown enabled', async () => {
+      // Regression: the cooldown previously included the trigger bar (currentIndex - 1)
+      // in its lookback, which unconditionally suppressed every legitimate trend-flip
+      // entry. A clean single flip with no older triggers should produce a BUY even
+      // when stopCooldownBars > 0. With ATR=5, multiplier=3.5, the long stop sits at
+      // 130 - 17.5 = 112.5, so bars 16-27 must keep low above that level to avoid
+      // earlier-bar triggers polluting the cooldown lookback.
       const prices = createMockPrices(30);
-      // Set up: trend flip where previous bar triggered stop, current bar recovers
       for (let i = 0; i < 30; i++) {
         prices[i].avg = 100;
         prices[i].high = 105;
         prices[i].low = 95;
       }
-      // Spike high early: stop = 130 - 5*3.5 = 112.5
       prices[15].high = 130;
-      // Bar 28 triggers stop (low=75 < 117.5)
+      // Bars 16-27 sit comfortably above the trailing stop (low=115 > 112.5)
+      for (let i = 16; i <= 27; i++) {
+        prices[i].avg = 120;
+        prices[i].high = 125;
+        prices[i].low = 115;
+      }
+      // Bar 28 triggers (entry-trigger bar)
       prices[28].avg = 80;
       prices[28].low = 75;
       prices[28].high = 85;
-      // Bar 29 recovers above stop (trend flip entry candidate)
+      // Bar 29 recovers
       prices[29].avg = 125;
       prices[29].low = 120;
       prices[29].high = 130;
 
       const atrValues = Array(30).fill(NaN);
-      for (let i = 14; i < 30; i++) {
-        atrValues[i] = 5;
-      }
+      for (let i = 14; i < 30; i++) atrValues[i] = 5;
 
       indicatorService.calculateATR.mockResolvedValue({
         values: atrValues,
@@ -564,19 +572,54 @@ describe('ATRTrailingStopStrategy', () => {
         fromCache: false
       });
 
-      // First verify the entry fires without cooldown
-      const contextNoCooldown: AlgorithmContext = {
+      const context: AlgorithmContext = {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
-        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 0 }
+        // stopCooldownBars=3 (default) — must not suppress the legitimate entry
+        config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 3 }
       };
 
-      const resultNoCooldown = await strategy.execute(contextNoCooldown);
-      const buySignalsNoCooldown = resultNoCooldown.signals.filter((s) => s.type === SignalType.BUY);
-      expect(buySignalsNoCooldown.length).toBeGreaterThan(0);
+      const result = await strategy.execute(context);
+      const buySignals = result.signals.filter((s) => s.type === SignalType.BUY);
+      expect(buySignals.length).toBeGreaterThan(0);
+      expect(buySignals[0]?.metadata?.signalSource).toBe('trend_flip');
+    });
 
-      // Now with cooldown — bar 28 had a stop, so entry on bar 29 should be suppressed
+    it('should suppress entry when an older bar within the cooldown window also triggered', async () => {
+      // Two stops within stopCooldownBars of each other: bar 26 fires a stop,
+      // bar 28 fires the entry-trigger stop, bar 29 recovers. With cooldownBars=3
+      // the lookback (bars 27,26,25) must catch bar 26 and suppress the entry.
+      const prices = createMockPrices(30);
+      for (let i = 0; i < 30; i++) {
+        prices[i].avg = 100;
+        prices[i].high = 105;
+        prices[i].low = 95;
+      }
+      // Spike high early: ratcheted long stop ≈ 130 - 5*3.5 = 112.5
+      prices[15].high = 130;
+      // Bars 16-27 above stop by default (low=115 > 112.5) so no spurious triggers
+      for (let i = 16; i <= 27; i++) {
+        prices[i].avg = 120;
+        prices[i].high = 125;
+        prices[i].low = 115;
+      }
+      // Bar 26 triggers (older churn within cooldown window)
+      prices[26].avg = 80;
+      prices[26].low = 75;
+      prices[26].high = 85;
+      // Bar 28 triggers (entry-trigger bar)
+      prices[28].avg = 80;
+      prices[28].low = 75;
+      prices[28].high = 85;
+      // Bar 29 recovers — entry candidate, but bar 26 is within cooldown
+      prices[29].avg = 125;
+      prices[29].low = 120;
+      prices[29].high = 130;
+
+      const atrValues = Array(30).fill(NaN);
+      for (let i = 14; i < 30; i++) atrValues[i] = 5;
+
       indicatorService.calculateATR.mockResolvedValue({
         values: atrValues,
         validCount: 15,
@@ -584,16 +627,16 @@ describe('ATRTrailingStopStrategy', () => {
         fromCache: false
       });
 
-      const contextWithCooldown: AlgorithmContext = {
+      const context: AlgorithmContext = {
         coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
         priceData: { btc: prices as any },
         timestamp: new Date(),
         config: { atrPeriod: 14, atrMultiplier: 3.5, tradeDirection: 'long', minConfidence: 0, stopCooldownBars: 3 }
       };
 
-      const resultWithCooldown = await strategy.execute(contextWithCooldown);
-      const buySignalsWithCooldown = resultWithCooldown.signals.filter((s) => s.type === SignalType.BUY);
-      expect(buySignalsWithCooldown).toHaveLength(0);
+      const result = await strategy.execute(context);
+      const buySignals = result.signals.filter((s) => s.type === SignalType.BUY);
+      expect(buySignals).toHaveLength(0);
     });
 
     it('should include stopCooldownBars in config schema', () => {

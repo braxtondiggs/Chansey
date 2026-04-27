@@ -28,6 +28,13 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
  * but respect per-coin+direction cooldowns to prevent duplicate signal spam.
  *
  * State is passed explicitly to support checkpoint/resume without service-level mutability.
+ *
+ * Acceptance vs. execution accounting: `filterSignals` only updates the
+ * cooldown ledger (`lastSignalTime`) when it accepts a signal. Daily-cap
+ * accounting (`tradeTimestamps`) is deferred to `markExecuted`, which the
+ * caller invokes once the trade has actually been placed. This prevents
+ * downstream rejections (e.g. unresolved symbols, insufficient funds) from
+ * burning the daily cap and silently locking out the rest of the window.
  */
 @Injectable()
 export class SignalThrottleService {
@@ -96,7 +103,7 @@ export class SignalThrottleService {
       // Risk-control signals bypass daily cap & min sell %, but respect cooldown
       if (signal.originalType && THROTTLE_BYPASS_TYPES.has(signal.originalType)) {
         if (config.cooldownMs > 0) {
-          const direction = signal.action as 'BUY' | 'SELL';
+          const direction = signal.action;
           const key: CooldownKey = `${signal.coinId}:${direction}`;
           const lastTime = state.lastSignalTime[key];
           if (lastTime !== undefined && currentTimestampMs - lastTime < config.cooldownMs) {
@@ -109,7 +116,7 @@ export class SignalThrottleService {
         continue;
       }
 
-      const direction = signal.action as 'BUY' | 'SELL';
+      const direction = signal.action;
 
       // Cooldown check
       if (config.cooldownMs > 0) {
@@ -136,17 +143,28 @@ export class SignalThrottleService {
         }
       }
 
-      // Accept signal — update state (use original `signal` for cooldown key)
+      // Accept signal — update cooldown ledger (use original `signal` for cooldown key).
+      // Daily-cap accounting is deferred to markExecuted() so failed executions
+      // don't burn the rolling 24h window.
       if (config.cooldownMs > 0) {
         const key: CooldownKey = `${signal.coinId}:${direction}`;
         state.lastSignalTime[key] = currentTimestampMs;
       }
-      state.tradeTimestamps.push(currentTimestampMs);
 
       accepted.push(effectiveSignal);
     }
 
     return { accepted, rejected };
+  }
+
+  /**
+   * Mark a signal as actually executed. Updates the rolling 24h trade window
+   * used by the daily cap. Call this only after the trade has been placed —
+   * signals that get rejected downstream (unresolved symbol, insufficient
+   * funds, etc.) must NOT consume a slot.
+   */
+  markExecuted(state: ThrottleState, currentTimestampMs: number): void {
+    state.tradeTimestamps.push(currentTimestampMs);
   }
 
   /** Serialize throttle state for checkpoint persistence */

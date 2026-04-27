@@ -41,7 +41,6 @@ describe('CoinService', () => {
   let service: CoinService;
   let coinRepository: jest.Mocked<Repository<Coin>>;
   let snapshotService: { getQualifiedCoinIdsAtDate: jest.Mock };
-  let diversityService: { pruneByDiversity: jest.Mock };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -80,7 +79,6 @@ describe('CoinService', () => {
     service = module.get<CoinService>(CoinService);
     coinRepository = module.get(getRepositoryToken(Coin));
     snapshotService = module.get(CoinDailySnapshotService);
-    diversityService = module.get(CoinDiversityService);
   });
 
   afterEach(() => {
@@ -767,205 +765,88 @@ describe('CoinService', () => {
   });
 
   // ===========================================================================
-  // getCoinsByRiskLevelValue()
+  // getEligibleCoinsForMapping()
   // ===========================================================================
-  describe('getCoinsByRiskLevelValue()', () => {
-    const collectWhereCalls = (qb: Record<string, jest.Mock>): string[] => [
-      ...qb.where.mock.calls.map((call: unknown[]) => String(call[0])),
-      ...qb.andWhere.mock.calls.map((call: unknown[]) => String(call[0]))
-    ];
-
-    it('applies the full hard filter (stablecoins, volume, mcap, active mapping) at level 3', async () => {
+  describe('getEligibleCoinsForMapping()', () => {
+    it('applies the full selection eligibility filter (mcap, volume, price, delisted, stablecoins)', async () => {
       const qb = mockQueryBuilder();
-      // Return enough coins to trigger the `2 * take` short-circuit so we stay in tier 0.
-      qb.getMany.mockResolvedValue(Array.from({ length: 6 }, () => createTestCoin()));
       coinRepository.createQueryBuilder.mockReturnValue(qb as any);
 
-      await service.getCoinsByRiskLevelValue(3, 2);
+      await service.getEligibleCoinsForMapping();
 
-      const clauses = collectWhereCalls(qb);
+      const clauses = [
+        ...qb.where.mock.calls.map((call: unknown[]) => String(call[0])),
+        ...qb.andWhere.mock.calls.map((call: unknown[]) => String(call[0]))
+      ];
       expect(clauses).toContain('coin.delistedAt IS NULL');
       expect(clauses).toContain('coin.currentPrice IS NOT NULL');
-      expect(clauses).toContain('coin.totalVolume >= :minVolume');
-      expect(clauses).toContain('UPPER(coin.symbol) NOT IN (:...stablecoins)');
       expect(clauses).toContain('coin.marketCap >= :minMarketCap');
-      // default path (no userExchangeIds) requires any active mapping
-      expect(clauses.some((c) => c.includes('exchange_symbol_map') && !c.includes('userExchangeIds'))).toBe(true);
-      // Oversample: take * SHORTLIST_MULTIPLIER (3) = 6
-      expect(qb.take).toHaveBeenCalledWith(6);
+      expect(clauses).toContain('coin.totalVolume >= :minDailyVolume');
+      expect(clauses).toContain('UPPER(coin.symbol) NOT IN (:...stablecoins)');
+      expect(qb.orderBy).toHaveBeenCalledWith('coin.marketRank', 'ASC', 'NULLS LAST');
     });
 
-    it('blends a sentiment nudge into the primary score by default', async () => {
+    it('uses the same MIN_MARKET_CAP and MIN_DAILY_VOLUME as backtest filtering', async () => {
       const qb = mockQueryBuilder();
-      qb.getMany.mockResolvedValue([createTestCoin()]);
       coinRepository.createQueryBuilder.mockReturnValue(qb as any);
 
-      await service.getCoinsByRiskLevelValue(3, 1);
+      await service.getEligibleCoinsForMapping();
 
-      const orderExpr = String(qb.orderBy.mock.calls[0][0]);
-      expect(orderExpr).toContain('sentimentUp');
-      expect(orderExpr).toContain('priceChangePercentage7d');
-      expect(orderExpr).toContain('priceChangePercentage30d');
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.marketCap >= :minMarketCap', { minMarketCap: 100_000_000 });
+      expect(qb.andWhere).toHaveBeenCalledWith('coin.totalVolume >= :minDailyVolume', { minDailyVolume: 1_000_000 });
     });
 
-    it('omits the momentum terms for level 1 (size + liquidity only)', async () => {
+    it('intersects with the provided baseSymbols set (case-insensitive)', async () => {
       const qb = mockQueryBuilder();
-      qb.getMany.mockResolvedValue([createTestCoin()]);
       coinRepository.createQueryBuilder.mockReturnValue(qb as any);
 
-      await service.getCoinsByRiskLevelValue(1, 1);
+      await service.getEligibleCoinsForMapping(new Set(['BTC', 'Eth']));
 
-      const orderExpr = String(qb.orderBy.mock.calls[0][0]);
-      expect(orderExpr).not.toContain('priceChangePercentage7d');
-      expect(orderExpr).not.toContain('priceChangePercentage30d');
-    });
-
-    it('applies the mid-cap band at level 5', async () => {
-      const qb = mockQueryBuilder();
-      qb.getMany.mockResolvedValue([createTestCoin()]);
-      coinRepository.createQueryBuilder.mockReturnValue(qb as any);
-
-      await service.getCoinsByRiskLevelValue(5, 1);
-
-      expect(qb.andWhere).toHaveBeenCalledWith('coin.marketCap BETWEEN :l5Min AND :l5Max', {
-        l5Min: 50_000_000,
-        l5Max: 5_000_000_000
+      expect(qb.andWhere).toHaveBeenCalledWith('LOWER(coin.symbol) IN (:...symbols)', {
+        symbols: ['btc', 'eth']
       });
     });
 
-    it('passes user exchange IDs into the EXISTS sub-query when provided', async () => {
+    it('returns [] without hitting the DB when baseSymbols is an empty set', async () => {
+      const result = await service.getEligibleCoinsForMapping(new Set());
+
+      expect(result).toEqual([]);
+      expect(coinRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('skips the symbol intersection when baseSymbols is undefined', async () => {
+      const qb = mockQueryBuilder();
+      coinRepository.createQueryBuilder.mockReturnValue(qb as any);
+
+      await service.getEligibleCoinsForMapping();
+
+      const symbolFilter = qb.andWhere.mock.calls.find(
+        (call: unknown[]) => String(call[0]) === 'LOWER(coin.symbol) IN (:...symbols)'
+      );
+      expect(symbolFilter).toBeUndefined();
+    });
+  });
+
+  // ===========================================================================
+  // getCoinsByRiskLevelValue()
+  // ===========================================================================
+  // Behavior of the underlying selectCoinsByRiskLevel function lives in
+  // coin-risk-selection.spec.ts; this wrapper test only verifies that the
+  // service forwards level, take, and userExchangeIds through correctly.
+  describe('getCoinsByRiskLevelValue()', () => {
+    it('forwards level, take, and userExchangeIds to selectCoinsByRiskLevel', async () => {
       const qb = mockQueryBuilder();
       qb.getMany.mockResolvedValue([createTestCoin()]);
       coinRepository.createQueryBuilder.mockReturnValue(qb as any);
 
-      await service.getCoinsByRiskLevelValue(3, 1, ['ex-a', 'ex-b']);
+      await service.getCoinsByRiskLevelValue(2, 4, ['ex-x']);
 
-      const matching = qb.andWhere.mock.calls.find(
+      // Oversamples by SHORTLIST_MULTIPLIER (3) → take * 3 = 12
+      expect(qb.take).toHaveBeenCalledWith(12);
+      const userExchangeClause = qb.andWhere.mock.calls.find(
         (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('userExchangeIds')
       );
-      expect(matching).toBeDefined();
-      expect(matching?.[1]).toEqual({ userExchangeIds: ['ex-a', 'ex-b'] });
-    });
-
-    it('runs exactly two fallback tiers: strict mcap floor then dropMcapFloor', async () => {
-      const calls: Array<{ clauses: string[] }> = [];
-      coinRepository.createQueryBuilder.mockImplementation(() => {
-        const qb = mockQueryBuilder();
-        qb.getMany.mockImplementation(() => {
-          const clauses = collectWhereCalls(qb);
-          calls.push({ clauses });
-          // Return empty arrays every time — forces both tiers to run.
-          return Promise.resolve([]);
-        });
-        return qb as any;
-      });
-
-      await service.getCoinsByRiskLevelValue(3, 5);
-
-      expect(calls.length).toBe(2);
-      // Tier 0: strict mcap floor
-      expect(calls[0].clauses).toContain('coin.marketCap >= :minMarketCap');
-      // Tier 1: relaxed (mcap not null)
-      expect(calls[1].clauses).not.toContain('coin.marketCap >= :minMarketCap');
-      expect(calls[1].clauses).toContain('coin.marketCap IS NOT NULL');
-    });
-
-    it('short-circuits the loop when tier 0 returns at least 2 * take coins and invokes diversity pruning', async () => {
-      let attempt = 0;
-      const shortlist = Array.from({ length: 6 }, (_, i) => createTestCoin({ id: `c${i}` }));
-      coinRepository.createQueryBuilder.mockImplementation(() => {
-        const qb = mockQueryBuilder();
-        qb.getMany.mockImplementation(() => {
-          attempt++;
-          return Promise.resolve(shortlist);
-        });
-        return qb as any;
-      });
-
-      const result = await service.getCoinsByRiskLevelValue(3, 2);
-
-      expect(attempt).toBe(1);
-      expect(diversityService.pruneByDiversity).toHaveBeenCalledWith(shortlist, 2);
-      expect(result).toHaveLength(2);
-    });
-
-    it('keeps iterating when tier 0 returns fewer than 2 * take and succeeds at tier 1', async () => {
-      let attempt = 0;
-      const thinPool = [createTestCoin({ id: 'a' }), createTestCoin({ id: 'b' })];
-      const widePool = Array.from({ length: 6 }, (_, i) => createTestCoin({ id: `w${i}` }));
-      coinRepository.createQueryBuilder.mockImplementation(() => {
-        const qb = mockQueryBuilder();
-        qb.getMany.mockImplementation(() => {
-          attempt++;
-          return Promise.resolve(attempt === 1 ? thinPool : widePool);
-        });
-        return qb as any;
-      });
-
-      const result = await service.getCoinsByRiskLevelValue(3, 2);
-
-      expect(attempt).toBe(2);
-      expect(diversityService.pruneByDiversity).toHaveBeenCalledWith(widePool, 2);
-      expect(result).toHaveLength(2);
-    });
-
-    it('prunes the best shortlist from a lower tier when no tier hit 2 * take but at least one reached take', async () => {
-      const thinPool = [createTestCoin({ id: 'a' }), createTestCoin({ id: 'b' })];
-      coinRepository.createQueryBuilder.mockImplementation(() => {
-        const qb = mockQueryBuilder();
-        qb.getMany.mockResolvedValue(thinPool);
-        return qb as any;
-      });
-
-      const result = await service.getCoinsByRiskLevelValue(3, 2);
-
-      expect(diversityService.pruneByDiversity).toHaveBeenCalledWith(thinPool, 2);
-      expect(result).toHaveLength(2);
-    });
-
-    it('skips diversity pruning entirely when the shortlist is thinner than take', async () => {
-      const starved = [createTestCoin({ id: 'only' })];
-      coinRepository.createQueryBuilder.mockImplementation(() => {
-        const qb = mockQueryBuilder();
-        qb.getMany.mockResolvedValue(starved);
-        return qb as any;
-      });
-
-      const result = await service.getCoinsByRiskLevelValue(3, 5);
-
-      expect(diversityService.pruneByDiversity).not.toHaveBeenCalled();
-      expect(result).toEqual(starved);
-    });
-
-    // Verifies the actual clamped level by inspecting query shape:
-    //   - level 1 omits momentum terms in the orderBy SQL
-    //   - level 5 applies the mid-cap BETWEEN band
-    //   - levels 2–4 include momentum terms but no mid-cap band
-    it.each([
-      [-1, 1],
-      [0, 3], // 0 is falsy → falls back to default level 3
-      [6, 5],
-      [99, 5],
-      [NaN, 3] // NaN is falsy → falls back to default level 3
-    ])('clamps out-of-range level %p to effective level %p', async (input, expected) => {
-      const qb = mockQueryBuilder();
-      qb.getMany.mockResolvedValue([createTestCoin()]);
-      coinRepository.createQueryBuilder.mockReturnValue(qb as any);
-
-      await service.getCoinsByRiskLevelValue(input, 1);
-
-      const orderExpr = String(qb.orderBy.mock.calls[0][0]);
-      if (expected === 1) {
-        expect(orderExpr).not.toContain('priceChangePercentage7d');
-        expect(orderExpr).not.toContain('priceChangePercentage30d');
-      } else {
-        expect(orderExpr).toContain('priceChangePercentage7d');
-      }
-
-      const hasMidCapBand = qb.andWhere.mock.calls.some((call: unknown[]) =>
-        String(call[0]).includes('coin.marketCap BETWEEN :l5Min AND :l5Max')
-      );
-      expect(hasMidCapBand).toBe(expected === 5);
+      expect(userExchangeClause?.[1]).toEqual({ userExchangeIds: ['ex-x'], freshnessHours: 24 });
     });
   });
 
@@ -986,7 +867,7 @@ describe('CoinService', () => {
       const matching = qb.andWhere.mock.calls.find(
         (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('userExchangeIds')
       );
-      expect(matching?.[1]).toEqual({ userExchangeIds: ['ex-a'] });
+      expect(matching?.[1]).toEqual({ userExchangeIds: ['ex-a'], freshnessHours: 24 });
     });
 
     it('defaults to level 3 when user has no risk', async () => {
@@ -1000,6 +881,50 @@ describe('CoinService', () => {
       // Level 3 should apply its momentum scoring
       const orderExpr = String(qb.orderBy.mock.calls[0][0]);
       expect(orderExpr).toContain('priceChangePercentage7d');
+    });
+  });
+
+  // ===========================================================================
+  // isCoinTradableOnUserExchanges()
+  // ===========================================================================
+  describe('isCoinTradableOnUserExchanges()', () => {
+    const mockTradeableQb = (existing: { id: string } | null) => {
+      const qb: Record<string, jest.Mock> = {};
+      qb.select = jest.fn().mockReturnValue(qb);
+      qb.where = jest.fn().mockReturnValue(qb);
+      qb.andWhere = jest.fn().mockReturnValue(qb);
+      qb.getOne = jest.fn().mockResolvedValue(existing);
+      coinRepository.createQueryBuilder.mockReturnValue(qb as any);
+      return qb;
+    };
+
+    it('returns false without hitting the DB when userExchangeIds is empty', async () => {
+      const result = await service.isCoinTradableOnUserExchanges('coin-1', []);
+      expect(result).toBe(false);
+      expect(coinRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('returns true when the EXISTS sub-query matches an active symbol map + recent OHLC', async () => {
+      const qb = mockTradeableQb({ id: 'coin-1' });
+
+      const result = await service.isCoinTradableOnUserExchanges('coin-1', ['ex-a']);
+
+      expect(result).toBe(true);
+      const existsClause = qb.andWhere.mock.calls[0];
+      const sql = String(existsClause?.[0] ?? '');
+      expect(sql).toContain('exchange_symbol_map');
+      expect(sql).toContain('ohlc_candles');
+      expect(sql).toContain(':freshnessHours');
+      expect(sql).toContain('oc.volume > 0');
+      expect(existsClause?.[1]).toEqual({ userExchangeIds: ['ex-a'], freshnessHours: 24 });
+    });
+
+    it('returns false when the coin has no recent OHLC on the user exchange', async () => {
+      mockTradeableQb(null);
+
+      const result = await service.isCoinTradableOnUserExchanges('coin-1', ['ex-a']);
+
+      expect(result).toBe(false);
     });
   });
 

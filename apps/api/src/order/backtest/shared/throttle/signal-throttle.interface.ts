@@ -35,7 +35,7 @@ export const PAPER_TRADING_DEFAULT_THROTTLE_CONFIG: Readonly<SignalThrottleConfi
 };
 
 /** Key for per-coin per-direction cooldown tracking */
-export type CooldownKey = `${string}:${'BUY' | 'SELL'}`;
+export type CooldownKey = `${string}:${Exclude<TradingSignal['action'], 'HOLD'>}`;
 
 /**
  * Mutable state tracked across iterations during a backtest or live trading session.

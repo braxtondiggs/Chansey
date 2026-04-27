@@ -10,6 +10,7 @@ describe('PaperTradingThrottleService', () => {
         accepted: signals,
         rejected: []
       })),
+      markExecuted: jest.fn(),
       serialize: jest.fn().mockImplementation((state: any) => ({ ...state, serialized: true })),
       deserialize: jest.fn().mockImplementation((serialized: any) => ({ restored: true, from: serialized }))
     };
@@ -72,6 +73,19 @@ describe('PaperTradingThrottleService', () => {
     // Second call reuses existing state
     service.filter('s1', signals, config, now + 1);
     expect(signalThrottle.createState).toHaveBeenCalledTimes(1);
+  });
+
+  it('markExecuted forwards to SignalThrottleService when state exists', () => {
+    const { service, signalThrottle } = buildService();
+    service.getOrCreate('s1');
+    service.markExecuted('s1', 1_700_000_000_000);
+    expect(signalThrottle.markExecuted).toHaveBeenCalledWith(expect.any(Object), 1_700_000_000_000);
+  });
+
+  it('markExecuted is a no-op when session has no state', () => {
+    const { service, signalThrottle } = buildService();
+    service.markExecuted('missing', 1);
+    expect(signalThrottle.markExecuted).not.toHaveBeenCalled();
   });
 
   it('sweepOrphaned removes entries not in active set', () => {

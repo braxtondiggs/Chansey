@@ -4,8 +4,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, IsNull, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
 
 import { CoinDailySnapshotService } from './coin-daily-snapshot.service';
-import { CoinDiversityService, SHORTLIST_MULTIPLIER } from './coin-diversity.service';
+import { CoinDiversityService } from './coin-diversity.service';
 import { MIN_DAILY_VOLUME, MIN_MARKET_CAP } from './coin-quality.constants';
+import {
+  MIN_OHLC_FRESHNESS_HOURS,
+  TRADABLE_ON_USER_EXCHANGES_SQL,
+  selectCoinsByRiskLevel
+} from './coin-risk-selection';
 import { Coin, CoinRelations } from './coin.entity';
 import { CreateCoinDto, UpdateCoinDto } from './dto/';
 
@@ -13,27 +18,6 @@ import { CoinNotFoundException } from '../common/exceptions/resource';
 import { STABLECOIN_SYMBOLS } from '../exchange/constants';
 import { User } from '../users/users.entity';
 import { stripNullProps } from '../utils/strip-null-props.util';
-
-/** Weight applied to the sentiment nudge when blending with the primary score. */
-const SENTIMENT_WEIGHT = 0.1;
-/** Level-5 mid-cap band: excludes mega-caps and dust. */
-const LEVEL_5_MIN_MARKET_CAP = 50_000_000;
-const LEVEL_5_MAX_MARKET_CAP = 5_000_000_000;
-
-type RiskLevelWeights = { size: number; liq: number; mo7: number; mo30: number };
-
-const RISK_LEVEL_WEIGHTS: Record<number, RiskLevelWeights> = {
-  1: { size: 0.55, liq: 0.45, mo7: 0, mo30: 0 },
-  2: { size: 0.45, liq: 0.4, mo7: 0, mo30: 0.15 },
-  3: { size: 0.35, liq: 0.35, mo7: 0.15, mo30: 0.15 },
-  4: { size: 0.25, liq: 0.35, mo7: 0.25, mo30: 0.15 },
-  5: { size: 0.2, liq: 0.35, mo7: 0.3, mo30: 0.15 }
-};
-
-interface RiskLevelQueryOptions {
-  /** Drop the MIN_MARKET_CAP floor (first and only relaxed fallback) */
-  dropMcapFloor?: boolean;
-}
 
 @Injectable()
 export class CoinService {
@@ -396,6 +380,41 @@ export class CoinService {
   }
 
   /**
+   * Eligibility predicate for symbol-map seeding. Mirrors the hard filter used by
+   * risk-level selection in `queryCoinsByRiskLevel`: only coins that could ever be
+   * picked by the selection engine deserve an OHLC mapping. Without this filter
+   * the seeder creates ghost mappings for low-cap or delisted coins whose Kraken
+   * pair exists in the markets endpoint but has no fetchable history, generating
+   * recurring "Backfill produced 0 candles" warnings.
+   *
+   * When `baseSymbols` is provided, results are intersected (case-insensitive)
+   * with that set so the seeder can scope to symbols listed on its priority
+   * exchanges.
+   */
+  async getEligibleCoinsForMapping(baseSymbols?: Set<string>, take?: number): Promise<Coin[]> {
+    if (baseSymbols !== undefined && baseSymbols.size === 0) return [];
+
+    const qb = this.coin
+      .createQueryBuilder('coin')
+      .where('coin.delistedAt IS NULL')
+      .andWhere('coin.currentPrice IS NOT NULL')
+      .andWhere('coin.marketCap >= :minMarketCap', { minMarketCap: MIN_MARKET_CAP })
+      .andWhere('coin.totalVolume >= :minDailyVolume', { minDailyVolume: MIN_DAILY_VOLUME })
+      .andWhere('UPPER(coin.symbol) NOT IN (:...stablecoins)', {
+        stablecoins: Array.from(STABLECOIN_SYMBOLS)
+      });
+
+    if (baseSymbols !== undefined) {
+      const normalized = Array.from(baseSymbols, (s) => s.toLowerCase());
+      qb.andWhere('LOWER(coin.symbol) IN (:...symbols)', { symbols: normalized });
+    }
+
+    qb.orderBy('coin.marketRank', 'ASC', 'NULLS LAST');
+    if (take !== undefined) qb.take(take);
+    return qb.getMany();
+  }
+
+  /**
    * Get risk-based coin selection for a user. Optionally constrains the candidate
    * pool to coins tradeable on the user's connected exchanges (`userExchangeIds`).
    * Falls through to the generic "any active mapping" filter when no exchange IDs
@@ -408,110 +427,37 @@ export class CoinService {
 
   /**
    * Preview coins for a specific risk level (1-5). Oversamples the ranked
-   * candidate pool (by `SHORTLIST_MULTIPLIER`), then hands it to the diversity
-   * service to veto near-duplicate coins before returning the final `take`.
-   *
-   * Two fallback tiers: strict (marketCap ≥ 100M) → relaxed (marketCap not null).
-   * Pruning only runs when the shortlist is at least `2 * take` — anything
-   * smaller is too thin to meaningfully diversify, so we fall through to the
-   * next tier to hopefully widen the pool first.
+   * candidate pool, then hands it to the diversity service to veto
+   * near-duplicate coins before returning the final `take`.
    */
   async getCoinsByRiskLevelValue(level: number, take = 10, userExchangeIds?: string[]): Promise<Coin[]> {
-    const riskLevel = Math.max(1, Math.min(5, Math.floor(Number(level) || 3)));
-    const shortlistSize = take * SHORTLIST_MULTIPLIER;
-
-    const fallbackOptions: RiskLevelQueryOptions[] = [{}, { dropMcapFloor: true }];
-
-    let lastResult: Coin[] = [];
-    for (const options of fallbackOptions) {
-      const coins = await this.queryCoinsByRiskLevel(riskLevel, shortlistSize, userExchangeIds, options);
-      if (coins.length >= take * 2) {
-        return this.diversityService ? this.diversityService.pruneByDiversity(coins, take) : coins.slice(0, take);
-      }
-      if (coins.length > lastResult.length) lastResult = coins;
-    }
-
-    if (lastResult.length >= take) {
-      return this.diversityService
-        ? this.diversityService.pruneByDiversity(lastResult, take)
-        : lastResult.slice(0, take);
-    }
-    return lastResult;
+    return selectCoinsByRiskLevel(this.coin, this.diversityService, level, take, userExchangeIds);
   }
 
-  private async queryCoinsByRiskLevel(
-    level: number,
-    take: number,
-    userExchangeIds: string[] | undefined,
-    options: RiskLevelQueryOptions
-  ): Promise<Coin[]> {
-    const qb = this.coin
+  /**
+   * Tradability check used by the coin-selection add-path: returns true if the
+   * coin has an active `exchange_symbol_map` row AND recent non-zero-volume
+   * OHLC candles for at least one of the user's connected exchanges. Mirrors
+   * the EXISTS filter used in risk-level selection so a manual add can't
+   * bypass the same eligibility guard the auto-selector applies.
+   *
+   * Returns false (not throws) when `userExchangeIds` is empty so the caller
+   * can decide how to phrase the error.
+   */
+  async isCoinTradableOnUserExchanges(coinId: string, userExchangeIds: string[]): Promise<boolean> {
+    if (userExchangeIds.length === 0) return false;
+
+    const result = await this.coin
       .createQueryBuilder('coin')
-      .where('coin.delistedAt IS NULL')
-      .andWhere('coin.currentPrice IS NOT NULL')
-      .andWhere('coin.totalVolume >= :minVolume', { minVolume: MIN_DAILY_VOLUME })
-      .andWhere('UPPER(coin.symbol) NOT IN (:...stablecoins)', {
-        stablecoins: Array.from(STABLECOIN_SYMBOLS)
-      });
+      .select('coin.id')
+      .where('coin.id = :coinId', { coinId })
+      .andWhere(TRADABLE_ON_USER_EXCHANGES_SQL, {
+        userExchangeIds,
+        freshnessHours: MIN_OHLC_FRESHNESS_HOURS
+      })
+      .getOne();
 
-    if (options.dropMcapFloor) {
-      qb.andWhere('coin.marketCap IS NOT NULL');
-    } else {
-      qb.andWhere('coin.marketCap >= :minMarketCap', { minMarketCap: MIN_MARKET_CAP });
-    }
-
-    if (level === 5) {
-      qb.andWhere('coin.marketCap BETWEEN :l5Min AND :l5Max', {
-        l5Min: LEVEL_5_MIN_MARKET_CAP,
-        l5Max: LEVEL_5_MAX_MARKET_CAP
-      });
-    }
-
-    if (userExchangeIds && userExchangeIds.length > 0) {
-      qb.andWhere(
-        `EXISTS (
-          SELECT 1 FROM exchange_symbol_map esm
-          WHERE esm."coinId" = coin.id
-            AND esm."isActive" = true
-            AND esm."exchangeId" IN (:...userExchangeIds)
-        )`,
-        { userExchangeIds }
-      );
-    } else {
-      qb.andWhere(
-        `EXISTS (
-          SELECT 1 FROM exchange_symbol_map esm
-          WHERE esm."coinId" = coin.id
-            AND esm."isActive" = true
-        )`
-      );
-    }
-
-    qb.orderBy(this.buildRiskLevelScoreSql(level), 'DESC')
-      .addOrderBy('coin.marketRank', 'ASC', 'NULLS LAST')
-      .take(take);
-
-    return qb.getMany();
-  }
-
-  private buildRiskLevelScoreSql(level: number): string {
-    // level is clamped to 1–5 before this call, so interpolation is safe
-    const weights = RISK_LEVEL_WEIGHTS[level];
-
-    const terms: string[] = [
-      `COALESCE(LN(coin."marketCap" + 1), 0) * ${weights.size}`,
-      `COALESCE(LN(coin."totalVolume" + 1), 0) * ${weights.liq}`
-    ];
-    if (weights.mo7 > 0) {
-      terms.push(`COALESCE(coin."priceChangePercentage7d", 0) * ${weights.mo7}`);
-    }
-    if (weights.mo30 > 0) {
-      terms.push(`COALESCE(coin."priceChangePercentage30d", 0) * ${weights.mo30}`);
-    }
-
-    // Sentiment nudge centred at 50 → range [-1, +1] scaled by SENTIMENT_WEIGHT
-    const sentimentBonus = `((COALESCE(coin."sentimentUp", 50) - 50) / 50.0 * ${SENTIMENT_WEIGHT})`;
-    return `(${terms.join(' + ')}) + ${sentimentBonus}`;
+    return result !== null;
   }
 
   /**
