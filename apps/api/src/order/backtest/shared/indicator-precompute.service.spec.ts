@@ -241,6 +241,30 @@ describe('IndicatorPrecomputeService', () => {
       expect(result?.['coin-1']['atr_14'].length).toBe(30);
     });
 
+    it('should precompute ADX with three output arrays (adx, +DI, -DI)', async () => {
+      algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
+        getIndicatorRequirements: () => [
+          { type: 'ADX' as const, paramKeys: ['adxPeriod'], defaultParams: { adxPeriod: 14 } }
+        ]
+      } as any);
+
+      const result = await service.precomputeIndicators(
+        'test-001',
+        { adxPeriod: 14 },
+        coins,
+        makePriceCtx('coin-1', 60)
+      );
+
+      expect(result).toBeDefined();
+      const coinResult = result?.['coin-1'];
+      expect(coinResult?.['adx_14']).toBeInstanceOf(Float64Array);
+      expect(coinResult?.['adx_14_pdi']).toBeInstanceOf(Float64Array);
+      expect(coinResult?.['adx_14_mdi']).toBeInstanceOf(Float64Array);
+      expect(coinResult?.['adx_14'].length).toBe(60);
+      expect(coinResult?.['adx_14_pdi'].length).toBe(60);
+      expect(coinResult?.['adx_14_mdi'].length).toBe(60);
+    });
+
     it('should not duplicate indicator computation for same key', async () => {
       algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
         getIndicatorRequirements: () => [

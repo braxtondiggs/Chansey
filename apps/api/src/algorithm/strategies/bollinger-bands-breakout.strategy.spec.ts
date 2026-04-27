@@ -35,7 +35,8 @@ describe('BollingerBandsBreakoutStrategy', () => {
       calculateMACD: jest.fn(),
       calculateBollingerBands: jest.fn(),
       calculateATR: jest.fn(),
-      calculateSD: jest.fn()
+      calculateSD: jest.fn(),
+      calculateADX: jest.fn()
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -605,6 +606,167 @@ describe('BollingerBandsBreakoutStrategy', () => {
       // With flat bandwidth (0 expanding) and flat %B (only last bar jumps = 1/5 momentum),
       // confidence = (0/5 + 1/5) / 2 + 0.3 = 0.1 + 0.3 = 0.4 < 0.6
       expect(result.signals).toHaveLength(0);
+    });
+  });
+
+  describe('ADX gate', () => {
+    const buildBreakoutContext = (overrides: Record<string, unknown> = {}) => {
+      const prices = createMockPrices(30);
+      prices[29].avg = 120;
+
+      const upper = Array(30).fill(NaN);
+      const middle = Array(30).fill(NaN);
+      const lower = Array(30).fill(NaN);
+      const pb = Array(30).fill(NaN);
+      const bandwidth = Array(30).fill(NaN);
+      for (let i = 20; i < 30; i++) {
+        upper[i] = 115;
+        middle[i] = 100;
+        lower[i] = 85;
+        pb[i] = 0.5;
+        bandwidth[i] = 0.2 + (i - 20) * 0.01;
+      }
+      pb[29] = 1.33;
+      bandwidth[29] = 0.3;
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      return {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { minConfidence: 0, requireConfirmation: false, ...overrides }
+      } as AlgorithmContext;
+    };
+
+    it('does not call calculateADX with default minAdx=0', async () => {
+      const result = await strategy.execute(buildBreakoutContext());
+      expect(result.signals.length).toBeGreaterThanOrEqual(0);
+      expect(indicatorService.calculateADX).not.toHaveBeenCalled();
+    });
+
+    it('blocks the breakout signal when ADX is below threshold', async () => {
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(29).fill(NaN), 12],
+        pdi: [...Array(29).fill(NaN), 18],
+        mdi: [...Array(29).fill(NaN), 22],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const result = await strategy.execute(buildBreakoutContext({ minAdx: 25 }));
+      expect(result.signals).toHaveLength(0);
+      expect(indicatorService.calculateADX).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes the breakout signal when ADX is above threshold', async () => {
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(29).fill(NaN), 30],
+        pdi: [...Array(29).fill(NaN), 28],
+        mdi: [...Array(29).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const result = await strategy.execute(buildBreakoutContext({ minAdx: 25 }));
+      expect(result.signals.length).toBeGreaterThan(0);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+  });
+
+  describe('ADX tiered gate (adxStrongMin)', () => {
+    const setupBreakoutContext = (adxValue: number, overrides: Record<string, unknown> = {}) => {
+      const prices = createMockPrices(30);
+      prices[29].avg = 120;
+
+      const upper = Array(30).fill(NaN);
+      const middle = Array(30).fill(NaN);
+      const lower = Array(30).fill(NaN);
+      const pb = Array(30).fill(NaN);
+      const bandwidth = Array(30).fill(NaN);
+      for (let i = 20; i < 30; i++) {
+        upper[i] = 115;
+        middle[i] = 100;
+        lower[i] = 85;
+        pb[i] = 0.5;
+        bandwidth[i] = 0.2 + (i - 20) * 0.01;
+      }
+      pb[29] = 1.33;
+      bandwidth[29] = 0.3;
+
+      indicatorService.calculateBollingerBands.mockResolvedValue({
+        upper,
+        middle,
+        lower,
+        pb,
+        bandwidth,
+        validCount: 15,
+        period: 20,
+        stdDev: 2,
+        fromCache: false
+      });
+
+      indicatorService.calculateADX.mockResolvedValue({
+        values: [...Array(29).fill(NaN), adxValue],
+        pdi: [...Array(29).fill(NaN), 25],
+        mdi: [...Array(29).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+
+      return {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { minConfidence: 0, requireConfirmation: false, ...overrides }
+      } as AlgorithmContext;
+    };
+
+    it('preserves baseline behavior when adxStrongMin defaults to 0', async () => {
+      const baseline = await strategy.execute(setupBreakoutContext(22, {})); // gate disabled
+      const baselineStrength = baseline.signals[0].strength;
+
+      const gated = await strategy.execute(setupBreakoutContext(22, { minAdx: 20 })); // adxStrongMin=0
+      expect(gated.signals).toHaveLength(1);
+      expect(gated.signals[0].strength).toBeCloseTo(baselineStrength, 5);
+      expect(gated.signals[0].metadata?.trendStrength).toBe('weak');
+      expect(gated.signals[0].metadata?.adx).toBe(22);
+    });
+
+    it('emits weak-tier signal at half strength when minAdx ≤ ADX < adxStrongMin', async () => {
+      const baseline = await strategy.execute(setupBreakoutContext(22, {}));
+      const baselineStrength = baseline.signals[0].strength;
+
+      const tiered = await strategy.execute(
+        setupBreakoutContext(22, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 })
+      );
+      expect(tiered.signals).toHaveLength(1);
+      expect(tiered.signals[0].strength).toBeCloseTo(baselineStrength * 0.5, 5);
+      expect(tiered.signals[0].metadata?.trendStrength).toBe('weak');
+    });
+
+    it('emits strong-tier signal at full strength when ADX ≥ adxStrongMin', async () => {
+      const baseline = await strategy.execute(setupBreakoutContext(30, {}));
+      const tiered = await strategy.execute(
+        setupBreakoutContext(30, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 })
+      );
+      expect(tiered.signals).toHaveLength(1);
+      expect(tiered.signals[0].strength).toBeCloseTo(baseline.signals[0].strength, 5);
+      expect(tiered.signals[0].metadata?.trendStrength).toBe('strong');
+      expect(tiered.signals[0].metadata?.adx).toBe(30);
+      expect(tiered.signals[0].metadata?.pdi).toBe(25);
+      expect(tiered.signals[0].metadata?.mdi).toBe(12);
     });
   });
 });

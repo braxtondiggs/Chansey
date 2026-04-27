@@ -1,6 +1,7 @@
 import { GridSearchService } from './grid-search.service';
 
 import { type ParameterConstraint, type ParameterDefinition, type ParameterSpace } from '../interfaces';
+import { makeRandom } from '../utils/seeded-random';
 
 // Helper to create a valid ParameterDefinition with required fields
 const createParam = (
@@ -425,6 +426,38 @@ describe('GridSearchService', () => {
       expect(combinations.length).toBe(1);
       expect(combinations[0].isBaseline).toBe(true);
       expect(combinations[0].values.period).toBe(10);
+    });
+
+    it('should produce identical output for the same seed (determinism contract)', () => {
+      const space = createSpace({
+        parameters: [
+          createParam({ name: 'period', type: 'integer', min: 5, max: 50, step: 1, default: 14 }),
+          createParam({ name: 'threshold', type: 'float', min: 0.1, max: 0.9, step: 0.1, default: 0.5 })
+        ]
+      });
+
+      const a = service.generateRandomCombinations(space, 20, undefined, makeRandom(42));
+      const b = service.generateRandomCombinations(space, 20, undefined, makeRandom(42));
+
+      expect(a.map((c) => c.values)).toEqual(b.map((c) => c.values));
+    });
+
+    it('should never return a value above max even when step does not divide evenly (float)', () => {
+      const space = createSpace({
+        parameters: [
+          // step (0.3) does not divide (max - min) = 1 evenly — exposes the float-overflow bug
+          createParam({ name: 'ratio', type: 'float', min: 0, max: 1, step: 0.3, default: 0 })
+        ]
+      });
+
+      // Use a seed; just need a sample that previously could overflow
+      for (let seed = 0; seed < 50; seed++) {
+        const combos = service.generateRandomCombinations(space, 5, undefined, makeRandom(seed));
+        for (const c of combos) {
+          expect(c.values.ratio as number).toBeLessThanOrEqual(1);
+          expect(c.values.ratio as number).toBeGreaterThanOrEqual(0);
+        }
+      }
     });
   });
 

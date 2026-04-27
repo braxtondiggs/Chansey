@@ -35,7 +35,8 @@ describe('SimpleMovingAverageCrossoverStrategy', () => {
       calculateMACD: jest.fn(),
       calculateBollingerBands: jest.fn(),
       calculateATR: jest.fn(),
-      calculateSD: jest.fn()
+      calculateSD: jest.fn(),
+      calculateADX: jest.fn()
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -298,6 +299,91 @@ describe('SimpleMovingAverageCrossoverStrategy', () => {
       };
 
       expect(strategy.canExecute(context)).toBe(false);
+    });
+  });
+
+  describe('ADX tiered gate', () => {
+    /** Build a golden-cross scenario at the last bar with controllable ADX value. */
+    const setupGoldenCross = (adxValue: number, configOverrides: Record<string, unknown> = {}) => {
+      const prices = createMockPrices(30);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockSmaValues(fast, slow);
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(29).fill(NaN), adxValue],
+        pdi: [...Array(29).fill(NaN), 28],
+        mdi: [...Array(29).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      return buildContext(prices, { fastPeriod: 10, slowPeriod: 20, minConfidence: 0, ...configOverrides });
+    };
+
+    it('does not call calculateADX when minAdx defaults to 0', async () => {
+      const prices = createMockPrices(30);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockSmaValues(fast, slow);
+      const result = await strategy.execute(buildContext(prices, { fastPeriod: 10, slowPeriod: 20 }));
+      expect(result.signals).toHaveLength(1);
+      expect(indicatorService.calculateADX).not.toHaveBeenCalled();
+    });
+
+    it('blocks signal when ADX is below minAdx', async () => {
+      const ctx = setupGoldenCross(15, { minAdx: 25 });
+      const result = await strategy.execute(ctx);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('emits weak-tier signal at half strength when minAdx ≤ ADX < adxStrongMin', async () => {
+      // Baseline (gate disabled)
+      const baselinePrices = createMockPrices(30);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockSmaValues(fast, slow);
+      const baseline = await strategy.execute(buildContext(baselinePrices, { fastPeriod: 10, slowPeriod: 20 }));
+      jest.clearAllMocks();
+
+      const ctx = setupGoldenCross(22, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 });
+      const result = await strategy.execute(ctx);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baseline.signals[0].strength * 0.5, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('weak');
+    });
+
+    it('emits strong-tier signal at full strength when ADX ≥ adxStrongMin', async () => {
+      const baselinePrices = createMockPrices(30);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockSmaValues(fast, slow);
+      const baseline = await strategy.execute(buildContext(baselinePrices, { fastPeriod: 10, slowPeriod: 20 }));
+      jest.clearAllMocks();
+
+      const ctx = setupGoldenCross(30, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 });
+      const result = await strategy.execute(ctx);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baseline.signals[0].strength, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('strong');
+      expect(result.signals[0].metadata?.adx).toBe(30);
+      expect(result.signals[0].metadata?.pdi).toBe(28);
+      expect(result.signals[0].metadata?.mdi).toBe(12);
     });
   });
 

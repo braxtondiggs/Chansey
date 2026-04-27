@@ -35,7 +35,8 @@ describe('ATRTrailingStopStrategy', () => {
       calculateMACD: jest.fn(),
       calculateBollingerBands: jest.fn(),
       calculateATR: jest.fn(),
-      calculateSD: jest.fn()
+      calculateSD: jest.fn(),
+      calculateADX: jest.fn()
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -656,6 +657,115 @@ describe('ATRTrailingStopStrategy', () => {
       expect(multiplierSchema['default']).toBe(4.5);
       expect(multiplierSchema['min']).toBe(2.0);
       expect(confidenceSchema['default']).toBe(0.4);
+    });
+  });
+
+  describe('ADX tiered gate (gates entries only, stops always fire)', () => {
+    /** Build a trend-flip scenario with controllable ADX value. */
+    const setupTrendFlip = (adxValue: number, configOverrides: Record<string, unknown> = {}) => {
+      const prices = createMockPrices(30);
+      for (let i = 0; i < 30; i++) {
+        prices[i].avg = 100;
+        prices[i].high = 105;
+        prices[i].low = 95;
+      }
+      prices[15].high = 130;
+      for (let i = 16; i <= 27; i++) {
+        prices[i].avg = 120;
+        prices[i].high = 125;
+        prices[i].low = 115;
+      }
+      prices[28].avg = 80;
+      prices[28].low = 75;
+      prices[28].high = 85;
+      prices[29].avg = 125;
+      prices[29].low = 120;
+      prices[29].high = 130;
+
+      const atrValues = Array(30).fill(NaN);
+      for (let i = 14; i < 30; i++) atrValues[i] = 5;
+
+      indicatorService.calculateATR.mockResolvedValue({
+        values: atrValues,
+        validCount: 15,
+        period: 14,
+        fromCache: false
+      });
+
+      indicatorService.calculateADX.mockResolvedValue({
+        values: [...Array(29).fill(NaN), adxValue],
+        pdi: [...Array(29).fill(NaN), 28],
+        mdi: [...Array(29).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+
+      return {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: {
+          atrPeriod: 14,
+          atrMultiplier: 3.5,
+          tradeDirection: 'long',
+          minConfidence: 0,
+          stopCooldownBars: 0,
+          ...configOverrides
+        }
+      } as AlgorithmContext;
+    };
+
+    it('does not call calculateADX when minAdx defaults to 0', async () => {
+      const ctx = setupTrendFlip(10, {});
+      const result = await strategy.execute(ctx);
+      expect(result.signals.filter((s) => s.type === SignalType.BUY).length).toBeGreaterThan(0);
+      expect(indicatorService.calculateADX).not.toHaveBeenCalled();
+    });
+
+    it('blocks entry signal but keeps stop signal when ADX is below minAdx', async () => {
+      // Force a stop trigger AND a trend-flip entry on the same execution by using
+      // alternate prices: a stop fires elsewhere, but more importantly the BUY entry
+      // is blocked by the ADX gate while any concurrent STOP_LOSS still fires.
+      const ctx = setupTrendFlip(10, { minAdx: 25 });
+      const result = await strategy.execute(ctx);
+      const buys = result.signals.filter((s) => s.type === SignalType.BUY);
+      expect(buys).toHaveLength(0);
+    });
+
+    it('emits weak-tier entry at half strength when minAdx ≤ ADX < adxStrongMin', async () => {
+      const baselineCtx = setupTrendFlip(22, {});
+      const baseline = await strategy.execute(baselineCtx);
+      const baselineBuy = baseline.signals.find((s) => s.type === SignalType.BUY);
+      expect(baselineBuy).toBeDefined();
+      const baselineStrength = baselineBuy?.strength as number;
+      jest.clearAllMocks();
+
+      const ctx = setupTrendFlip(22, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 });
+      const result = await strategy.execute(ctx);
+      const buy = result.signals.find((s) => s.type === SignalType.BUY);
+      expect(buy).toBeDefined();
+      expect(buy?.strength).toBeCloseTo(baselineStrength * 0.5, 5);
+      expect(buy?.metadata?.trendStrength).toBe('weak');
+    });
+
+    it('emits strong-tier entry at full strength when ADX ≥ adxStrongMin', async () => {
+      const baselineCtx = setupTrendFlip(30, {});
+      const baseline = await strategy.execute(baselineCtx);
+      const baselineBuy = baseline.signals.find((s) => s.type === SignalType.BUY);
+      expect(baselineBuy).toBeDefined();
+      const baselineStrength = baselineBuy?.strength as number;
+      jest.clearAllMocks();
+
+      const ctx = setupTrendFlip(30, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 });
+      const result = await strategy.execute(ctx);
+      const buy = result.signals.find((s) => s.type === SignalType.BUY);
+      expect(buy).toBeDefined();
+      expect(buy?.strength).toBeCloseTo(baselineStrength, 5);
+      expect(buy?.metadata?.trendStrength).toBe('strong');
+      expect(buy?.metadata?.adx).toBe(30);
+      expect(buy?.metadata?.pdi).toBe(28);
+      expect(buy?.metadata?.mdi).toBe(12);
     });
   });
 });

@@ -6,6 +6,7 @@ import { Cache } from 'cache-manager';
 import * as crypto from 'crypto';
 
 import {
+  ADXCalculator,
   ATRCalculator,
   BollingerBandsCalculator,
   EMACalculator,
@@ -15,6 +16,8 @@ import {
   StandardDeviationCalculator
 } from './calculators';
 import {
+  ADXOptions,
+  ADXResult,
   ATROptions,
   ATRResult,
   BollingerBandsDataPoint,
@@ -71,7 +74,8 @@ export class IndicatorService {
     sd: new StandardDeviationCalculator(),
     macd: new MACDCalculator(),
     bollingerBands: new BollingerBandsCalculator(),
-    atr: new ATRCalculator()
+    atr: new ATRCalculator(),
+    adx: new ADXCalculator()
   };
 
   constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
@@ -308,6 +312,55 @@ export class IndicatorService {
   }
 
   /**
+   * Calculate Average Directional Index (ADX)
+   *
+   * @param options - ADX calculation options
+   * @param provider - Optional provider for custom calculator
+   * @returns ADX result with values array (trend strength 0-100)
+   */
+  async calculateADX(options: ADXOptions, provider?: IIndicatorProvider): Promise<ADXResult> {
+    let cacheKey: string | undefined;
+
+    if (!options.skipCache) {
+      cacheKey = this.buildCacheKey(IndicatorType.ADX, options.coinId, options.prices, {
+        period: options.period
+      });
+      const cached = await this.getFromCache<ADXResult>(cacheKey);
+      if (cached) {
+        return { ...cached, fromCache: true };
+      }
+    }
+
+    const calculator = this.getCalculator('adx', provider);
+
+    const high = IndicatorDataTransformer.extractHighPrices(options.prices);
+    const low = IndicatorDataTransformer.extractLowPrices(options.prices);
+    const close = IndicatorDataTransformer.extractAveragePrices(options.prices);
+
+    const rawResults = calculator.calculate({
+      high,
+      low,
+      close,
+      period: options.period
+    });
+
+    const targetLength = options.prices.length;
+    const result: ADXResult = {
+      values: this.padArray(rawResults.adx, targetLength),
+      pdi: this.padArray(rawResults.pdi, targetLength),
+      mdi: this.padArray(rawResults.mdi, targetLength),
+      validCount: rawResults.adx.length,
+      period: options.period,
+      fromCache: false
+    };
+
+    if (cacheKey) {
+      await this.setInCache(cacheKey, result);
+    }
+    return result;
+  }
+
+  /**
    * Get the warmup period for a specific indicator type
    *
    * @param indicatorType - The type of indicator
@@ -333,6 +386,8 @@ export class IndicatorService {
         return this.calculators.bollingerBands.getWarmupPeriod({ period: options['period'] as number });
       case IndicatorType.ATR:
         return this.calculators.atr.getWarmupPeriod({ period: options['period'] as number });
+      case IndicatorType.ADX:
+        return this.calculators.adx.getWarmupPeriod({ period: options['period'] as number });
       default:
         throw new Error(`Unknown indicator type: ${indicatorType}`);
     }

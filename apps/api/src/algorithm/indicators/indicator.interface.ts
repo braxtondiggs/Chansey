@@ -80,6 +80,14 @@ export interface ATROptions extends BaseIndicatorOptions {
 }
 
 /**
+ * Options for ADX (Average Directional Index) calculation
+ */
+export interface ADXOptions extends BaseIndicatorOptions {
+  /** The lookback period (typically 14) */
+  period: number;
+}
+
+/**
  * Result from single-value indicator calculations (SMA, EMA, RSI, SD)
  */
 export interface IndicatorResult {
@@ -174,6 +182,24 @@ export interface ATRResult {
 }
 
 /**
+ * Result from ADX (Average Directional Index) calculation
+ */
+export interface ADXResult {
+  /** ADX values (trend strength 0-100, direction-agnostic) */
+  values: number[];
+  /** +DI values (positive directional indicator) */
+  pdi: number[];
+  /** -DI values (negative directional indicator) */
+  mdi: number[];
+  /** Number of valid data points */
+  validCount: number;
+  /** Period used */
+  period: number;
+  /** Whether result was retrieved from cache */
+  fromCache: boolean;
+}
+
+/**
  * Internal options used by calculators (extracted price values)
  */
 export interface CalculatorPeriodOptions {
@@ -201,6 +227,22 @@ export interface CalculatorATROptions {
   period: number;
 }
 
+export interface CalculatorADXOptions {
+  high: number[];
+  low: number[];
+  close: number[];
+  period: number;
+}
+
+/**
+ * Raw output from ADX calculation prior to padding/caching.
+ */
+export interface CalculatorADXResult {
+  adx: number[];
+  pdi: number[];
+  mdi: number[];
+}
+
 /**
  * Map of indicator types to their calculator interfaces
  * Used for type-safe custom calculator overrides
@@ -213,4 +255,5 @@ export interface IndicatorCalculatorMap {
   macd: IIndicatorCalculator<CalculatorMACDOptions, MACDDataPoint[]>;
   bollingerBands: IIndicatorCalculator<CalculatorBollingerBandsOptions, BollingerBandsDataPoint[]>;
   atr: IIndicatorCalculator<CalculatorATROptions, number[]>;
+  adx: IIndicatorCalculator<CalculatorADXOptions, CalculatorADXResult>;
 }

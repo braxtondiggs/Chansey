@@ -1,6 +1,8 @@
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { Test, type TestingModule } from '@nestjs/testing';
 
+import { MarketRegimeType } from '@chansey/api-interfaces';
+
 import { RSIDivergenceStrategy } from './rsi-divergence.strategy';
 
 import { IndicatorService } from '../indicators';
@@ -85,7 +87,8 @@ describe('RSIDivergenceStrategy', () => {
       calculateMACD: jest.fn(),
       calculateBollingerBands: jest.fn(),
       calculateATR: jest.fn(),
-      calculateSD: jest.fn()
+      calculateSD: jest.fn(),
+      calculateADX: jest.fn()
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -594,6 +597,219 @@ describe('RSIDivergenceStrategy', () => {
         config: { ...baseConfig, pivotStrength: 3 }
       });
       expect(wideResult.signals).toHaveLength(0);
+    });
+  });
+
+  describe('ADX gate + low-vol relaxation', () => {
+    /** Build the same bullish-divergence fixture used by the BUY-signal test. */
+    const buildBullishDivergenceContext = (
+      configOverrides: Record<string, unknown> = {},
+      contextOverrides: Partial<AlgorithmContext> = {}
+    ) => {
+      const prices = createFlatPrices(90);
+      for (let j = -3; j <= 3; j++) {
+        if (j === 0) {
+          prices[70].low = 80;
+          prices[70].avg = 83;
+        } else {
+          prices[70 + j].low = 95;
+        }
+      }
+      for (let j = -3; j <= 3; j++) {
+        if (j === 0) {
+          prices[83].low = 74;
+          prices[83].avg = 77;
+        } else {
+          prices[83 + j].low = 95;
+        }
+      }
+      const rsiValues = createMockRSI(90, 50);
+      rsiValues[70] = 22;
+      rsiValues[83] = 30;
+      rsiValues[89] = 32;
+      const emaValues = createMockEMA(90, 100);
+      const atrValues = createMockATR(90, 5);
+      setupIndicatorMocks(rsiValues, emaValues, atrValues);
+
+      return {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { ...baseConfig, ...configOverrides },
+        ...contextOverrides
+      } as AlgorithmContext;
+    };
+
+    it('does not call calculateADX with default minAdx=0', async () => {
+      const result = await strategy.execute(buildBullishDivergenceContext());
+      expect(result.signals).toHaveLength(1);
+      expect(indicatorService.calculateADX).not.toHaveBeenCalled();
+    });
+
+    it('blocks signal when ADX is below threshold', async () => {
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(89).fill(NaN), 12],
+        pdi: [...Array(89).fill(NaN), 18],
+        mdi: [...Array(89).fill(NaN), 22],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const result = await strategy.execute(buildBullishDivergenceContext({ minAdx: 25 }));
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('passes signal when ADX is above threshold', async () => {
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(89).fill(NaN), 35],
+        pdi: [...Array(89).fill(NaN), 30],
+        mdi: [...Array(89).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const result = await strategy.execute(buildBullishDivergenceContext({ minAdx: 25 }));
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+
+    it('preserves baseline strength when adxStrongMin defaults to 0', async () => {
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(89).fill(NaN), 22],
+        pdi: [...Array(89).fill(NaN), 28],
+        mdi: [...Array(89).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const baseline = await strategy.execute(buildBullishDivergenceContext({}));
+      const baselineStrength = baseline.signals[0].strength;
+      jest.clearAllMocks();
+
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(89).fill(NaN), 22],
+        pdi: [...Array(89).fill(NaN), 28],
+        mdi: [...Array(89).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const result = await strategy.execute(buildBullishDivergenceContext({ minAdx: 20 }));
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baselineStrength, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('weak');
+      expect(result.signals[0].metadata?.adx).toBe(22);
+    });
+
+    it('emits weak-tier signal at half strength when minAdx ≤ ADX < adxStrongMin', async () => {
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(89).fill(NaN), 22],
+        pdi: [...Array(89).fill(NaN), 28],
+        mdi: [...Array(89).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const baseline = await strategy.execute(buildBullishDivergenceContext({}));
+      const baselineStrength = baseline.signals[0].strength;
+      jest.clearAllMocks();
+
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(89).fill(NaN), 22],
+        pdi: [...Array(89).fill(NaN), 28],
+        mdi: [...Array(89).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const result = await strategy.execute(
+        buildBullishDivergenceContext({ minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 })
+      );
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baselineStrength * 0.5, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('weak');
+    });
+
+    it('emits strong-tier signal at full strength when ADX ≥ adxStrongMin', async () => {
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(89).fill(NaN), 30],
+        pdi: [...Array(89).fill(NaN), 30],
+        mdi: [...Array(89).fill(NaN), 10],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const baseline = await strategy.execute(buildBullishDivergenceContext({}));
+      jest.clearAllMocks();
+
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(89).fill(NaN), 30],
+        pdi: [...Array(89).fill(NaN), 30],
+        mdi: [...Array(89).fill(NaN), 10],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const result = await strategy.execute(
+        buildBullishDivergenceContext({ minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 })
+      );
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baseline.signals[0].strength, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('strong');
+      expect(result.signals[0].metadata?.adx).toBe(30);
+      expect(result.signals[0].metadata?.pdi).toBe(30);
+      expect(result.signals[0].metadata?.mdi).toBe(10);
+    });
+
+    it('relaxes minDivergencePercent during LOW_VOLATILITY regime when enabled', async () => {
+      // Build a divergence with magnitude ~7.5%. Default minDivergencePercent=8 → would reject.
+      // After 0.6× relaxation → effective threshold = 4.8% → accepts.
+      const prices = createFlatPrices(90);
+      for (let j = -3; j <= 3; j++) {
+        if (j === 0) {
+          prices[70].low = 80;
+          prices[70].avg = 83;
+        } else {
+          prices[70 + j].low = 95;
+        }
+      }
+      for (let j = -3; j <= 3; j++) {
+        if (j === 0) {
+          prices[83].low = 74; // 7.5% lower than 80
+          prices[83].avg = 77;
+        } else {
+          prices[83 + j].low = 95;
+        }
+      }
+      const rsiValues = createMockRSI(90, 50);
+      rsiValues[70] = 22;
+      rsiValues[83] = 30;
+      rsiValues[89] = 32;
+      const emaValues = createMockEMA(90, 100);
+      const atrValues = createMockATR(90, 5);
+
+      // Without relaxation: minDivergencePercent=8 should reject 7.5% divergence.
+      setupIndicatorMocks(rsiValues, emaValues, atrValues);
+      const noRelaxResult = await strategy.execute({
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { ...baseConfig, minDivergencePercent: 8, lowVolRelaxation: false },
+        volatilityRegime: MarketRegimeType.LOW_VOLATILITY
+      });
+      expect(noRelaxResult.signals).toHaveLength(0);
+
+      // With relaxation: effective threshold drops to 4.8%, signal fires.
+      setupIndicatorMocks(rsiValues, emaValues, atrValues);
+      const relaxResult = await strategy.execute({
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { ...baseConfig, minDivergencePercent: 8, lowVolRelaxation: true },
+        volatilityRegime: MarketRegimeType.LOW_VOLATILITY
+      });
+      expect(relaxResult.signals).toHaveLength(1);
+      expect(relaxResult.signals[0].type).toBe(SignalType.BUY);
     });
   });
 });

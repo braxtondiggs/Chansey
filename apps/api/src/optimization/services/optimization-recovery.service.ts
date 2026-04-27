@@ -129,9 +129,9 @@ export class OptimizationRecoveryService implements OnApplicationBootstrap {
     // Resolve combinations: prefer stored, fallback to regeneration for grid_search
     let combinations = run.combinations;
     if (!combinations) {
-      if (run.config.method === 'random_search') {
+      if (run.config.method === 'random_search' || run.config.method === 'adaptive_search') {
         throw new Error(
-          'Cannot resume random_search optimization without stored combinations (created before checkpoint-resume support)'
+          `Cannot resume ${run.config.method} optimization without stored combinations (non-deterministic search)`
         );
       }
       // Grid search is deterministic — regenerate from parameter space

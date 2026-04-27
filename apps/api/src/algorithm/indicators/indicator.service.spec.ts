@@ -133,4 +133,81 @@ describe('IndicatorService', () => {
       expect(result.values).toBeDefined();
     });
   });
+
+  describe('calculateADX', () => {
+    const buildPrices = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        avg: 100 + i * 0.5,
+        high: 101 + i * 0.5,
+        low: 99 + i * 0.5,
+        date: new Date(2024, 0, i + 1)
+      }));
+
+    it('returns padded ADX/+DI/-DI arrays aligned to input length', async () => {
+      cacheManager.get.mockResolvedValue(undefined);
+
+      const result = await service.calculateADX({
+        coinId: 'btc',
+        prices: buildPrices(60) as any,
+        period: 14
+      });
+
+      expect(result.values.length).toBe(60);
+      expect(result.pdi.length).toBe(60);
+      expect(result.mdi.length).toBe(60);
+      expect(result.period).toBe(14);
+      expect(result.fromCache).toBe(false);
+      expect(result.validCount).toBeGreaterThan(0);
+    });
+
+    it('returns cached result with pdi/mdi populated', async () => {
+      const cached = {
+        values: [NaN, NaN, 25.5, 30.1],
+        pdi: [NaN, NaN, 22.0, 28.0],
+        mdi: [NaN, NaN, 12.0, 10.0],
+        validCount: 2,
+        period: 14,
+        fromCache: false
+      };
+      cacheManager.get.mockResolvedValue(cached);
+
+      const result = await service.calculateADX({
+        coinId: 'btc',
+        prices: buildPrices(30) as any,
+        period: 14
+      });
+
+      expect(result.fromCache).toBe(true);
+      expect(result.values[3]).toBe(30.1);
+      expect(result.pdi[3]).toBe(28.0);
+      expect(result.mdi[3]).toBe(10.0);
+      // NaN restoration applies to padded null values
+      expect(result.values[0]).toBeNaN();
+      expect(result.pdi[0]).toBeNaN();
+      expect(result.mdi[0]).toBeNaN();
+    });
+
+    it('recomputes all three series when skipCache is true', async () => {
+      cacheManager.get.mockResolvedValue({
+        values: [99],
+        pdi: [50],
+        mdi: [10],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+
+      const result = await service.calculateADX({
+        coinId: 'btc',
+        prices: buildPrices(60) as any,
+        period: 14,
+        skipCache: true
+      });
+
+      expect(result.fromCache).toBe(false);
+      expect(cacheManager.get).not.toHaveBeenCalled();
+      expect(result.pdi.length).toBe(60);
+      expect(result.mdi.length).toBe(60);
+    });
+  });
 });

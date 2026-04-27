@@ -35,7 +35,8 @@ describe('MACDStrategy', () => {
       calculateMACD: jest.fn(),
       calculateBollingerBands: jest.fn(),
       calculateATR: jest.fn(),
-      calculateSD: jest.fn()
+      calculateSD: jest.fn(),
+      calculateADX: jest.fn()
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -165,6 +166,71 @@ describe('MACDStrategy', () => {
 
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(1);
+    });
+  });
+
+  describe('ADX tiered gate', () => {
+    /** Build a fresh bullish crossover with controllable ADX value. */
+    const setupBullishCrossover = (adxValue: number, configOverrides: Record<string, unknown> = {}) => {
+      mockMACD(-0.001, 0.002, 0.001, 0.001, -0.002, 0.001);
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(49).fill(NaN), adxValue],
+        pdi: [...Array(49).fill(NaN), 28],
+        mdi: [...Array(49).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      return buildContext({ minConfidence: 0.0001, useHistogramConfirmation: false, ...configOverrides });
+    };
+
+    it('does not call calculateADX when minAdx defaults to 0', async () => {
+      mockMACD(-0.001, 0.002, 0.001, 0.001, -0.002, 0.001);
+      const result = await strategy.execute(buildContext({ minConfidence: 0.0001, useHistogramConfirmation: false }));
+      expect(result.signals).toHaveLength(1);
+      expect(indicatorService.calculateADX).not.toHaveBeenCalled();
+    });
+
+    it('blocks signal when ADX is below minAdx', async () => {
+      const ctx = setupBullishCrossover(15, { minAdx: 25 });
+      const result = await strategy.execute(ctx);
+      expect(result.signals).toHaveLength(0);
+    });
+
+    it('emits weak-tier signal at half strength when minAdx ≤ ADX < adxStrongMin', async () => {
+      // Baseline (gate disabled)
+      mockMACD(-0.001, 0.002, 0.001, 0.001, -0.002, 0.001);
+      const baseline = await strategy.execute(buildContext({ minConfidence: 0.0001, useHistogramConfirmation: false }));
+      jest.clearAllMocks();
+
+      const ctx = setupBullishCrossover(22, {
+        minAdx: 20,
+        adxStrongMin: 25,
+        adxWeakMultiplier: 0.5
+      });
+      const result = await strategy.execute(ctx);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baseline.signals[0].strength * 0.5, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('weak');
+    });
+
+    it('emits strong-tier signal at full strength when ADX ≥ adxStrongMin', async () => {
+      mockMACD(-0.001, 0.002, 0.001, 0.001, -0.002, 0.001);
+      const baseline = await strategy.execute(buildContext({ minConfidence: 0.0001, useHistogramConfirmation: false }));
+      jest.clearAllMocks();
+
+      const ctx = setupBullishCrossover(30, {
+        minAdx: 20,
+        adxStrongMin: 25,
+        adxWeakMultiplier: 0.5
+      });
+      const result = await strategy.execute(ctx);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baseline.signals[0].strength, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('strong');
+      expect(result.signals[0].metadata?.adx).toBe(30);
+      expect(result.signals[0].metadata?.pdi).toBe(28);
+      expect(result.signals[0].metadata?.mdi).toBe(12);
     });
   });
 

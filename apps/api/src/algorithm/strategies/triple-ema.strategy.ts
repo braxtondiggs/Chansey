@@ -1,36 +1,29 @@
 import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
-import { CandleData } from '../../ohlc/ohlc-candle.entity';
+import { generateTripleEMASignal, prepareTripleEMAChartData } from './triple-ema-calc.util';
+import {
+  buildTripleEMAExitConfig,
+  getTripleEMAConfigSchema,
+  getTripleEMAConfigWithDefaults,
+  getTripleEMAIndicatorRequirements,
+  getTripleEMAMinDataPoints,
+  getTripleEMAParameterConstraints,
+  hasEnoughTripleEMAData
+} from './triple-ema-config';
+
 import { ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
-import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
-
-interface TripleEMAConfig {
-  fastPeriod: number;
-  mediumPeriod: number;
-  slowPeriod: number;
-  requireFullAlignment: boolean;
-  signalOnPartialCross: boolean;
-  minConfidence: number;
-  minSpread: number;
-  stopLossPercent: number;
-  takeProfitPercent: number;
-}
-
-type EMAAlignment = 'bullish' | 'bearish' | 'neutral';
-
-interface AlignmentState {
-  current: EMAAlignment;
-  previous: EMAAlignment;
-  fastAboveMedium: boolean;
-  mediumAboveSlow: boolean;
-  fastAboveSlow: boolean;
-  emaSpread: number;
-}
+import {
+  type AdxGateContext,
+  applyAdxGate,
+  IIndicatorProvider,
+  IndicatorCalculatorMap,
+  IndicatorRequirement,
+  IndicatorService
+} from '../indicators';
+import { AlgorithmContext, AlgorithmResult, ChartDataPoint, TradingSignal } from '../interfaces';
 
 /**
  * Triple EMA Strategy
@@ -71,7 +64,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
     const chartData: { [key: string]: ChartDataPoint[] } = {};
 
     try {
-      const config = this.getConfigWithDefaults(context.config);
+      const config = getTripleEMAConfigWithDefaults(context.config);
       const isBacktest = !!(
         context.metadata?.backtestId ||
         context.metadata?.isOptimization ||
@@ -82,7 +75,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       for (const coin of context.coins) {
         const priceHistory = context.priceData[coin.id];
 
-        if (!this.hasEnoughData(priceHistory, config)) {
+        if (!hasEnoughTripleEMAData(priceHistory, config)) {
           this.logger.debug(`Insufficient price data for ${coin.symbol}`);
           continue;
         }
@@ -114,14 +107,23 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
           ).values;
 
         // Generate signal based on EMA alignment
-        const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, fastEMA, mediumEMA, slowEMA, config);
+        const signal = generateTripleEMASignal(coin.id, coin.symbol, priceHistory, fastEMA, mediumEMA, slowEMA, config);
 
         if (signal && signal.confidence >= config.minConfidence) {
-          signals.push(signal);
+          const adxCtx: AdxGateContext = {
+            indicatorService: this.indicatorService,
+            getPrecomputedSlice: (coinId, key, length) => this.getPrecomputedSlice(context, coinId, key, length),
+            provider: this,
+            logger: this.logger,
+            isBacktest,
+            skipCache
+          };
+          const gated = await applyAdxGate(adxCtx, coin, priceHistory, signal, config);
+          if (gated) signals.push(gated);
         }
 
         if (!isBacktest) {
-          chartData[coin.id] = this.prepareChartData(priceHistory, fastEMA, mediumEMA, slowEMA);
+          chartData[coin.id] = prepareTripleEMAChartData(priceHistory, fastEMA, mediumEMA, slowEMA);
         }
       }
 
@@ -133,7 +135,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
           version: this.version,
           signalsGenerated: signals.length
         },
-        this.buildExitConfig(config)
+        buildTripleEMAExitConfig(config)
       );
     } catch (error: unknown) {
       const err = toErrorInfo(error);
@@ -142,439 +144,23 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
     }
   }
 
-  /**
-   * Get configuration with defaults
-   */
-  protected getConfigWithDefaults(config: Record<string, unknown>): TripleEMAConfig {
-    return {
-      fastPeriod: (config.fastPeriod as number) ?? 8,
-      mediumPeriod: (config.mediumPeriod as number) ?? 21,
-      slowPeriod: (config.slowPeriod as number) ?? 55,
-      requireFullAlignment: (config.requireFullAlignment as boolean) ?? false,
-      signalOnPartialCross: (config.signalOnPartialCross as boolean) ?? true,
-      minConfidence: (config.minConfidence as number) ?? 0.3,
-      minSpread: (config.minSpread as number) ?? 0.001,
-      stopLossPercent: (config.stopLossPercent as number) ?? 3.5,
-      takeProfitPercent: (config.takeProfitPercent as number) ?? 6
-    };
-  }
-
-  private buildExitConfig(config: TripleEMAConfig): Partial<ExitConfig> {
-    return {
-      enableStopLoss: true,
-      stopLossType: StopLossType.PERCENTAGE,
-      stopLossValue: config.stopLossPercent,
-      enableTakeProfit: true,
-      takeProfitType: TakeProfitType.PERCENTAGE,
-      takeProfitValue: config.takeProfitPercent,
-      enableTrailingStop: false,
-      useOco: true
-    };
-  }
-
-  /**
-   * Check if we have enough data for all three EMAs
-   */
-  private hasEnoughData(priceHistory: CandleData[] | undefined, config: TripleEMAConfig): boolean {
-    return !!priceHistory && priceHistory.length >= config.slowPeriod + 5;
-  }
-
-  /**
-   * Determine EMA alignment at a specific index
-   */
-  private getAlignment(fastEMA: number, mediumEMA: number, slowEMA: number): EMAAlignment {
-    if (fastEMA > mediumEMA && mediumEMA > slowEMA) {
-      return 'bullish';
-    } else if (fastEMA < mediumEMA && mediumEMA < slowEMA) {
-      return 'bearish';
-    }
-    return 'neutral';
-  }
-
-  /**
-   * Analyze alignment state at current and previous bar
-   */
-  private analyzeAlignmentState(
-    fastEMA: number[],
-    mediumEMA: number[],
-    slowEMA: number[],
-    currentIndex: number
-  ): AlignmentState | null {
-    const previousIndex = currentIndex - 1;
-
-    if (
-      previousIndex < 0 ||
-      !Number.isFinite(fastEMA[currentIndex]) ||
-      !Number.isFinite(mediumEMA[currentIndex]) ||
-      !Number.isFinite(slowEMA[currentIndex]) ||
-      !Number.isFinite(fastEMA[previousIndex]) ||
-      !Number.isFinite(mediumEMA[previousIndex]) ||
-      !Number.isFinite(slowEMA[previousIndex])
-    ) {
-      return null;
-    }
-
-    const currentFast = fastEMA[currentIndex];
-    const currentMedium = mediumEMA[currentIndex];
-    const currentSlow = slowEMA[currentIndex];
-    const previousFast = fastEMA[previousIndex];
-    const previousMedium = mediumEMA[previousIndex];
-    const previousSlow = slowEMA[previousIndex];
-
-    const currentAlignment = this.getAlignment(currentFast, currentMedium, currentSlow);
-    const previousAlignment = this.getAlignment(previousFast, previousMedium, previousSlow);
-
-    // Calculate EMA spread (distance between fast and slow as percentage of slow)
-    const emaSpread = Math.abs(currentFast - currentSlow) / currentSlow;
-
-    return {
-      current: currentAlignment,
-      previous: previousAlignment,
-      fastAboveMedium: currentFast > currentMedium,
-      mediumAboveSlow: currentMedium > currentSlow,
-      fastAboveSlow: currentFast > currentSlow,
-      emaSpread
-    };
-  }
-
-  /**
-   * Generate trading signal based on EMA alignment changes
-   */
-  private generateSignal(
-    coinId: string,
-    coinSymbol: string,
-    prices: CandleData[],
-    fastEMA: number[],
-    mediumEMA: number[],
-    slowEMA: number[],
-    config: TripleEMAConfig
-  ): TradingSignal | null {
-    const currentIndex = prices.length - 1;
-    const alignmentState = this.analyzeAlignmentState(fastEMA, mediumEMA, slowEMA, currentIndex);
-
-    if (!alignmentState) {
-      return null;
-    }
-
-    const currentPrice = prices[currentIndex].avg;
-    const currentFast = fastEMA[currentIndex];
-    const currentMedium = mediumEMA[currentIndex];
-    const currentSlow = slowEMA[currentIndex];
-
-    // Check for alignment change (strongest signal)
-    if (alignmentState.current !== alignmentState.previous) {
-      if (alignmentState.current === 'bullish' && alignmentState.emaSpread >= config.minSpread) {
-        // Transition to bullish alignment
-        const strength = this.calculateSignalStrength(alignmentState);
-        const confidence = this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, true);
-
-        return {
-          type: SignalType.BUY,
-          coinId,
-          strength,
-          price: currentPrice,
-          confidence,
-          reason: `Triple EMA bullish alignment: Fast EMA (${currentFast.toFixed(4)}) > Medium EMA (${currentMedium.toFixed(4)}) > Slow EMA (${currentSlow.toFixed(4)})`,
-          metadata: {
-            symbol: coinSymbol,
-            fastEMA: currentFast,
-            mediumEMA: currentMedium,
-            slowEMA: currentSlow,
-            alignment: 'bullish',
-            previousAlignment: alignmentState.previous,
-            emaSpread: alignmentState.emaSpread,
-            alignmentType: 'full'
-          }
-        };
-      }
-
-      if (alignmentState.current === 'bearish' && alignmentState.emaSpread >= config.minSpread) {
-        // Transition to bearish alignment
-        const strength = this.calculateSignalStrength(alignmentState);
-        const confidence = this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, false);
-
-        return {
-          type: SignalType.SELL,
-          coinId,
-          strength,
-          price: currentPrice,
-          confidence,
-          reason: `Triple EMA bearish alignment: Fast EMA (${currentFast.toFixed(4)}) < Medium EMA (${currentMedium.toFixed(4)}) < Slow EMA (${currentSlow.toFixed(4)})`,
-          metadata: {
-            symbol: coinSymbol,
-            fastEMA: currentFast,
-            mediumEMA: currentMedium,
-            slowEMA: currentSlow,
-            alignment: 'bearish',
-            previousAlignment: alignmentState.previous,
-            emaSpread: alignmentState.emaSpread,
-            alignmentType: 'full'
-          }
-        };
-      }
-
-      // Breakdown: alignment lost — exit signal (bypasses minSpread since converging EMAs ARE the signal)
-      if (alignmentState.current === 'neutral') {
-        if (alignmentState.previous === 'bullish') {
-          const strength = Math.max(0.7, this.calculateSignalStrength(alignmentState));
-
-          return {
-            type: SignalType.SELL,
-            coinId,
-            strength,
-            price: currentPrice,
-            confidence: Math.max(0.7, config.minConfidence),
-            reason: `Triple EMA breakdown: Bullish alignment lost — Fast > Medium > Slow no longer holds (Fast: ${currentFast.toFixed(4)}, Medium: ${currentMedium.toFixed(4)}, Slow: ${currentSlow.toFixed(4)})`,
-            metadata: {
-              symbol: coinSymbol,
-              fastEMA: currentFast,
-              mediumEMA: currentMedium,
-              slowEMA: currentSlow,
-              alignment: 'neutral',
-              previousAlignment: 'bullish',
-              emaSpread: alignmentState.emaSpread,
-              alignmentType: 'breakdown'
-            }
-          };
-        }
-
-        if (alignmentState.previous === 'bearish') {
-          const strength = Math.max(0.7, this.calculateSignalStrength(alignmentState));
-
-          return {
-            type: SignalType.BUY,
-            coinId,
-            strength,
-            price: currentPrice,
-            confidence: Math.max(0.7, config.minConfidence),
-            reason: `Triple EMA breakdown: Bearish alignment lost — Fast < Medium < Slow no longer holds (Fast: ${currentFast.toFixed(4)}, Medium: ${currentMedium.toFixed(4)}, Slow: ${currentSlow.toFixed(4)})`,
-            metadata: {
-              symbol: coinSymbol,
-              fastEMA: currentFast,
-              mediumEMA: currentMedium,
-              slowEMA: currentSlow,
-              alignment: 'neutral',
-              previousAlignment: 'bearish',
-              emaSpread: alignmentState.emaSpread,
-              alignmentType: 'breakdown'
-            }
-          };
-        }
-      }
-    }
-
-    // Minimum EMA spread filter for partial cross signals
-    if (alignmentState.emaSpread < config.minSpread) {
-      return null;
-    }
-
-    // Optional: Signal on partial crossover (fast/medium cross while medium/slow aligned)
-    if (config.signalOnPartialCross && !config.requireFullAlignment) {
-      const prevFastAboveMedium = fastEMA[currentIndex - 1] > mediumEMA[currentIndex - 1];
-      const fastMediumCrossover = alignmentState.fastAboveMedium !== prevFastAboveMedium;
-
-      if (fastMediumCrossover && alignmentState.mediumAboveSlow && alignmentState.fastAboveMedium) {
-        // Fast crossed above medium while medium > slow (bullish partial)
-        const strength = this.calculateSignalStrength(alignmentState) * 0.7;
-        const confidence =
-          this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, true) * 0.8;
-
-        return {
-          type: SignalType.BUY,
-          coinId,
-          strength,
-          price: currentPrice,
-          confidence,
-          reason: `Triple EMA partial bullish: Fast EMA crossed above Medium EMA while trend is up`,
-          metadata: {
-            symbol: coinSymbol,
-            fastEMA: currentFast,
-            mediumEMA: currentMedium,
-            slowEMA: currentSlow,
-            alignment: alignmentState.current,
-            emaSpread: alignmentState.emaSpread,
-            alignmentType: 'partial'
-          }
-        };
-      }
-
-      if (fastMediumCrossover && !alignmentState.mediumAboveSlow && !alignmentState.fastAboveMedium) {
-        // Fast crossed below medium while medium < slow (bearish partial)
-        const strength = this.calculateSignalStrength(alignmentState) * 0.7;
-        const confidence =
-          this.calculateConfidence(fastEMA, mediumEMA, slowEMA, alignmentState, currentIndex, false) * 0.8;
-
-        return {
-          type: SignalType.SELL,
-          coinId,
-          strength,
-          price: currentPrice,
-          confidence,
-          reason: `Triple EMA partial bearish: Fast EMA crossed below Medium EMA while trend is down`,
-          metadata: {
-            symbol: coinSymbol,
-            fastEMA: currentFast,
-            mediumEMA: currentMedium,
-            slowEMA: currentSlow,
-            alignment: alignmentState.current,
-            emaSpread: alignmentState.emaSpread,
-            alignmentType: 'partial'
-          }
-        };
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Calculate signal strength based on EMA spread
-   */
-  private calculateSignalStrength(alignmentState: AlignmentState): number {
-    // Larger EMA spread indicates stronger trend
-    const spreadStrength = Math.min(1, alignmentState.emaSpread * 10); // 10% spread = max strength
-
-    // Full alignment gives higher base strength
-    const alignmentStrength = alignmentState.current !== 'neutral' ? 0.5 : 0.3;
-
-    return Math.min(1, Math.max(0.4, alignmentStrength + spreadStrength * 0.5));
-  }
-
-  /**
-   * Calculate confidence based on EMA spread velocity (rate of divergence)
-   */
-  private calculateConfidence(
-    fastEMA: number[],
-    _mediumEMA: number[],
-    slowEMA: number[],
-    alignmentState: AlignmentState,
-    currentIndex: number,
-    _isBullish: boolean
-  ): number {
-    // Measure rate of EMA divergence instead of pre-signal alignment
-    const velocityLookback = Math.min(5, currentIndex);
-    let spreadVelocity = 0;
-    let velocityCount = 0;
-    for (let i = currentIndex - velocityLookback + 1; i <= currentIndex; i++) {
-      if (
-        i < 1 ||
-        !Number.isFinite(fastEMA[i]) ||
-        !Number.isFinite(slowEMA[i]) ||
-        !Number.isFinite(fastEMA[i - 1]) ||
-        !Number.isFinite(slowEMA[i - 1])
-      )
-        continue;
-      const curSpread = (fastEMA[i] - slowEMA[i]) / slowEMA[i];
-      const prevSpread = (fastEMA[i - 1] - slowEMA[i - 1]) / slowEMA[i - 1];
-      spreadVelocity += Math.abs(curSpread) - Math.abs(prevSpread);
-      velocityCount++;
-    }
-    const avgVelocity = velocityCount > 0 ? spreadVelocity / velocityCount : 0;
-    const velocityScore = Math.min(1, Math.max(0, avgVelocity * 200));
-    const spreadScore = Math.min(1, alignmentState.emaSpread * 8);
-    return Math.min(1, 0.4 + velocityScore * 0.3 + spreadScore * 0.3);
-  }
-
-  /**
-   * Prepare chart data for visualization
-   */
-  private prepareChartData(
-    prices: CandleData[],
-    fastEMA: number[],
-    mediumEMA: number[],
-    slowEMA: number[]
-  ): ChartDataPoint[] {
-    return prices.map((price, index) => {
-      const alignment =
-        Number.isFinite(fastEMA[index]) && Number.isFinite(mediumEMA[index]) && Number.isFinite(slowEMA[index])
-          ? this.getAlignment(fastEMA[index], mediumEMA[index], slowEMA[index])
-          : 'neutral';
-
-      return {
-        timestamp: price.date,
-        value: price.avg,
-        metadata: {
-          fastEMA: fastEMA[index],
-          mediumEMA: mediumEMA[index],
-          slowEMA: slowEMA[index],
-          alignment,
-          high: price.high,
-          low: price.low
-        }
-      };
-    });
-  }
-
   getMinDataPoints(config: Record<string, unknown>): number {
-    const slowPeriod = (config.slowPeriod as number) ?? 55;
-    return slowPeriod + 5;
+    return getTripleEMAMinDataPoints(config);
   }
 
-  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
-    return [
-      { type: 'EMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 8 } },
-      { type: 'EMA', paramKeys: ['mediumPeriod'], defaultParams: { mediumPeriod: 21 } },
-      { type: 'EMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 55 } }
-    ];
+  getIndicatorRequirements(config: Record<string, unknown>): IndicatorRequirement[] {
+    return getTripleEMAIndicatorRequirements(config);
   }
 
   getParameterConstraints(): ParameterConstraint[] {
-    return [
-      {
-        type: 'less_than',
-        param1: 'fastPeriod',
-        param2: 'mediumPeriod',
-        message: 'fastPeriod must be less than mediumPeriod'
-      },
-      {
-        type: 'less_than',
-        param1: 'mediumPeriod',
-        param2: 'slowPeriod',
-        message: 'mediumPeriod must be less than slowPeriod'
-      },
-      {
-        type: 'less_than',
-        param1: 'stopLossPercent',
-        param2: 'takeProfitPercent',
-        message: 'stopLossPercent must be less than takeProfitPercent'
-      }
-    ];
+    return getTripleEMAParameterConstraints();
   }
 
   /**
    * Get algorithm-specific configuration schema
    */
   getConfigSchema(): Record<string, unknown> {
-    return {
-      ...super.getConfigSchema(),
-      fastPeriod: { type: 'number', default: 8, min: 3, max: 15, description: 'Fast EMA period' },
-      mediumPeriod: { type: 'number', default: 21, min: 10, max: 30, description: 'Medium EMA period' },
-      slowPeriod: { type: 'number', default: 55, min: 30, max: 100, description: 'Slow EMA period' },
-      requireFullAlignment: { type: 'boolean', default: false, description: 'Require all 3 EMAs aligned for signal' },
-      signalOnPartialCross: { type: 'boolean', default: true, description: 'Signal on fast/medium crossover' },
-      minConfidence: { type: 'number', default: 0.3, min: 0, max: 1, description: 'Minimum confidence required' },
-      minSpread: {
-        type: 'number',
-        default: 0.001,
-        min: 0,
-        max: 0.05,
-        description: 'Minimum EMA spread to generate signal. Filters noise crosses.'
-      },
-      stopLossPercent: {
-        type: 'number',
-        default: 3.5,
-        min: 1,
-        max: 15,
-        description: 'Stop-loss distance as percentage of entry price'
-      },
-      takeProfitPercent: {
-        type: 'number',
-        default: 6,
-        min: 2,
-        max: 20,
-        description: 'Take-profit distance as percentage of entry price'
-      }
-    };
+    return getTripleEMAConfigSchema(super.getConfigSchema());
   }
 
   /**
@@ -585,7 +171,7 @@ export class TripleEMAStrategy extends BaseAlgorithmStrategy implements IIndicat
       return false;
     }
 
-    const config = this.getConfigWithDefaults(context.config);
-    return context.coins.some((coin) => this.hasEnoughData(context.priceData[coin.id], config));
+    const config = getTripleEMAConfigWithDefaults(context.config);
+    return context.coins.some((coin) => hasEnoughTripleEMAData(context.priceData[coin.id], config));
   }
 }

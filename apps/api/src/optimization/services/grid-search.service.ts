@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { ParameterCombination, ParameterConstraint, ParameterDefinition, ParameterSpace } from '../interfaces';
+import { stepDecimals, type RandomFn } from '../utils/seeded-random';
 
 /**
  * Grid Search Service
@@ -17,12 +18,14 @@ export class GridSearchService {
    * @param reachabilityFilter Optional predicate to drop combos whose indicators can't warm up + fire
    *   inside the available test window. Applied after constraints, before sampling, so the sampling
    *   budget isn't wasted on unreachable combos. The baseline always bypasses this filter.
+   * @param random Optional seeded PRNG used for sampling when `maxCombinations` is exceeded.
    * @returns Array of parameter combinations
    */
   generateCombinations(
     space: ParameterSpace,
     maxCombinations?: number,
-    reachabilityFilter?: (params: Record<string, unknown>) => boolean
+    reachabilityFilter?: (params: Record<string, unknown>) => boolean,
+    random: RandomFn = Math.random
   ): ParameterCombination[] {
     // Expand each parameter to its possible values
     const parameterValues: Map<string, (number | string | boolean)[]> = new Map();
@@ -80,7 +83,7 @@ export class GridSearchService {
 
     // Limit if needed (random sample, but always keep baseline)
     if (maxCombinations && combinations.length > maxCombinations) {
-      combinations = this.sampleCombinations(combinations, maxCombinations);
+      combinations = this.sampleCombinations(combinations, maxCombinations, random);
     }
 
     return combinations;
@@ -237,7 +240,11 @@ export class GridSearchService {
   /**
    * Sample combinations while keeping baseline
    */
-  private sampleCombinations(combinations: ParameterCombination[], maxCombinations: number): ParameterCombination[] {
+  private sampleCombinations(
+    combinations: ParameterCombination[],
+    maxCombinations: number,
+    random: RandomFn
+  ): ParameterCombination[] {
     if (combinations.length <= maxCombinations) {
       return combinations;
     }
@@ -248,7 +255,7 @@ export class GridSearchService {
 
     // Random sample from rest
     const sampleSize = maxCombinations - 1;
-    const sampled = this.shuffleArray(rest).slice(0, sampleSize);
+    const sampled = this.shuffleArray(rest, random).slice(0, sampleSize);
 
     // Combine and re-index
     const result = [baseline, ...sampled].map((c, idx) => ({
@@ -264,10 +271,10 @@ export class GridSearchService {
   /**
    * Fisher-Yates shuffle
    */
-  private shuffleArray<T>(array: T[]): T[] {
+  private shuffleArray<T>(array: T[], random: RandomFn): T[] {
     const result = [...array];
     for (let i = result.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(random() * (i + 1));
       [result[i], result[j]] = [result[j], result[i]];
     }
     return result;
@@ -279,11 +286,13 @@ export class GridSearchService {
    * @param numCombinations Target number of combinations
    * @param reachabilityFilter Optional predicate to reject combos whose indicators can't warm up + fire
    *   inside the available test window. Baseline always bypasses this filter.
+   * @param random Optional seeded PRNG. Defaults to `Math.random`.
    */
   generateRandomCombinations(
     space: ParameterSpace,
     numCombinations: number,
-    reachabilityFilter?: (params: Record<string, unknown>) => boolean
+    reachabilityFilter?: (params: Record<string, unknown>) => boolean,
+    random: RandomFn = Math.random
   ): ParameterCombination[] {
     const combinations: ParameterCombination[] = [];
     const seen = new Set<string>();
@@ -303,7 +312,7 @@ export class GridSearchService {
     while (combinations.length < numCombinations && attempts < maxAttempts) {
       attempts++;
 
-      const randomCombo = this.generateRandomCombination(space);
+      const randomCombo = this.generateRandomCombination(space, random);
       const key = JSON.stringify(randomCombo);
 
       if (seen.has(key)) {
@@ -334,11 +343,14 @@ export class GridSearchService {
   /**
    * Generate a single random parameter combination
    */
-  private generateRandomCombination(space: ParameterSpace): Record<string, number | string | boolean> {
+  private generateRandomCombination(
+    space: ParameterSpace,
+    random: RandomFn
+  ): Record<string, number | string | boolean> {
     const result: Record<string, number | string | boolean> = {};
 
     for (const param of space.parameters) {
-      result[param.name] = this.generateRandomValue(param);
+      result[param.name] = this.generateRandomValue(param, random);
     }
 
     return result;
@@ -347,10 +359,10 @@ export class GridSearchService {
   /**
    * Generate a random value for a parameter
    */
-  private generateRandomValue(param: ParameterDefinition): number | string | boolean {
+  private generateRandomValue(param: ParameterDefinition, random: RandomFn): number | string | boolean {
     if (param.type === 'categorical') {
       const values = param.values || [param.default];
-      return values[Math.floor(Math.random() * values.length)];
+      return values[Math.floor(random() * values.length)];
     }
 
     const min = param.min ?? (param.default as number);
@@ -359,12 +371,14 @@ export class GridSearchService {
 
     if (param.type === 'integer') {
       const range = Math.floor((max - min) / step) + 1;
-      return Math.round(min + Math.floor(Math.random() * range) * step);
+      return Math.round(min + Math.floor(random() * range) * step);
     }
 
-    // Float
-    const range = (max - min) / step;
-    const steps = Math.floor(Math.random() * (range + 1));
-    return Math.round((min + steps * step) * 10000) / 10000;
+    // Float — mirror the integer branch so a step that doesn't divide (max - min) evenly
+    // can never produce a value above max.
+    const range = Math.floor((max - min) / step) + 1;
+    const steps = Math.floor(random() * range);
+    const factor = Math.pow(10, stepDecimals(step));
+    return Math.round((min + steps * step) * factor) / factor;
   }
 }

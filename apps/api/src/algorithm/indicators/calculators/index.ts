@@ -1,3 +1,4 @@
+export { ADXCalculator, classifyAdxTrend, type AdxTrendStrength } from './adx.calculator';
 export { ATRCalculator } from './atr.calculator';
 export { BaseIndicatorCalculator } from './base-indicator.calculator';
 export { BollingerBandsCalculator } from './bollinger-bands.calculator';

@@ -6,7 +6,17 @@ import { ParameterConstraint } from '../../optimization/interfaces/parameter-spa
 import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
+import {
+  type AdxGateContext,
+  applyAdxGate,
+  getAdxGateConfigDefaults,
+  getAdxGateRequirement,
+  getAdxGateSchema,
+  IIndicatorProvider,
+  IndicatorCalculatorMap,
+  IndicatorRequirement,
+  IndicatorService
+} from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 /**
@@ -53,6 +63,7 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
       const crossoverLookback = Math.max(1, Math.min(10, (context.config.crossoverLookback as number) || 5));
       const stopLossPercent = (context.config.stopLossPercent as number) ?? 3.5;
       const takeProfitPercent = (context.config.takeProfitPercent as number) ?? 6;
+      const adxConfig = getAdxGateConfigDefaults(context.config);
       const exitConfig: Partial<ExitConfig> = {
         enableStopLoss: true,
         stopLossType: StopLossType.PERCENTAGE,
@@ -100,7 +111,16 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
         const signal = this.generateSignal(coin.id, coin.symbol, priceHistory, ema12, ema26, crossoverLookback);
 
         if (signal) {
-          signals.push(signal);
+          const adxCtx: AdxGateContext = {
+            indicatorService: this.indicatorService,
+            getPrecomputedSlice: (coinId, key, length) => this.getPrecomputedSlice(context, coinId, key, length),
+            provider: this,
+            logger: this.logger,
+            isBacktest,
+            skipCache
+          };
+          const gated = await applyAdxGate(adxCtx, coin, priceHistory, signal, adxConfig);
+          if (gated) signals.push(gated);
         }
 
         if (!isBacktest) {
@@ -272,11 +292,14 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
     return slowPeriod + crossoverLookback;
   }
 
-  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
-    return [
+  getIndicatorRequirements(config: Record<string, unknown>): IndicatorRequirement[] {
+    const requirements: IndicatorRequirement[] = [
       { type: 'EMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 8 } },
       { type: 'EMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 50 } }
     ];
+    const adxRequirement = getAdxGateRequirement(config);
+    if (adxRequirement) requirements.push(adxRequirement);
+    return requirements;
   }
 
   getParameterConstraints(): ParameterConstraint[] {
@@ -325,7 +348,8 @@ export class ExponentialMovingAverageStrategy extends BaseAlgorithmStrategy impl
         min: 2,
         max: 20,
         description: 'Take-profit distance as percentage of entry price'
-      }
+      },
+      ...getAdxGateSchema()
     };
   }
 

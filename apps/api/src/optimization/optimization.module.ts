@@ -14,6 +14,12 @@ import { OptimizationOrchestratorService } from './services/optimization-orchest
 import { OptimizationQueryService } from './services/optimization-query.service';
 import { OptimizationRecoveryService } from './services/optimization-recovery.service';
 import { OptimizationRunSummaryService } from './services/optimization-run-summary.service';
+import {
+  AdaptiveSearchStrategy,
+  GridSearchStrategy,
+  RandomSearchStrategy,
+  SearchStrategyResolver
+} from './services/search-strategies';
 
 import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { Coin } from '../coin/coin.entity';
@@ -39,7 +45,11 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
     OptimizationQueryService,
     OptimizationProcessor,
     OptimizationRecoveryService,
-    OptimizationRunSummaryService
+    OptimizationRunSummaryService,
+    GridSearchStrategy,
+    RandomSearchStrategy,
+    AdaptiveSearchStrategy,
+    SearchStrategyResolver
   ],
   exports: [GridSearchService, OptimizationOrchestratorService, OptimizationRunSummaryService]
 })

@@ -9,6 +9,7 @@ import { type OptimizationEvaluationService } from './optimization-evaluation.se
 import { OptimizationOrchestratorService } from './optimization-orchestrator.service';
 import { type OptimizationQueryService } from './optimization-query.service';
 import { type OptimizationRunSummaryService } from './optimization-run-summary.service';
+import { type SearchStrategyResolver } from './search-strategies';
 
 import { type AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { type StrategyConfig } from '../../strategy/entities/strategy-config.entity';
@@ -61,6 +62,7 @@ describe('OptimizationOrchestratorService', () => {
   let eventEmitter: jest.Mocked<EventEmitter2>;
   let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
   let summaryService: jest.Mocked<OptimizationRunSummaryService>;
+  let searchStrategyResolver: jest.Mocked<SearchStrategyResolver>;
 
   beforeEach(() => {
     optimizationRunRepo = {
@@ -141,6 +143,34 @@ describe('OptimizationOrchestratorService', () => {
       computeAndPersist: jest.fn().mockResolvedValue(undefined)
     } as unknown as jest.Mocked<OptimizationRunSummaryService>;
 
+    // Resolver delegates to the GridSearchService mocks so existing test setup carries over.
+    searchStrategyResolver = {
+      resolve: jest.fn((method: string) => {
+        if (method === 'random_search' || method === 'adaptive_search') {
+          return {
+            method,
+            isStatic: method === 'random_search',
+            generateInitialCombinations: (
+              space: Parameters<GridSearchService['generateRandomCombinations']>[0],
+              targetCount: number | undefined,
+              options?: { reachabilityFilter?: (params: Record<string, unknown>) => boolean }
+            ) => gridSearchService.generateRandomCombinations(space, targetCount ?? 100, options?.reachabilityFilter),
+            generateNextBatch: () => []
+          };
+        }
+        return {
+          method: 'grid_search',
+          isStatic: true,
+          generateInitialCombinations: (
+            space: Parameters<GridSearchService['generateCombinations']>[0],
+            targetCount: number | undefined,
+            options?: { reachabilityFilter?: (params: Record<string, unknown>) => boolean }
+          ) => gridSearchService.generateCombinations(space, targetCount, options?.reachabilityFilter),
+          generateNextBatch: () => []
+        };
+      })
+    } as unknown as jest.Mocked<SearchStrategyResolver>;
+
     service = new OptimizationOrchestratorService(
       optimizationRunRepo,
       optimizationResultRepo,
@@ -151,6 +181,7 @@ describe('OptimizationOrchestratorService', () => {
       dataSource,
       eventEmitter,
       summaryService,
+      searchStrategyResolver,
       algorithmRegistry
     );
   });
@@ -228,6 +259,21 @@ describe('OptimizationOrchestratorService', () => {
         name: 'startDate >= endDate',
         override: { dateRange: { startDate: new Date('2024-01-01'), endDate: new Date('2023-01-01') } },
         expectedMessage: 'startDate must be before endDate'
+      },
+      {
+        name: 'seed is negative',
+        override: { seed: -5 },
+        expectedMessage: 'seed must be a non-negative integer'
+      },
+      {
+        name: 'seed is NaN',
+        override: { seed: NaN },
+        expectedMessage: 'seed must be a non-negative integer'
+      },
+      {
+        name: 'seed is Infinity',
+        override: { seed: Infinity },
+        expectedMessage: 'seed must be a non-negative integer'
       }
     ])('should reject when $name', async ({ override, expectedMessage }) => {
       const config = createValidConfig(override as Partial<OptimizationConfig>);
@@ -371,6 +417,56 @@ describe('OptimizationOrchestratorService', () => {
       await service.startOptimization('strategy-1', createValidSpace(), config);
 
       expect(gridSearchService.generateCombinations).toHaveBeenCalledWith(expect.any(Object), undefined, undefined);
+    });
+
+    it('should generate and persist a seed when none is provided', async () => {
+      const config = createValidConfig();
+      const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
+
+      queryService.findStrategyConfig.mockResolvedValue(strategyConfig);
+      gridSearchService.generateCombinations.mockReturnValue([{ index: 0, values: {}, isBaseline: true }]);
+      optimizationRunRepo.create.mockReturnValue({} as OptimizationRun);
+      optimizationRunRepo.save.mockResolvedValue({ id: 'run-1' } as OptimizationRun);
+
+      await service.startOptimization('strategy-1', createValidSpace(), config);
+
+      const created = optimizationRunRepo.create.mock.calls[0][0] as { config?: { seed?: number } };
+      expect(typeof created.config?.seed).toBe('number');
+      expect(Number.isInteger(created.config?.seed)).toBe(true);
+      expect(created.config?.seed).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should persist the caller-provided seed verbatim', async () => {
+      const config = createValidConfig({ seed: 12345 });
+      const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
+
+      queryService.findStrategyConfig.mockResolvedValue(strategyConfig);
+      gridSearchService.generateCombinations.mockReturnValue([{ index: 0, values: {}, isBaseline: true }]);
+      optimizationRunRepo.create.mockReturnValue({} as OptimizationRun);
+      optimizationRunRepo.save.mockResolvedValue({ id: 'run-1' } as OptimizationRun);
+
+      await service.startOptimization('strategy-1', createValidSpace(), config);
+
+      const created = optimizationRunRepo.create.mock.calls[0][0] as { config?: { seed?: number } };
+      expect(created.config?.seed).toBe(12345);
+    });
+
+    it('should always populate run.combinations for adaptive_search at creation time', async () => {
+      // CONSIDER #5: the recovery path reads run.combinations and would throw on undefined.
+      // Adaptive seeds with the baseline only — but it must be a non-empty array.
+      const config = createValidConfig({ method: 'adaptive_search', maxIterations: 100 });
+      const strategyConfig = { id: 'strategy-1', algorithmId: 'algo-1' } as StrategyConfig;
+      // Adaptive uses generateRandomCombinations in the test resolver as a stand-in stub.
+      queryService.findStrategyConfig.mockResolvedValue(strategyConfig);
+      gridSearchService.generateRandomCombinations.mockReturnValue([{ index: 0, values: {}, isBaseline: true }]);
+      optimizationRunRepo.create.mockReturnValue({} as OptimizationRun);
+      optimizationRunRepo.save.mockResolvedValue({ id: 'run-1' } as OptimizationRun);
+
+      await service.startOptimization('strategy-1', createValidSpace(), config);
+
+      const created = optimizationRunRepo.create.mock.calls[0][0] as { combinations?: unknown[] };
+      expect(Array.isArray(created.combinations)).toBe(true);
+      expect((created.combinations ?? []).length).toBeGreaterThanOrEqual(1);
     });
   });
 

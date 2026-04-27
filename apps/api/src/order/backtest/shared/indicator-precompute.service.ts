@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PriceTrackingContext } from './price-window';
 
 import {
+  ADXCalculator,
   ATRCalculator,
   BollingerBandsCalculator,
   EMACalculator,
@@ -50,6 +51,7 @@ export class IndicatorPrecomputeService {
     const macdCalc = new MACDCalculator();
     const bbCalc = new BollingerBandsCalculator();
     const atrCalc = new ATRCalculator();
+    const adxCalc = new ADXCalculator();
 
     for (const coin of coins) {
       const summaries = priceCtx.summariesByCoin.get(coin.id);
@@ -164,6 +166,19 @@ export class IndicatorPrecomputeService {
               if (!coinIndicators[key] && avgPrices.length > period) {
                 const raw = atrCalc.calculate({ high: highPrices, low: lowPrices, close: avgPrices, period });
                 coinIndicators[key] = this.padIndicatorArray(raw, avgPrices.length);
+              }
+              break;
+            }
+            case 'ADX': {
+              const periodKey = req.paramKeys[0];
+              const period = resolveParam(periodKey);
+              const key = `adx_${period}`;
+              if (!coinIndicators[key] && avgPrices.length >= period * 2) {
+                const raw = adxCalc.calculate({ high: highPrices, low: lowPrices, close: avgPrices, period });
+                const len = avgPrices.length;
+                coinIndicators[key] = this.padIndicatorArray(raw.adx, len);
+                coinIndicators[`${key}_pdi`] = this.padIndicatorArray(raw.pdi, len);
+                coinIndicators[`${key}_mdi`] = this.padIndicatorArray(raw.mdi, len);
               }
               break;
             }

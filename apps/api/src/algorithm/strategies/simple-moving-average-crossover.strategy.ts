@@ -6,7 +6,17 @@ import { ParameterConstraint } from '../../optimization/interfaces/parameter-spa
 import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
+import {
+  type AdxGateContext,
+  applyAdxGate,
+  getAdxGateConfigDefaults,
+  getAdxGateRequirement,
+  getAdxGateSchema,
+  IIndicatorProvider,
+  IndicatorCalculatorMap,
+  IndicatorRequirement,
+  IndicatorService
+} from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 /**
@@ -54,6 +64,7 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
       const minSeparation = (context.config.minSeparation as number) ?? 0.005;
       const stopLossPercent = (context.config.stopLossPercent as number) ?? 3.5;
       const takeProfitPercent = (context.config.takeProfitPercent as number) ?? 6;
+      const adxConfig = getAdxGateConfigDefaults(context.config);
       const exitConfig: Partial<ExitConfig> = {
         enableStopLoss: true,
         stopLossType: StopLossType.PERCENTAGE,
@@ -109,7 +120,16 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         );
 
         if (signal && signal.confidence >= minConfidence) {
-          signals.push(signal);
+          const adxCtx: AdxGateContext = {
+            indicatorService: this.indicatorService,
+            getPrecomputedSlice: (coinId, key, length) => this.getPrecomputedSlice(context, coinId, key, length),
+            provider: this,
+            logger: this.logger,
+            isBacktest,
+            skipCache
+          };
+          const gated = await applyAdxGate(adxCtx, coin, priceHistory, signal, adxConfig);
+          if (gated) signals.push(gated);
         }
 
         if (!isBacktest) {
@@ -242,11 +262,14 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
     return slowPeriod + 1;
   }
 
-  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
-    return [
+  getIndicatorRequirements(config: Record<string, unknown>): IndicatorRequirement[] {
+    const requirements: IndicatorRequirement[] = [
       { type: 'SMA', paramKeys: ['fastPeriod'], defaultParams: { fastPeriod: 20 } },
       { type: 'SMA', paramKeys: ['slowPeriod'], defaultParams: { slowPeriod: 50 } }
     ];
+    const adxRequirement = getAdxGateRequirement(config);
+    if (adxRequirement) requirements.push(adxRequirement);
+    return requirements;
   }
 
   getParameterConstraints(): ParameterConstraint[] {
@@ -313,7 +336,8 @@ export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy 
         min: 2,
         max: 20,
         description: 'Take-profit distance as percentage of entry price'
-      }
+      },
+      ...getAdxGateSchema()
     };
   }
 
