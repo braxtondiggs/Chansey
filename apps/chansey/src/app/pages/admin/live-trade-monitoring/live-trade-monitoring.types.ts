@@ -46,6 +46,9 @@ export interface LiveTradeSummaryDto {
   totalPnL: number;
   avgSlippageBps: number;
   activeUsers: number;
+  signalsTotal: number;
+  signalsPlaced: number;
+  signalConversionPct: number;
 }
 
 export interface TopPerformingAlgorithmDto {
@@ -56,6 +59,21 @@ export interface TopPerformingAlgorithmDto {
   avgRoi: number;
   avgWinRate: number;
   avgSlippageBps: number;
+  signalConversionPct?: number;
+}
+
+export interface SignalRejectionReasonDto {
+  reasonCode: string;
+  count: number;
+  pct: number;
+}
+
+export interface SignalConversionPanelDto {
+  totalSignals: number;
+  placedSignals: number;
+  rejectedSignals: number;
+  conversionPct: number;
+  topRejectionReasons: SignalRejectionReasonDto[];
 }
 
 export interface RecentOrderDto {
@@ -81,6 +99,7 @@ export interface LiveTradeOverviewDto {
   topAlgorithms: TopPerformingAlgorithmDto[];
   recentOrders: RecentOrderDto[];
   alertsSummary: AlertsSummaryDto;
+  signalConversion: SignalConversionPanelDto;
 }
 
 // Algorithm DTOs
@@ -325,6 +344,8 @@ export interface AlertThresholdsDto {
   totalReturnCritical: number;
   slippageWarningBps: number;
   slippageCriticalBps: number;
+  signalConversionWarning: number;
+  signalConversionCritical: number;
 }
 
 export interface AlertsDto {

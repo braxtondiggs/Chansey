@@ -289,6 +289,14 @@ export class PipelineProgressionService {
     pipeline.stageTransitionedAt = new Date();
     pipeline.recommendation = this.generateRecommendation(pipeline.stageResults);
 
+    const scoring = pipeline.stageResults?.scoring;
+    if (scoring) {
+      pipeline.pipelineScore = scoring.overallScore ?? null;
+      pipeline.scoreGrade = scoring.grade ?? null;
+      pipeline.scoringRegime = scoring.regime ?? null;
+      pipeline.scoreDetails = (scoring.componentScores as unknown as Record<string, unknown>) ?? null;
+    }
+
     await this.pipelineRepository.save(pipeline);
 
     this.logger.log(`Pipeline ${pipeline.id} completed with recommendation: ${pipeline.recommendation}`);
@@ -373,6 +381,8 @@ export class PipelineProgressionService {
     pipeline.recommendation = DeploymentRecommendation.INCONCLUSIVE_RETRY;
     pipeline.pipelineScore = null;
     pipeline.scoreGrade = null;
+    pipeline.scoringRegime = null;
+    pipeline.scoreDetails = null;
     pipeline.failureReason = null;
 
     await this.pipelineRepository.save(pipeline);

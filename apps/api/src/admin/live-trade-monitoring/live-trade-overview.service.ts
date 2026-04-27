@@ -10,10 +10,12 @@ import {
   LiveTradeOverviewDto,
   LiveTradeSummaryDto,
   RecentOrderDto,
+  SignalConversionPanelDto,
   TopPerformingAlgorithmDto
 } from './dto/overview.dto';
 import { LiveTradeAlertsService } from './live-trade-alerts.service';
 import { DateRange, getDateRange, latestPerformanceCondition, toInt, toNumber } from './live-trade-monitoring.utils';
+import { AlgorithmConversionRow, LiveTradeSignalConversionService } from './live-trade-signal-conversion.service';
 
 import { AlgorithmActivation } from '../../algorithm/algorithm-activation.entity';
 import { Algorithm } from '../../algorithm/algorithm.entity';
@@ -28,20 +30,36 @@ export class LiveTradeOverviewService {
     private readonly activationRepo: Repository<AlgorithmActivation>,
     @InjectRepository(Algorithm)
     private readonly algorithmRepo: Repository<Algorithm>,
-    private readonly alertsService: LiveTradeAlertsService
+    private readonly alertsService: LiveTradeAlertsService,
+    private readonly signalConversionService: LiveTradeSignalConversionService
   ) {}
 
   async getOverview(filters: LiveTradeFiltersDto): Promise<LiveTradeOverviewDto> {
     const dateRange = getDateRange(filters);
 
-    const [summary, topAlgorithms, recentOrders, alertsSummary] = await Promise.all([
+    const [summary, topAlgorithms, recentOrders, alertsSummary, signalConversionFull] = await Promise.all([
       this.getSummaryMetrics(filters, dateRange),
       this.getTopAlgorithms(filters, dateRange),
       this.getRecentOrders(10),
-      this.getAlertsSummary(filters)
+      this.getAlertsSummary(filters),
+      this.signalConversionService.getConversionMetrics(filters, dateRange)
     ]);
 
-    return { summary, topAlgorithms, recentOrders, alertsSummary };
+    summary.signalsTotal = signalConversionFull.totalSignals;
+    summary.signalsPlaced = signalConversionFull.placedSignals;
+    summary.signalConversionPct = signalConversionFull.conversionPct;
+
+    this.applyPerAlgorithmConversion(topAlgorithms, signalConversionFull.perAlgorithm);
+
+    const signalConversion: SignalConversionPanelDto = {
+      totalSignals: signalConversionFull.totalSignals,
+      placedSignals: signalConversionFull.placedSignals,
+      rejectedSignals: signalConversionFull.rejectedSignals,
+      conversionPct: signalConversionFull.conversionPct,
+      topRejectionReasons: signalConversionFull.topRejectionReasons
+    };
+
+    return { summary, topAlgorithms, recentOrders, alertsSummary, signalConversion };
   }
 
   private async getSummaryMetrics(filters: LiveTradeFiltersDto, dateRange: DateRange): Promise<LiveTradeSummaryDto> {
@@ -63,8 +81,24 @@ export class LiveTradeOverviewService {
       totalVolume: orderStats.totalVolume,
       totalPnL: orderStats.totalPnL,
       avgSlippageBps: orderStats.avgSlippageBps,
-      activeUsers: toInt(activeUsers?.count)
+      activeUsers: toInt(activeUsers?.count),
+      signalsTotal: 0,
+      signalsPlaced: 0,
+      signalConversionPct: 0
     };
+  }
+
+  private applyPerAlgorithmConversion(
+    topAlgorithms: TopPerformingAlgorithmDto[],
+    perAlgorithm: AlgorithmConversionRow[]
+  ): void {
+    const conversionMap = new Map(perAlgorithm.map((row) => [row.algorithmId, row.conversionPct]));
+    for (const algorithm of topAlgorithms) {
+      const value = conversionMap.get(algorithm.algorithmId);
+      if (value !== undefined) {
+        algorithm.signalConversionPct = value;
+      }
+    }
   }
 
   private async getOrderStats(

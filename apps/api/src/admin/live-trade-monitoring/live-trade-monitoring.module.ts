@@ -7,6 +7,7 @@ import { LiveTradeComparisonService } from './live-trade-comparison.service';
 import { LiveTradeMonitoringController } from './live-trade-monitoring.controller';
 import { LiveTradeOrdersService } from './live-trade-orders.service';
 import { LiveTradeOverviewService } from './live-trade-overview.service';
+import { LiveTradeSignalConversionService } from './live-trade-signal-conversion.service';
 import { LiveTradeSlippageService } from './live-trade-slippage.service';
 import { LiveTradeUserActivityService } from './live-trade-user-activity.service';
 
@@ -18,6 +19,8 @@ import { ExchangeKey } from '../../exchange/exchange-key/exchange-key.entity';
 import { Backtest } from '../../order/backtest/backtest.entity';
 import { SimulatedOrderFill } from '../../order/backtest/simulated-order-fill.entity';
 import { Order } from '../../order/order.entity';
+import { PaperTradingSignal } from '../../order/paper-trading/entities/paper-trading-signal.entity';
+import { LiveTradingSignal } from '../../strategy/entities/live-trading-signal.entity';
 import { User } from '../../users/users.entity';
 
 /**
@@ -38,7 +41,9 @@ import { User } from '../../users/users.entity';
       SimulatedOrderFill,
       Algorithm,
       User,
-      ExchangeKey
+      ExchangeKey,
+      LiveTradingSignal,
+      PaperTradingSignal
     ]),
     forwardRef(() => AlgorithmModule)
   ],
@@ -50,7 +55,8 @@ import { User } from '../../users/users.entity';
     LiveTradeComparisonService,
     LiveTradeSlippageService,
     LiveTradeUserActivityService,
-    LiveTradeAlertsService
+    LiveTradeAlertsService,
+    LiveTradeSignalConversionService
   ]
 })
 export class LiveTradeMonitoringModule {}
