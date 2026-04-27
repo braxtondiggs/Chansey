@@ -37,7 +37,8 @@ import {
   SerializableExitTrackerState,
   SignalFilterChainService,
   SerializableThrottleState,
-  SignalThrottleService
+  SignalThrottleService,
+  THROTTLE_BYPASS_TYPES
 } from '../backtest/shared';
 
 @Injectable()
@@ -116,7 +117,7 @@ export class PaperTradingEngineService {
           );
           signalsReceived = signals.length;
 
-          const filtered = await this.filterSignals(session, signals);
+          const filtered = await this.filterSignals(session, signals, priceMap, now);
 
           const heldCoins = new Set(
             activeAccounts.filter((a) => a.currency !== quoteCurrency && a.total > 1e-8).map((a) => a.currency)
@@ -221,7 +222,7 @@ export class PaperTradingEngineService {
     }
 
     // Filter to symbols the exchange actually prices — implicitly validates against exchange symbol map
-    const validSymbols = allSymbols.filter((s) => s in priceMap);
+    const validSymbols = allSymbols.filter((s) => priceMap[s] !== undefined);
 
     const historicalCandles: Record<string, CandleData[]> = {};
     const candleResults = await Promise.all(
@@ -244,20 +245,43 @@ export class PaperTradingEngineService {
   }
 
   /** Apply throttle + regime filter chain; persist rejected signals. */
-  private async filterSignals(session: PaperTradingSession, signals: TradingSignal[]): Promise<FilteredSignals> {
+  private async filterSignals(
+    session: PaperTradingSession,
+    signals: TradingSignal[],
+    priceMap: Record<string, number>,
+    now: Date
+  ): Promise<FilteredSignals> {
+    // Pre-filter unresolvable symbols BEFORE the throttle so they don't burn
+    // the daily cap. Coins whose realtime ticker returned no price get rejected
+    // here with SYMBOL_RESOLUTION_FAILED instead of cycling through throttle
+    const resolvable: TradingSignal[] = [];
+    for (const signal of signals) {
+      if (priceMap[signal.symbol] !== undefined) {
+        resolvable.push(signal);
+      } else {
+        const entity = await this.signalService.save(session, signal);
+        await this.signalService.markRejected(entity, SignalReasonCode.SYMBOL_RESOLUTION_FAILED);
+      }
+    }
+    if (resolvable.length < signals.length) {
+      this.logger.debug(
+        `Pre-filtered ${signals.length - resolvable.length}/${signals.length} unresolvable signals for session ${session.id}`
+      );
+    }
+
     const throttleConfig = this.signalThrottle.resolveConfig(
       session.algorithmConfig,
       PAPER_TRADING_DEFAULT_THROTTLE_CONFIG
     );
     const { accepted: throttleAccepted, rejected: throttledSignals } = this.throttleService.filter(
       session.id,
-      signals,
+      resolvable,
       throttleConfig,
-      Date.now()
+      now.getTime()
     );
 
     if (throttledSignals.length > 0) {
-      this.logger.debug(`Throttled ${throttledSignals.length}/${signals.length} signals for session ${session.id}`);
+      this.logger.debug(`Throttled ${throttledSignals.length}/${resolvable.length} signals for session ${session.id}`);
       for (const blocked of throttledSignals) {
         const entity = await this.signalService.save(session, blocked);
         await this.signalService.markRejected(entity, SignalReasonCode.SIGNAL_THROTTLED);
@@ -388,6 +412,13 @@ export class PaperTradingEngineService {
           if (result.order) {
             ordersExecuted++;
             signalEntity.status = PaperTradingSignalStatus.SIMULATED;
+
+            // Daily-cap accounting: only count actual executions of non-bypass
+            // signals. STOP_LOSS / TAKE_PROFIT / SHORT_EXIT bypass the cap.
+            const isBypass = signal.originalType !== undefined && THROTTLE_BYPASS_TYPES.has(signal.originalType);
+            if (!isBypass) {
+              this.throttleService.markExecuted(session.id, now.getTime());
+            }
 
             if (signal.action === 'BUY') {
               const [bought] = signal.symbol.split('/');

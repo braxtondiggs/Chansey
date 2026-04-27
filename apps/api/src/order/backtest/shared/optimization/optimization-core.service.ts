@@ -29,7 +29,7 @@ import { PriceTimeframe } from '../price-window/price-timeframe';
 import { CompositeRegimeService } from '../regime/composite-regime.service';
 import { DEFAULT_SLIPPAGE_CONFIG } from '../slippage';
 import { SlippageContextService } from '../slippage-context/slippage-context.service';
-import { SignalThrottleService } from '../throttle';
+import { SignalThrottleService, THROTTLE_BYPASS_TYPES } from '../throttle';
 import { ExecuteTradeFn, MarketData, TradingSignal } from '../types';
 
 /**
@@ -449,6 +449,17 @@ export class OptimizationCoreService {
         throttleConfig,
         timestamp.getTime()
       ).accepted;
+
+      // Backtest parity: filterSignals no longer auto-counts accepted signals
+      // toward the daily cap (paper-trading defers this until actual execution).
+      // Optimization runs deterministically simulate every accepted non-bypass
+      // signal, so count them here to preserve the prior cap-burn-on-accept
+      // accounting that historical optimization scores were calibrated to.
+      for (const accepted of strategySignals) {
+        if (accepted.originalType === undefined || !THROTTLE_BYPASS_TYPES.has(accepted.originalType)) {
+          this.signalThrottle.markExecuted(throttleState, timestamp.getTime());
+        }
+      }
 
       // Regime gate + regime-scaled position sizing
       if (btcCoin) {

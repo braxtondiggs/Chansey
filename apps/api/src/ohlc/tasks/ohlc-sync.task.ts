@@ -150,14 +150,18 @@ export class OHLCSyncTask extends FailSafeWorkerHost implements OnModuleInit {
         }
       }
 
+      // Filter the candidate set to coins that could plausibly be selected — same
+      // hard filter as risk-level selection. Prevents the seeder from creating
+      // mappings for low-cap/illiquid/stablecoin/delisted coins whose Kraken
+      // pair exists in the markets endpoint but has no fetchable OHLC history.
       let coins;
       if (!anyExchangeLoaded || usBaseSymbols.size === 0) {
-        this.logger.warn('Exchange pre-filter unavailable, falling back to getPopularCoins(50)');
-        coins = await this.coinService.getPopularCoins(50);
+        this.logger.warn('Exchange pre-filter unavailable, falling back to top 50 eligible coins by market rank');
+        coins = await this.coinService.getEligibleCoinsForMapping(undefined, 50);
       } else {
-        coins = await this.coinService.getCoinsBySymbols(usBaseSymbols);
+        coins = await this.coinService.getEligibleCoinsForMapping(usBaseSymbols);
         this.logger.log(
-          `Union of US-listed base symbols across ${exchangePriority.length} exchange(s) yielded ${usBaseSymbols.size} symbols, intersected with ${coins.length} coins`
+          `Union of US-listed base symbols across ${exchangePriority.length} exchange(s) yielded ${usBaseSymbols.size} symbols, intersected with ${coins.length} eligible coins`
         );
       }
 

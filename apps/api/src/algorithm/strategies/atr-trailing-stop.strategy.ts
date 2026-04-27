@@ -250,7 +250,10 @@ export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements II
     cooldownBars: number
   ): boolean {
     const currentIndex = prices.length - 1;
-    for (let i = 1; i <= cooldownBars && currentIndex - i >= config.atrPeriod; i++) {
+    // Start at i=2: bar N-1 is the trigger bar that legitimizes the trend-flip entry.
+    // Looking at bars N-2 ... N-1-cooldownBars catches re-entry churn after older exits
+    // without suppressing the very signal we're trying to fire.
+    for (let i = 2; i <= cooldownBars + 1 && currentIndex - i >= config.atrPeriod; i++) {
       const barIndex = currentIndex - i;
       if (!Number.isFinite(atr[barIndex])) continue;
       const lookbackStart = Math.max(0, barIndex - config.atrPeriod);

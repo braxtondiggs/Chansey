@@ -11,7 +11,13 @@ import { CoinSelectionHistoricalPriceTask } from './tasks/coin-selection-histori
 
 import { ActivePositionGuardService } from '../active-position-guard';
 import { Coin } from '../coin/coin.entity';
-import { CoinSelectionBlockedException, CoinSelectionNotFoundException } from '../common/exceptions';
+import { CoinService } from '../coin/coin.service';
+import {
+  CoinNotTradableOnUserExchangeException,
+  CoinSelectionBlockedException,
+  CoinSelectionNotFoundException
+} from '../common/exceptions';
+import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { OHLCService } from '../ohlc/ohlc.service';
 import { User } from '../users/users.entity';
 
@@ -23,6 +29,8 @@ export class CoinSelectionService {
     @InjectRepository(CoinSelection) private readonly coinSelection: Repository<CoinSelection>,
     private readonly historicalPriceTask: CoinSelectionHistoricalPriceTask,
     @Inject(forwardRef(() => OHLCService)) private readonly ohlcService: OHLCService,
+    @Inject(forwardRef(() => CoinService)) private readonly coinService: CoinService,
+    @Inject(forwardRef(() => ExchangeKeyService)) private readonly exchangeKeyService: ExchangeKeyService,
     private readonly activePositionGuard: ActivePositionGuardService
   ) {}
 
@@ -91,6 +99,24 @@ export class CoinSelectionService {
 
     if (existing) {
       return existing;
+    }
+
+    // Tradability gate: applies only to MANUAL adds. AUTOMATIC selections are
+    // already filtered upstream by getCoinsByRiskLevel(userExchangeIds), and
+    // LISTING-source AUTOMATIC adds happen *before* OHLC backfill so they would
+    // always fail this check. WATCHED adds are watchlist-only — exchange
+    // tradability is irrelevant for displaying a coin in a list.
+    if (dto.type === CoinSelectionType.MANUAL) {
+      const userExchangeKeys = await this.exchangeKeyService.findAll(user.id);
+      const userExchangeIds = userExchangeKeys
+        .filter((key) => key.isActive)
+        .map((key) => key.exchange?.id)
+        .filter((id): id is string => typeof id === 'string');
+      const isTradable = await this.coinService.isCoinTradableOnUserExchanges(dto.coinId, userExchangeIds);
+      if (!isTradable) {
+        const coin = await this.coinService.getCoinById(dto.coinId);
+        throw new CoinNotTradableOnUserExchangeException(coin.symbol.toUpperCase(), { coinId: dto.coinId });
+      }
     }
 
     // Create new selection item

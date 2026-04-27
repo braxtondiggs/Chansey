@@ -21,7 +21,7 @@ import { PriceWindowService } from '../price-window';
 import { PriceTimeframe } from '../price-window/price-timeframe';
 import { CompositeRegimeService } from '../regime';
 import { SlippageContextService } from '../slippage-context';
-import { SignalThrottleService } from '../throttle';
+import { SignalThrottleService, THROTTLE_BYPASS_TYPES } from '../throttle';
 import { MarketData, TradingSignal } from '../types';
 
 /** Per-call timeout for algorithm execution */
@@ -228,6 +228,17 @@ export class BacktestBarProcessor {
       ctx.throttleConfig,
       timestamp.getTime()
     ).accepted;
+
+    // Preserve prior cap-burn-on-accept accounting in backtest paths.
+    // filterSignals now defers daily-cap updates to markExecuted so that
+    // paper-trading executor rejections don't lock out the day; backtests
+    // simulate every accepted non-bypass signal deterministically, so we
+    // mark them executed here.
+    for (const accepted of throttled) {
+      if (accepted.originalType === undefined || !THROTTLE_BYPASS_TYPES.has(accepted.originalType)) {
+        this.signalThrottle.markExecuted(ctx.throttleState, timestamp.getTime());
+      }
+    }
 
     // Regime gate + regime-scaled position sizing + concentration filter
     const concentrationCtx = this.compositeRegimeSvc.buildConcentrationContext(ctx.portfolio, marketData);

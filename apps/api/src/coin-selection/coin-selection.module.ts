@@ -9,6 +9,7 @@ import { CoinSelectionHistoricalPriceTask } from './tasks/coin-selection-histori
 
 import { ActivePositionGuardModule } from '../active-position-guard';
 import { CoinModule } from '../coin/coin.module';
+import { ExchangeKeyModule } from '../exchange/exchange-key/exchange-key.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { OHLCModule } from '../ohlc/ohlc.module';
     BullModule.registerQueue({ name: 'coin-selection-queue' }),
     ActivePositionGuardModule,
     forwardRef(() => CoinModule),
+    forwardRef(() => ExchangeKeyModule),
     forwardRef(() => OHLCModule)
   ],
   controllers: [CoinSelectionController],

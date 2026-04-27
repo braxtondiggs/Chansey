@@ -14,7 +14,7 @@ import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../../exchange/
 import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
-import { SignalThrottleService, ThrottleState } from '../backtest/shared/throttle';
+import { SignalThrottleService, THROTTLE_BYPASS_TYPES, ThrottleState } from '../backtest/shared/throttle';
 import { TradeSignalWithExit } from '../interfaces/trade-signal.interface';
 
 export interface GenerateSignalResult {
@@ -95,12 +95,23 @@ export class TradeSignalGeneratorService {
     const throttleState = this.getThrottleState(activation.id);
     const throttleConfig = this.signalThrottle.resolveConfig(activation.config as Record<string, unknown> | undefined);
     const throttleInput = actionableSignals.map((s) => this.signalThrottle.toThrottleSignal(s));
+    const now = Date.now();
     const throttleOutput = this.signalThrottle.filterSignals(
       throttleInput,
       throttleState,
       throttleConfig,
-      Date.now()
+      now
     ).accepted;
+
+    // Preserve prior cap-burn-on-accept behavior. filterSignals now defers
+    // daily-cap accounting so paper-trading executor rejections don't burn
+    // the window; this caller only ever picks one signal anyway, but mark
+    // each acceptance so the rolling 24h count keeps tracking activations.
+    for (const accepted of throttleOutput) {
+      if (accepted.originalType === undefined || !THROTTLE_BYPASS_TYPES.has(accepted.originalType)) {
+        this.signalThrottle.markExecuted(throttleState, now);
+      }
+    }
 
     if (throttleOutput.length === 0) {
       const bestThrottled = actionableSignals.reduce((best, cur) =>

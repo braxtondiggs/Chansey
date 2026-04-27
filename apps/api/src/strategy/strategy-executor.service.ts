@@ -11,7 +11,7 @@ import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.serv
 import { AlgorithmContextBuilder } from '../algorithm/services/algorithm-context-builder.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MetricsService } from '../metrics/metrics.service';
-import { SignalThrottleService, ThrottleState } from '../order/backtest/shared/throttle';
+import { SignalThrottleService, THROTTLE_BYPASS_TYPES, ThrottleState } from '../order/backtest/shared/throttle';
 import { ExitConfig } from '../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../shared/error.util';
 
@@ -132,12 +132,23 @@ export class StrategyExecutorService {
         strategy.parameters as Record<string, unknown> | undefined
       );
       const throttleInput = actionableSignals.map((s) => this.signalThrottle.toThrottleSignal(s));
+      const throttleNow = Date.now();
       const { accepted: throttleOutput, rejected: throttleRejected } = this.signalThrottle.filterSignals(
         throttleInput,
         throttleState,
         throttleConfig,
-        Date.now()
+        throttleNow
       );
+
+      // Preserve prior cap-burn-on-accept behavior. filterSignals now defers
+      // daily-cap accounting so paper-trading executor rejections don't burn
+      // the window; for live strategy activations we count each acceptance
+      // here to keep the rolling 24h cap tracking activation cadence.
+      for (const accepted of throttleOutput) {
+        if (accepted.originalType === undefined || !THROTTLE_BYPASS_TYPES.has(accepted.originalType)) {
+          this.signalThrottle.markExecuted(throttleState, throttleNow);
+        }
+      }
 
       if (throttleRejected.length > 0) {
         this.metricsService.recordSignalThrottleSuppressed(strategy.id, throttleRejected.length);

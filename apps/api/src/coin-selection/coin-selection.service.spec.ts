@@ -7,7 +7,13 @@ import { CoinSelectionService } from './coin-selection.service';
 import { CoinSelectionHistoricalPriceTask } from './tasks/coin-selection-historical-price.task';
 
 import { ActivePositionGuardService } from '../active-position-guard';
-import { CoinSelectionBlockedException, CoinSelectionNotFoundException } from '../common/exceptions';
+import { CoinService } from '../coin/coin.service';
+import {
+  CoinNotTradableOnUserExchangeException,
+  CoinSelectionBlockedException,
+  CoinSelectionNotFoundException
+} from '../common/exceptions';
+import { ExchangeKeyService } from '../exchange/exchange-key/exchange-key.service';
 import { OHLCService } from '../ohlc/ohlc.service';
 
 describe('CoinSelectionService', () => {
@@ -22,6 +28,8 @@ describe('CoinSelectionService', () => {
   let historicalPriceTask: { addHistoricalPriceJob: jest.Mock };
   let ohlcService: { getCandleCount: jest.Mock };
   let activePositionGuard: { getActivePositionCoinIds: jest.Mock };
+  let coinService: { isCoinTradableOnUserExchanges: jest.Mock; getCoinById: jest.Mock };
+  let exchangeKeyService: { findAll: jest.Mock };
 
   const mockUser = { id: 'user-123' };
 
@@ -36,6 +44,14 @@ describe('CoinSelectionService', () => {
     historicalPriceTask = { addHistoricalPriceJob: jest.fn() };
     ohlcService = { getCandleCount: jest.fn() };
     activePositionGuard = { getActivePositionCoinIds: jest.fn() };
+    coinService = {
+      // Default: tradable. Specific tests override to exercise the gate.
+      isCoinTradableOnUserExchanges: jest.fn().mockResolvedValue(true),
+      getCoinById: jest.fn().mockResolvedValue({ id: 'btc', symbol: 'btc' })
+    };
+    exchangeKeyService = {
+      findAll: jest.fn().mockResolvedValue([{ exchange: { id: 'ex-a' }, isActive: true }])
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -43,7 +59,9 @@ describe('CoinSelectionService', () => {
         { provide: getRepositoryToken(CoinSelection), useValue: selectionRepo },
         { provide: CoinSelectionHistoricalPriceTask, useValue: historicalPriceTask },
         { provide: OHLCService, useValue: ohlcService },
-        { provide: ActivePositionGuardService, useValue: activePositionGuard }
+        { provide: ActivePositionGuardService, useValue: activePositionGuard },
+        { provide: CoinService, useValue: coinService },
+        { provide: ExchangeKeyService, useValue: exchangeKeyService }
       ]
     }).compile();
 
@@ -159,6 +177,80 @@ describe('CoinSelectionService', () => {
       await expect(
         service.createCoinSelectionItem({ coinId: 'btc', type: CoinSelectionType.MANUAL } as any, mockUser as any)
       ).resolves.toEqual({ id: 'selection-1' });
+    });
+
+    it('throws CoinNotTradableOnUserExchangeException when the coin fails the tradability gate', async () => {
+      selectionRepo.findOne.mockResolvedValue(null);
+      coinService.isCoinTradableOnUserExchanges.mockResolvedValue(false);
+      coinService.getCoinById.mockResolvedValue({ id: 'spx', symbol: 'spx' });
+
+      await expect(
+        service.createCoinSelectionItem({ coinId: 'spx', type: CoinSelectionType.MANUAL } as any, mockUser as any)
+      ).rejects.toBeInstanceOf(CoinNotTradableOnUserExchangeException);
+
+      expect(selectionRepo.save).not.toHaveBeenCalled();
+      expect(historicalPriceTask.addHistoricalPriceJob).not.toHaveBeenCalled();
+    });
+
+    it('passes the user exchange IDs collected from ExchangeKeyService to the tradability check', async () => {
+      selectionRepo.findOne.mockResolvedValue(null);
+      selectionRepo.create.mockReturnValue({ id: 'selection-1' });
+      selectionRepo.save.mockResolvedValue({ id: 'selection-1' });
+      exchangeKeyService.findAll.mockResolvedValue([
+        { exchange: { id: 'ex-a' }, isActive: true },
+        { exchange: { id: 'ex-b' }, isActive: true },
+        // null exchange relation should be filtered out, not crash
+        { exchange: null, isActive: true }
+      ]);
+      ohlcService.getCandleCount.mockResolvedValue(0);
+
+      await service.createCoinSelectionItem({ coinId: 'btc', type: CoinSelectionType.MANUAL } as any, mockUser as any);
+
+      expect(coinService.isCoinTradableOnUserExchanges).toHaveBeenCalledWith('btc', ['ex-a', 'ex-b']);
+    });
+
+    it('skips the tradability gate for AUTOMATIC selections (already filtered upstream)', async () => {
+      selectionRepo.findOne.mockResolvedValue(null);
+      selectionRepo.create.mockReturnValue({ id: 'selection-auto' });
+      selectionRepo.save.mockResolvedValue({ id: 'selection-auto' });
+      ohlcService.getCandleCount.mockResolvedValue(0);
+
+      await service.createCoinSelectionItem(
+        { coinId: 'btc', type: CoinSelectionType.AUTOMATIC } as any,
+        mockUser as any
+      );
+
+      expect(coinService.isCoinTradableOnUserExchanges).not.toHaveBeenCalled();
+      expect(exchangeKeyService.findAll).not.toHaveBeenCalled();
+      expect(selectionRepo.save).toHaveBeenCalled();
+    });
+
+    it('skips the tradability gate for WATCHED selections (watchlist-only)', async () => {
+      selectionRepo.findOne.mockResolvedValue(null);
+      selectionRepo.create.mockReturnValue({ id: 'selection-watch' });
+      selectionRepo.save.mockResolvedValue({ id: 'selection-watch' });
+      ohlcService.getCandleCount.mockResolvedValue(0);
+
+      await service.createCoinSelectionItem({ coinId: 'btc', type: CoinSelectionType.WATCHED } as any, mockUser as any);
+
+      expect(coinService.isCoinTradableOnUserExchanges).not.toHaveBeenCalled();
+      expect(exchangeKeyService.findAll).not.toHaveBeenCalled();
+      expect(selectionRepo.save).toHaveBeenCalled();
+    });
+
+    it('filters out inactive exchange keys before running the MANUAL tradability gate', async () => {
+      selectionRepo.findOne.mockResolvedValue(null);
+      selectionRepo.create.mockReturnValue({ id: 'selection-1' });
+      selectionRepo.save.mockResolvedValue({ id: 'selection-1' });
+      exchangeKeyService.findAll.mockResolvedValue([
+        { exchange: { id: 'ex-a' }, isActive: true },
+        { exchange: { id: 'ex-b' }, isActive: false }
+      ]);
+      ohlcService.getCandleCount.mockResolvedValue(0);
+
+      await service.createCoinSelectionItem({ coinId: 'btc', type: CoinSelectionType.MANUAL } as any, mockUser as any);
+
+      expect(coinService.isCoinTradableOnUserExchanges).toHaveBeenCalledWith('btc', ['ex-a']);
     });
   });
 

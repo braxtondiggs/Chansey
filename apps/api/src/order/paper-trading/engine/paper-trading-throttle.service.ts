@@ -73,6 +73,18 @@ export class PaperTradingThrottleService {
   }
 
   /**
+   * Record that a signal was actually executed for this session. Call after a
+   * successful trade so the daily cap reflects executions rather than mere
+   * acceptances. Bypass signals (STOP_LOSS / TAKE_PROFIT / SHORT_EXIT) that
+   * fill should NOT call this — they don't count against the daily cap.
+   */
+  markExecuted(sessionId: string, now: number): void {
+    const state = this.throttleStates.get(sessionId);
+    if (!state) return;
+    this.signalThrottle.markExecuted(state, now);
+  }
+
+  /**
    * Sweep state for sessions no longer in the active set. Returns number of
    * entries removed. Used by the engine's orphaned-state sweeper.
    */
