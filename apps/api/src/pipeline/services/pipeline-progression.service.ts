@@ -289,6 +289,14 @@ export class PipelineProgressionService {
     pipeline.stageTransitionedAt = new Date();
     pipeline.recommendation = this.generateRecommendation(pipeline.stageResults);
 
+    const scoring = pipeline.stageResults?.scoring;
+    if (scoring) {
+      pipeline.pipelineScore = scoring.overallScore ?? null;
+      pipeline.scoreGrade = scoring.grade ?? null;
+      pipeline.scoringRegime = scoring.regime ?? undefined;
+      pipeline.scoreDetails = (scoring.componentScores as unknown as Record<string, unknown>) ?? undefined;
+    }
+
     await this.pipelineRepository.save(pipeline);
 
     this.logger.log(`Pipeline ${pipeline.id} completed with recommendation: ${pipeline.recommendation}`);

@@ -604,6 +604,44 @@ describe('PipelineProgressionService', () => {
       expect(ts).toBeGreaterThanOrEqual(before);
       expect(ts).toBeLessThanOrEqual(after);
     });
+
+    it('lifts stageResults.scoring into entity columns when present', async () => {
+      const componentScores = { sharpe: 75, calmar: 60 };
+      const pipeline = makePipeline({
+        stageResults: {
+          scoring: {
+            overallScore: 65,
+            grade: 'C',
+            regime: 'normal',
+            componentScores,
+            regimeModifier: 0,
+            degradation: 10,
+            warnings: [],
+            calculatedAt: '2026-04-27T00:00:00.000Z'
+          }
+        } as never
+      });
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.completePipeline(pipeline);
+
+      expect(pipeline.pipelineScore).toBe(65);
+      expect(pipeline.scoreGrade).toBe('C');
+      expect(pipeline.scoringRegime).toBe('normal');
+      expect(pipeline.scoreDetails).toEqual(componentScores);
+    });
+
+    it('leaves score columns untouched when stageResults.scoring is absent', async () => {
+      const pipeline = makePipeline({ stageResults: {} });
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.completePipeline(pipeline);
+
+      expect(pipeline.pipelineScore).toBeUndefined();
+      expect(pipeline.scoreGrade).toBeUndefined();
+      expect(pipeline.scoringRegime).toBeUndefined();
+      expect(pipeline.scoreDetails).toBeUndefined();
+    });
   });
 
   describe('markInconclusiveAndComplete', () => {
@@ -664,6 +702,29 @@ describe('PipelineProgressionService', () => {
       const ts = (pipeline.stageTransitionedAt as Date).getTime();
       expect(ts).toBeGreaterThanOrEqual(before);
       expect(ts).toBeLessThanOrEqual(after);
+    });
+
+    it('keeps score columns null even when stageResults.scoring is populated', async () => {
+      const pipeline = makePipeline({
+        stageResults: {
+          scoring: {
+            overallScore: 80,
+            grade: 'A',
+            regime: 'normal',
+            componentScores: { sharpe: 90 },
+            regimeModifier: 0,
+            degradation: 5,
+            warnings: [],
+            calculatedAt: '2026-04-27T00:00:00.000Z'
+          }
+        } as never
+      });
+      pipelineRepository.save.mockResolvedValue(pipeline);
+
+      await service.markInconclusiveAndComplete(pipeline, 'starved');
+
+      expect(pipeline.pipelineScore).toBeNull();
+      expect(pipeline.scoreGrade).toBeNull();
     });
   });
 });
