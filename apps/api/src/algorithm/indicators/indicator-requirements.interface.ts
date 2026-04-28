@@ -5,7 +5,7 @@
  */
 export interface IndicatorRequirement {
   /** Indicator type to compute */
-  type: 'EMA' | 'SMA' | 'RSI' | 'MACD' | 'BOLLINGER_BANDS' | 'ATR';
+  type: 'EMA' | 'SMA' | 'RSI' | 'MACD' | 'BOLLINGER_BANDS' | 'ATR' | 'ADX';
   /** Config keys to read the period/params from (e.g. ['fastPeriod']) */
   paramKeys: string[];
   /** Fallback values when config keys are missing */

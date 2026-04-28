@@ -77,9 +77,9 @@ export interface ParallelismConfig {
  */
 export interface OptimizationConfig {
   /** Search method */
-  method: 'grid_search' | 'random_search';
+  method: 'grid_search' | 'random_search' | 'adaptive_search';
 
-  /** Maximum iterations for random search */
+  /** Maximum iterations for random search and adaptive search */
   maxIterations?: number;
 
   /** Maximum combinations to test for grid search */
@@ -108,6 +108,12 @@ export interface OptimizationConfig {
 
   /** User risk level (1-5) for regime gate derivation. Default: 3 */
   riskLevel?: number;
+
+  /**
+   * Deterministic seed for random/adaptive search. When omitted, a fresh seed is generated
+   * at run creation and persisted into the saved config so the run can replay deterministically.
+   */
+  seed?: number;
 }
 
 /**
@@ -140,10 +146,18 @@ export const FAST_OPTIMIZATION_CONFIG: OptimizationConfig = {
 };
 
 /**
- * Thorough optimization configuration for production
+ * Thorough optimization configuration for production.
+ *
+ * Uses adaptive_search to bias sampling toward neighborhoods of top results once
+ * history accumulates — pure random produced 0.2-0.8% robust-combo yield in past runs.
+ * `maxIterations` rather than `maxCombinations` controls budget for adaptive sampling.
+ *
+ * `seed` is left undefined here — the orchestrator generates and persists a fresh seed per run
+ * into `run.config.seed`, making each run reproducible from its stored config.
  */
 export const THOROUGH_OPTIMIZATION_CONFIG: OptimizationConfig = {
-  method: 'grid_search',
+  method: 'adaptive_search',
+  maxIterations: 5000,
   maxCombinations: 5000,
   walkForward: {
     trainDays: 365,

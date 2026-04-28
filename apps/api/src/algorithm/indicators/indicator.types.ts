@@ -8,7 +8,8 @@ export enum IndicatorType {
   SD = 'sd',
   MACD = 'macd',
   BOLLINGER_BANDS = 'bollingerBands',
-  ATR = 'atr'
+  ATR = 'atr',
+  ADX = 'adx'
 }
 
 /**
@@ -103,6 +104,13 @@ export const INDICATOR_METADATA: Record<IndicatorType, IndicatorMetadata> = {
     description: 'Volatility indicator measuring the degree of price movement',
     defaults: { period: 14 },
     category: IndicatorCategory.VOLATILITY
+  },
+  [IndicatorType.ADX]: {
+    type: IndicatorType.ADX,
+    name: 'Average Directional Index',
+    description: 'Trend strength indicator on a 0-100 scale (direction-agnostic)',
+    defaults: { period: 14 },
+    category: IndicatorCategory.TREND
   }
 };
 

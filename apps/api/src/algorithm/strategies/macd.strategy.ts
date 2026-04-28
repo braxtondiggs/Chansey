@@ -6,7 +6,16 @@ import { ParameterConstraint } from '../../optimization/interfaces/parameter-spa
 import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
-import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
+import {
+  type AdxGateContext,
+  applyAdxGate,
+  getAdxGateRequirement,
+  getAdxGateSchema,
+  IIndicatorProvider,
+  IndicatorCalculatorMap,
+  IndicatorRequirement,
+  IndicatorService
+} from '../indicators';
 import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
 
 interface MACDConfig {
@@ -18,6 +27,10 @@ interface MACDConfig {
   minConfidence: number;
   stopLossPercent: number;
   takeProfitPercent: number;
+  adxPeriod: number;
+  minAdx: number;
+  adxStrongMin: number;
+  adxWeakMultiplier: number;
 }
 
 /**
@@ -111,7 +124,16 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
         const tradingSignal = this.generateSignal(coin.id, coin.symbol, priceHistory, macd, signal, histogram, config);
 
         if (tradingSignal && tradingSignal.confidence >= config.minConfidence) {
-          signals.push(tradingSignal);
+          const adxCtx: AdxGateContext = {
+            indicatorService: this.indicatorService,
+            getPrecomputedSlice: (coinId, key, length) => this.getPrecomputedSlice(context, coinId, key, length),
+            provider: this,
+            logger: this.logger,
+            isBacktest,
+            skipCache
+          };
+          const gated = await applyAdxGate(adxCtx, coin, priceHistory, tradingSignal, config);
+          if (gated) signals.push(gated);
         }
 
         if (!isBacktest) {
@@ -148,7 +170,11 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
       minHistogramStrength: (config.minHistogramStrength as number) ?? 0.0001,
       minConfidence: (config.minConfidence as number) ?? 0.6,
       stopLossPercent: (config.stopLossPercent as number) ?? 3.5,
-      takeProfitPercent: (config.takeProfitPercent as number) ?? 6
+      takeProfitPercent: (config.takeProfitPercent as number) ?? 6,
+      adxPeriod: (config.adxPeriod as number) ?? 14,
+      minAdx: (config.minAdx as number) ?? 0,
+      adxStrongMin: (config.adxStrongMin as number) ?? 0,
+      adxWeakMultiplier: (config.adxWeakMultiplier as number) ?? 0.5
     };
   }
 
@@ -363,14 +389,17 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
     return slowPeriod + signalPeriod - 1;
   }
 
-  getIndicatorRequirements(_config: Record<string, unknown>): IndicatorRequirement[] {
-    return [
+  getIndicatorRequirements(config: Record<string, unknown>): IndicatorRequirement[] {
+    const requirements: IndicatorRequirement[] = [
       {
         type: 'MACD',
         paramKeys: ['fastPeriod', 'slowPeriod', 'signalPeriod'],
         defaultParams: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 }
       }
     ];
+    const adxRequirement = getAdxGateRequirement(config);
+    if (adxRequirement) requirements.push(adxRequirement);
+    return requirements;
   }
 
   getParameterConstraints(): ParameterConstraint[] {
@@ -421,7 +450,8 @@ export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorPro
         min: 2,
         max: 20,
         description: 'Take-profit distance as percentage of entry price'
-      }
+      },
+      ...getAdxGateSchema()
     };
   }
 

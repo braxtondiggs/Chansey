@@ -9,3 +9,6 @@ export { IndicatorService } from './indicator.service';
 
 // Calculators (for custom implementations)
 export * from './calculators';
+
+// Shared ADX trend-strength gate
+export * from './adx-gate.util';

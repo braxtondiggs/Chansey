@@ -10,6 +10,7 @@ import { GridSearchService } from './grid-search.service';
 import { OptimizationEvaluationService } from './optimization-evaluation.service';
 import { OptimizationQueryService } from './optimization-query.service';
 import { OptimizationRunSummaryService } from './optimization-run-summary.service';
+import { SearchHistoryRecord, SearchStrategyResolver } from './search-strategies';
 
 import { AlgorithmRegistry } from '../../algorithm/registry/algorithm-registry.service';
 import { PIPELINE_EVENTS } from '../../pipeline/interfaces';
@@ -19,6 +20,7 @@ import { OptimizationResult } from '../entities/optimization-result.entity';
 import { OptimizationProgressDetails, OptimizationRun, OptimizationStatus } from '../entities/optimization-run.entity';
 import { OptimizationConfig, ParameterSpace } from '../interfaces';
 import { calculateImprovement } from '../utils/optimization-scoring.util';
+import { makeRandom, resolveSeed } from '../utils/seeded-random';
 
 /** Bars per day for the 1h candle timeframe used by all optimization runs today. */
 const BARS_PER_DAY_1H = 24;
@@ -40,6 +42,7 @@ export class OptimizationOrchestratorService {
     private readonly dataSource: DataSource,
     private readonly eventEmitter: EventEmitter2,
     private readonly summaryService: OptimizationRunSummaryService,
+    private readonly searchStrategyResolver: SearchStrategyResolver,
     @Inject(forwardRef(() => AlgorithmRegistry))
     private readonly algorithmRegistry: AlgorithmRegistry
   ) {}
@@ -68,6 +71,9 @@ export class OptimizationOrchestratorService {
     }
     if (config.maxIterations !== undefined && config.maxIterations <= 0) {
       errors.push('maxIterations must be positive');
+    }
+    if (config.seed !== undefined && (!Number.isInteger(config.seed) || config.seed < 0)) {
+      errors.push('seed must be a non-negative integer');
     }
 
     if (config.earlyStop?.enabled) {
@@ -112,19 +118,29 @@ export class OptimizationOrchestratorService {
       throw new NotFoundException(`Strategy config ${strategyConfigId} not found`);
     }
 
+    // Resolve the seed once and persist it into the saved config so the run can replay
+    // deterministically — random/adaptive search consume it from `run.config.seed`.
+    config = { ...config, seed: resolveSeed(config.seed) };
+    const random = makeRandom(config.seed as number);
+
     const reachabilityFilter = await this.buildReachabilityFilter(strategyConfig.algorithmId, config);
 
-    const combinations =
-      config.method === 'random_search'
-        ? this.gridSearchService.generateRandomCombinations(
-            parameterSpace,
-            config.maxIterations || 100,
-            reachabilityFilter
-          )
-        : this.gridSearchService.generateCombinations(parameterSpace, config.maxCombinations, reachabilityFilter);
+    const searchStrategy = this.searchStrategyResolver.resolve(config.method);
+    // Grid search may run unbounded (undefined maxCombinations); random/adaptive default to 100.
+    const targetCount = config.method === 'grid_search' ? config.maxCombinations : (config.maxIterations ?? 100);
+    // Adaptive search seeds with the baseline only; static search returns the full enumerated set.
+    // Either way `combinations` is non-empty here, which `executeOptimization` and
+    // OptimizationRecoveryService rely on when resuming a stalled run.
+    const combinations = searchStrategy.generateInitialCombinations(parameterSpace, targetCount, {
+      reachabilityFilter,
+      random
+    });
 
     const baselineCombination = combinations.find((c) => c.isBaseline);
     const baselineParameters = baselineCombination?.values || this.getDefaultParameters(parameterSpace);
+
+    // Static methods enumerate up front; adaptive grows incrementally up to the target budget.
+    const totalCombinations = searchStrategy.isStatic ? combinations.length : targetCount;
 
     const run = this.optimizationRunRepository.create({
       strategyConfigId,
@@ -132,7 +148,7 @@ export class OptimizationOrchestratorService {
       config,
       parameterSpace,
       baselineParameters,
-      totalCombinations: combinations.length,
+      totalCombinations,
       combinationsTested: 0,
       combinations
     });
@@ -235,16 +251,60 @@ export class OptimizationOrchestratorService {
       };
 
       const maxConcurrent = run.config.parallelism?.maxConcurrentBacktests || 3;
+      const searchStrategy = this.searchStrategyResolver.resolve(run.config.method);
+      const totalBudget = run.totalCombinations;
+      const history: SearchHistoryRecord[] = [];
+      // `startOptimization` always populates `run.config.seed`; resolveSeed() guards against the
+      // theoretical case where a run document was created outside that path.
+      const random = makeRandom(resolveSeed(run.config.seed));
 
-      for (let batchStart = 0; batchStart < combinations.length; batchStart += maxConcurrent) {
+      // Seed history from prior results so adaptive search retains its bias on resume.
+      if (isResume && !searchStrategy.isStatic) {
+        const priorResults = await this.optimizationResultRepository.find({
+          where: { optimizationRunId: runId },
+          select: ['combinationIndex', 'avgTestScore', 'parameters', 'isBaseline']
+        });
+        for (const r of priorResults) {
+          history.push({
+            combinationIndex: r.combinationIndex,
+            values: r.parameters as Record<string, number | string | boolean>,
+            avgTestScore: r.avgTestScore,
+            isBaseline: r.isBaseline
+          });
+        }
+      }
+
+      while (combinationsProcessed < totalBudget) {
         const currentRun = await this.optimizationRunRepository.findOne({ where: { id: runId } });
         if (currentRun?.status === OptimizationStatus.CANCELLED) {
           this.logger.log(`Optimization run ${runId} was cancelled`);
           return;
         }
 
-        const batchEnd = Math.min(batchStart + maxConcurrent, combinations.length);
-        const batch = combinations.slice(batchStart, batchEnd);
+        // Static methods consume the pre-built combinations array; adaptive generates per batch.
+        let batch: typeof combinations;
+        if (searchStrategy.isStatic) {
+          if (combinations.length === 0) break;
+          batch = combinations.splice(0, maxConcurrent);
+        } else {
+          const remaining = totalBudget - combinationsProcessed;
+          if (remaining <= 0) break;
+          // Drain any seed combinations (e.g. baseline) first, then generate new ones.
+          if (combinations.length > 0) {
+            batch = combinations.splice(0, Math.min(maxConcurrent, combinations.length));
+          } else {
+            // Use combinationsProcessed as the next index — combinations index `i` once `i` items
+            // have been processed by combination index counts from 0.
+            const startIdx = combinationsProcessed;
+            batch = searchStrategy.generateNextBatch(run.parameterSpace, history, maxConcurrent, remaining, startIdx, {
+              random
+            });
+            if (batch.length === 0) {
+              this.logger.warn(`Adaptive search exhausted parameter space at ${combinationsProcessed} combinations`);
+              break;
+            }
+          }
+        }
 
         const batchResults = await Promise.all(
           batch.map(async (combination) => {
@@ -288,6 +348,13 @@ export class OptimizationOrchestratorService {
             });
 
             await manager.save(OptimizationResult, result);
+
+            history.push({
+              combinationIndex: combination.index,
+              values: combination.values as Record<string, number | string | boolean>,
+              avgTestScore: sanitized.avgTestScore ?? 0,
+              isBaseline: combination.isBaseline
+            });
 
             if (combination.isBaseline) {
               baselineScore = evaluationResult.avgTestScore;

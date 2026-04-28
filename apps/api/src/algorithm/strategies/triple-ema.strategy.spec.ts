@@ -35,7 +35,8 @@ describe('TripleEMAStrategy', () => {
       calculateMACD: jest.fn(),
       calculateBollingerBands: jest.fn(),
       calculateATR: jest.fn(),
-      calculateSD: jest.fn()
+      calculateSD: jest.fn(),
+      calculateADX: jest.fn()
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -390,6 +391,150 @@ describe('TripleEMAStrategy', () => {
 
       expect(result.success).toBe(true);
       expect(result.signals).toHaveLength(0);
+    });
+  });
+
+  describe('ADX gate', () => {
+    const buildBullishAlignmentContext = (configOverrides: Record<string, unknown> = {}) => {
+      const prices = createMockPrices(70);
+      const fastEMA = Array(70).fill(NaN);
+      const mediumEMA = Array(70).fill(NaN);
+      const slowEMA = Array(70).fill(NaN);
+      for (let i = 55; i < 70; i++) {
+        slowEMA[i] = 95;
+        mediumEMA[i] = 98;
+        fastEMA[i] = 100;
+      }
+      fastEMA[68] = 97;
+      mediumEMA[68] = 98;
+      slowEMA[68] = 95;
+      fastEMA[69] = 102;
+      mediumEMA[69] = 99;
+      slowEMA[69] = 96;
+
+      indicatorService.calculateEMA
+        .mockResolvedValueOnce({ values: fastEMA, validCount: 60, period: 8, fromCache: false })
+        .mockResolvedValueOnce({ values: mediumEMA, validCount: 60, period: 21, fromCache: false })
+        .mockResolvedValueOnce({ values: slowEMA, validCount: 60, period: 55, fromCache: false });
+
+      return {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { minConfidence: 0, ...configOverrides }
+      } as AlgorithmContext;
+    };
+
+    it('does not call calculateADX when minAdx defaults to 0', async () => {
+      const result = await strategy.execute(buildBullishAlignmentContext());
+      expect(result.success).toBe(true);
+      expect(indicatorService.calculateADX).not.toHaveBeenCalled();
+    });
+
+    it('blocks signal when ADX is below threshold', async () => {
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(69).fill(NaN), 10],
+        pdi: [...Array(69).fill(NaN), 18],
+        mdi: [...Array(69).fill(NaN), 22],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const result = await strategy.execute(buildBullishAlignmentContext({ minAdx: 25 }));
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+      expect(indicatorService.calculateADX).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes signal when ADX is above threshold', async () => {
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(69).fill(NaN), 35],
+        pdi: [...Array(69).fill(NaN), 30],
+        mdi: [...Array(69).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      const result = await strategy.execute(buildBullishAlignmentContext({ minAdx: 25 }));
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].type).toBe(SignalType.BUY);
+    });
+  });
+
+  describe('ADX tiered gate (adxStrongMin)', () => {
+    const setupBullishAlignmentContext = (adxValue: number, configOverrides: Record<string, unknown> = {}) => {
+      const prices = createMockPrices(70);
+      const fastEMA = Array(70).fill(NaN);
+      const mediumEMA = Array(70).fill(NaN);
+      const slowEMA = Array(70).fill(NaN);
+      for (let i = 55; i < 70; i++) {
+        slowEMA[i] = 95;
+        mediumEMA[i] = 98;
+        fastEMA[i] = 100;
+      }
+      fastEMA[68] = 97;
+      mediumEMA[68] = 98;
+      slowEMA[68] = 95;
+      fastEMA[69] = 102;
+      mediumEMA[69] = 99;
+      slowEMA[69] = 96;
+
+      indicatorService.calculateEMA
+        .mockResolvedValueOnce({ values: fastEMA, validCount: 60, period: 8, fromCache: false })
+        .mockResolvedValueOnce({ values: mediumEMA, validCount: 60, period: 21, fromCache: false })
+        .mockResolvedValueOnce({ values: slowEMA, validCount: 60, period: 55, fromCache: false });
+
+      indicatorService.calculateADX.mockResolvedValue({
+        values: [...Array(69).fill(NaN), adxValue],
+        pdi: [...Array(69).fill(NaN), 28],
+        mdi: [...Array(69).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+
+      return {
+        coins: [{ id: 'btc', symbol: 'BTC', name: 'Bitcoin' }] as any,
+        priceData: { btc: prices as any },
+        timestamp: new Date(),
+        config: { minConfidence: 0, ...configOverrides }
+      } as AlgorithmContext;
+    };
+
+    it('preserves baseline strength when adxStrongMin defaults to 0', async () => {
+      const baseline = await strategy.execute(setupBullishAlignmentContext(22, {})); // gate disabled
+      jest.clearAllMocks();
+      const result = await strategy.execute(setupBullishAlignmentContext(22, { minAdx: 20 }));
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baseline.signals[0].strength, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('weak');
+      expect(result.signals[0].metadata?.adx).toBe(22);
+    });
+
+    it('emits weak-tier signal at half strength when minAdx ≤ ADX < adxStrongMin', async () => {
+      const baseline = await strategy.execute(setupBullishAlignmentContext(22, {}));
+      jest.clearAllMocks();
+      const result = await strategy.execute(
+        setupBullishAlignmentContext(22, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 })
+      );
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baseline.signals[0].strength * 0.5, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('weak');
+    });
+
+    it('emits strong-tier signal at full strength when ADX ≥ adxStrongMin', async () => {
+      const baseline = await strategy.execute(setupBullishAlignmentContext(30, {}));
+      jest.clearAllMocks();
+      const result = await strategy.execute(
+        setupBullishAlignmentContext(30, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 })
+      );
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baseline.signals[0].strength, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('strong');
+      expect(result.signals[0].metadata?.adx).toBe(30);
+      expect(result.signals[0].metadata?.pdi).toBe(28);
+      expect(result.signals[0].metadata?.mdi).toBe(12);
     });
   });
 });

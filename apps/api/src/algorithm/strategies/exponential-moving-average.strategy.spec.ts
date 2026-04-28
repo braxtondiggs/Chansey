@@ -37,7 +37,8 @@ describe('ExponentialMovingAverageStrategy', () => {
       calculateMACD: jest.fn(),
       calculateBollingerBands: jest.fn(),
       calculateATR: jest.fn(),
-      calculateSD: jest.fn()
+      calculateSD: jest.fn(),
+      calculateADX: jest.fn()
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -390,6 +391,155 @@ describe('ExponentialMovingAverageStrategy', () => {
       };
 
       expect(strategy.canExecute(context)).toBe(false);
+    });
+  });
+
+  describe('ADX gate', () => {
+    const buildBullishCrossover = () => {
+      const prices = createMockPrices(30, 100, 105);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockEmaValues(fast, slow);
+      return prices;
+    };
+
+    it('does not call calculateADX when minAdx is 0 (default)', async () => {
+      const prices = buildBullishCrossover();
+      const result = await strategy.execute(buildContext(prices));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+      expect(indicatorService.calculateADX).not.toHaveBeenCalled();
+    });
+
+    it('blocks the signal when ADX is below the configured threshold', async () => {
+      const prices = buildBullishCrossover();
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(29).fill(NaN), 15],
+        pdi: [...Array(29).fill(NaN), 18],
+        mdi: [...Array(29).fill(NaN), 22],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+
+      const result = await strategy.execute(buildContext(prices, { minAdx: 25 }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(0);
+      expect(indicatorService.calculateADX).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows the signal when ADX is above the configured threshold', async () => {
+      const prices = buildBullishCrossover();
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(29).fill(NaN), 35],
+        pdi: [...Array(29).fill(NaN), 30],
+        mdi: [...Array(29).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+
+      const result = await strategy.execute(buildContext(prices, { minAdx: 25 }));
+
+      expect(result.success).toBe(true);
+      expect(result.signals).toHaveLength(1);
+    });
+  });
+
+  describe('ADX tiered gate (adxStrongMin)', () => {
+    /** Build prices + EMA mocks for a fresh bullish crossover. Mocks are reset between calls. */
+    const buildScenario = (adxValue: number) => {
+      const prices = createMockPrices(30, 100, 105);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockEmaValues(fast, slow);
+      indicatorService.calculateADX.mockResolvedValueOnce({
+        values: [...Array(29).fill(NaN), adxValue],
+        pdi: [...Array(29).fill(NaN), 28],
+        mdi: [...Array(29).fill(NaN), 12],
+        validCount: 1,
+        period: 14,
+        fromCache: false
+      });
+      return prices;
+    };
+
+    it('preserves baseline strength when adxStrongMin defaults to 0', async () => {
+      // Baseline (gate disabled)
+      const baselinePrices = createMockPrices(30, 100, 105);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockEmaValues(fast, slow);
+      const baseline = await strategy.execute(buildContext(baselinePrices));
+      const baselineStrength = baseline.signals[0].strength;
+
+      jest.clearAllMocks();
+      const prices = buildScenario(22);
+      const result = await strategy.execute(buildContext(prices, { minAdx: 20 }));
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baselineStrength, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('weak');
+      expect(result.signals[0].metadata?.adx).toBe(22);
+    });
+
+    it('emits weak-tier signal at half strength when minAdx ≤ ADX < adxStrongMin', async () => {
+      const baselinePrices = createMockPrices(30, 100, 105);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockEmaValues(fast, slow);
+      const baseline = await strategy.execute(buildContext(baselinePrices));
+      const baselineStrength = baseline.signals[0].strength;
+
+      jest.clearAllMocks();
+      const prices = buildScenario(22);
+      const result = await strategy.execute(
+        buildContext(prices, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 })
+      );
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baselineStrength * 0.5, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('weak');
+    });
+
+    it('emits strong-tier signal at full strength when ADX ≥ adxStrongMin', async () => {
+      const baselinePrices = createMockPrices(30, 100, 105);
+      const fast = Array(30).fill(NaN);
+      const slow = Array(30).fill(NaN);
+      fast[28] = 10;
+      slow[28] = 11;
+      fast[29] = 12;
+      slow[29] = 11;
+      mockEmaValues(fast, slow);
+      const baseline = await strategy.execute(buildContext(baselinePrices));
+
+      jest.clearAllMocks();
+      const prices = buildScenario(30);
+      const result = await strategy.execute(
+        buildContext(prices, { minAdx: 20, adxStrongMin: 25, adxWeakMultiplier: 0.5 })
+      );
+      expect(result.signals).toHaveLength(1);
+      expect(result.signals[0].strength).toBeCloseTo(baseline.signals[0].strength, 5);
+      expect(result.signals[0].metadata?.trendStrength).toBe('strong');
+      expect(result.signals[0].metadata?.adx).toBe(30);
+      expect(result.signals[0].metadata?.pdi).toBe(28);
+      expect(result.signals[0].metadata?.mdi).toBe(12);
     });
   });
 });
