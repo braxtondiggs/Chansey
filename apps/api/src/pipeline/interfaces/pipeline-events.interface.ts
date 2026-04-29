@@ -1,4 +1,8 @@
+import { type CompositeRegimeType, type MarketRegimeType } from '@chansey/api-interfaces';
+
 import { type PipelineStage, type PipelineStatus } from './pipeline-config.interface';
+
+import { type TradingStyle } from '../../algorithm/interfaces/trading-style.enum';
 
 /**
  * Event payload for optimization completion
@@ -133,6 +137,21 @@ export interface PipelineWebSocketPayload {
 }
 
 /**
+ * Event payload emitted when the regime fitness gate skips a strategy
+ * before any pipeline is created.
+ */
+export interface PipelineRegimeSkippedEvent {
+  userId: string;
+  strategyConfigId: string;
+  strategyId: string;
+  strategyName: string;
+  style?: TradingStyle;
+  universeRegime: CompositeRegimeType;
+  perCoin: Record<string, { composite: CompositeRegimeType; volatility: MarketRegimeType | null }>;
+  reason: string;
+}
+
+/**
  * Event names used in the event emitter
  */
 export const PIPELINE_EVENTS = {
@@ -147,5 +166,6 @@ export const PIPELINE_EVENTS = {
   PIPELINE_PROGRESS: 'pipeline.progress',
   PIPELINE_COMPLETED: 'pipeline.completed',
   PIPELINE_FAILED: 'pipeline.failed',
-  PIPELINE_REJECTED: 'pipeline.rejected'
+  PIPELINE_REJECTED: 'pipeline.rejected',
+  PIPELINE_REGIME_SKIPPED: 'pipeline.regime-skipped'
 } as const;

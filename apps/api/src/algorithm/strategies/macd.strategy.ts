@@ -16,7 +16,14 @@ import {
   IndicatorRequirement,
   IndicatorService
 } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import {
+  AlgorithmContext,
+  AlgorithmResult,
+  ChartDataPoint,
+  SignalType,
+  TradingSignal,
+  TradingStyle
+} from '../interfaces';
 
 interface MACDConfig {
   fastPeriod: number;
@@ -44,6 +51,7 @@ interface MACDConfig {
 @Injectable()
 export class MACDStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'macd-crossover-001';
+  readonly tradingStyle = TradingStyle.TREND_FOLLOWING;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,

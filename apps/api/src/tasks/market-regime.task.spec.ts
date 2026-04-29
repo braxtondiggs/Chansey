@@ -1,6 +1,7 @@
 import { MarketRegimeTask } from './market-regime.task';
 
 import type { CoinService } from '../coin/coin.service';
+import type { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import type { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import type { MarketRegimeService } from '../market-regime/market-regime.service';
 import type { OHLCService } from '../ohlc/ohlc.service';
@@ -14,6 +15,7 @@ describe('MarketRegimeTask', () => {
   let ohlcService: jest.Mocked<Pick<OHLCService, 'findAllByDay'>>;
   let coinService: jest.Mocked<Pick<CoinService, 'getCoinBySymbol'>>;
   let backfillService: jest.Mocked<Pick<OHLCBackfillService, 'getProgress' | 'startBackfill'>>;
+  let coinSelectionService: jest.Mocked<Pick<CoinSelectionService, 'getEligibleSymbolsForRegimeTracking'>>;
 
   const mockCoin = { id: 'btc-id' } as any;
 
@@ -43,13 +45,18 @@ describe('MarketRegimeTask', () => {
       startBackfill: jest.fn().mockResolvedValue('job-id')
     } as any;
 
+    coinSelectionService = {
+      getEligibleSymbolsForRegimeTracking: jest.fn().mockResolvedValue(['ETH', 'SOL', 'POL'])
+    } as any;
+
     task = new MarketRegimeTask(
       regimeQueue as any,
       marketRegimeService as any,
       compositeRegimeService as any,
       ohlcService as any,
       coinService as any,
-      backfillService as any
+      backfillService as any,
+      coinSelectionService as any
     );
   });
 
@@ -185,7 +192,7 @@ describe('MarketRegimeTask', () => {
   });
 
   describe('scheduleRegimeCheck', () => {
-    it('queues all 4 monitored assets with correct job config', async () => {
+    it('queues all dynamically resolved assets plus BTC with correct job config', async () => {
       await task.scheduleRegimeCheck();
 
       expect(regimeQueue.add).toHaveBeenCalledTimes(4);
@@ -201,6 +208,7 @@ describe('MarketRegimeTask', () => {
           })
         );
       }
+      expect(coinSelectionService.getEligibleSymbolsForRegimeTracking).toHaveBeenCalled();
       expect(compositeRegimeService.refresh).toHaveBeenCalled();
     });
 
@@ -208,6 +216,45 @@ describe('MarketRegimeTask', () => {
       compositeRegimeService.refresh.mockRejectedValue(new Error('refresh failed'));
 
       await expect(task.scheduleRegimeCheck()).resolves.not.toThrow();
+    });
+
+    it('expands regime tracking to small/mid-cap symbols from coin_selection', async () => {
+      coinSelectionService.getEligibleSymbolsForRegimeTracking.mockResolvedValue(['PENGU', 'JUP', 'ALGO']);
+
+      await task.scheduleRegimeCheck();
+
+      // Expects PENGU, JUP, ALGO + BTC (auto-unioned)
+      expect(regimeQueue.add).toHaveBeenCalledTimes(4);
+      for (const asset of ['BTC', 'PENGU', 'JUP', 'ALGO']) {
+        expect(regimeQueue.add).toHaveBeenCalledWith(
+          'check-regime',
+          expect.objectContaining({ asset }),
+          expect.any(Object)
+        );
+      }
+    });
+
+    it('falls back to default hardcoded set when coin selection service throws', async () => {
+      coinSelectionService.getEligibleSymbolsForRegimeTracking.mockRejectedValue(new Error('DB down'));
+
+      await task.scheduleRegimeCheck();
+
+      expect(regimeQueue.add).toHaveBeenCalledTimes(4);
+      for (const asset of ['BTC', 'ETH', 'SOL', 'POL']) {
+        expect(regimeQueue.add).toHaveBeenCalledWith(
+          'check-regime',
+          expect.objectContaining({ asset }),
+          expect.any(Object)
+        );
+      }
+    });
+
+    it('does not duplicate BTC when coin_selection already includes it', async () => {
+      coinSelectionService.getEligibleSymbolsForRegimeTracking.mockResolvedValue(['BTC', 'ETH']);
+
+      await task.scheduleRegimeCheck();
+
+      expect(regimeQueue.add).toHaveBeenCalledTimes(2);
     });
   });
 

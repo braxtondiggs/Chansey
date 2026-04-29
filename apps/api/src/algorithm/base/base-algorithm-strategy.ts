@@ -8,7 +8,7 @@ import { ExitConfig } from '../../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../../shared/error.util';
 import { Algorithm, AlgorithmStatus } from '../algorithm.entity';
 import { IndicatorRequirement } from '../indicators/indicator-requirements.interface';
-import { AlgorithmContext, AlgorithmResult, AlgorithmStrategy } from '../interfaces';
+import { AlgorithmContext, AlgorithmResult, AlgorithmStrategy, TradingStyle } from '../interfaces';
 
 /**
  * Abstract base class for all algorithm implementations
@@ -22,6 +22,9 @@ export abstract class BaseAlgorithmStrategy implements AlgorithmStrategy {
 
   /** Strategy ID - must match strategyId in the Algorithm database record */
   abstract readonly id: string;
+
+  /** Trading style — drives the regime fitness gate's BLOCK / ALLOW decisions. */
+  abstract readonly tradingStyle: TradingStyle;
 
   get name(): string {
     return this.algorithm?.name ?? this.constructor.name;

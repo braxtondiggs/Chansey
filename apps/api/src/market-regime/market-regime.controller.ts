@@ -36,10 +36,23 @@ export class MarketRegimeController {
   }
 
   @Get('composite/current')
-  @ApiOperation({ summary: 'Get current composite regime (volatility + trend)' })
+  @ApiOperation({ summary: 'Get current BTC-global composite regime status' })
   @ApiResponse({ status: 200, description: 'Composite regime status retrieved' })
   getCompositeRegime() {
     return this.compositeRegimeService.getStatus();
+  }
+
+  @Get('composite/current/:symbol')
+  @ApiOperation({ summary: 'Get current per-coin composite regime' })
+  @ApiResponse({ status: 200, description: 'Per-coin composite regime retrieved' })
+  async getCompositeRegimeForSymbol(@Param('symbol') symbol: string) {
+    const upper = symbol.toUpperCase();
+    return {
+      symbol: upper,
+      compositeRegime: await this.compositeRegimeService.getCompositeRegimeForCoin(upper),
+      volatilityRegime: this.compositeRegimeService.getVolatilityRegimeForCoin(upper),
+      trendAboveSma: this.compositeRegimeService.getTrendAboveSma()
+    };
   }
 
   @Get('history/:asset')

@@ -34,7 +34,14 @@ import {
   IndicatorRequirement,
   IndicatorService
 } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import {
+  AlgorithmContext,
+  AlgorithmResult,
+  ChartDataPoint,
+  SignalType,
+  TradingSignal,
+  TradingStyle
+} from '../interfaces';
 
 /**
  * RSI Divergence Strategy
@@ -49,6 +56,7 @@ import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingS
 @Injectable()
 export class RSIDivergenceStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'rsi-divergence-001';
+  readonly tradingStyle = TradingStyle.MEAN_REVERTING;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,

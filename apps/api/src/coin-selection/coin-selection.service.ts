@@ -50,6 +50,21 @@ export class CoinSelectionService {
     return [...coinMap.values()];
   }
 
+  /**
+   * Returns distinct uppercase symbols across all users' coin selections
+   * (AUTOMATIC + MANUAL + WATCHED). Used by the market-regime task to expand
+   * the per-coin regime tracking set beyond a hardcoded list.
+   */
+  async getEligibleSymbolsForRegimeTracking(): Promise<string[]> {
+    const rows = await this.coinSelection
+      .createQueryBuilder('coinSelection')
+      .innerJoin('coinSelection.coin', 'coin')
+      .select('DISTINCT UPPER(coin.symbol)', 'symbol')
+      .where('coin.symbol IS NOT NULL')
+      .getRawMany<{ symbol: string }>();
+    return rows.map(({ symbol }) => symbol);
+  }
+
   async getCoinSelectionById(selectionId: string, userId: string): Promise<CoinSelection> {
     const selection = await this.coinSelection.findOne({
       where: { id: selectionId, user: { id: userId } },

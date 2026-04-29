@@ -67,6 +67,10 @@ export class CompositeRegimeService implements OnModuleInit {
   private consecutiveFailures = 0;
   private staleNotificationEmitted = false;
   private staleLogEmitted = false;
+  /** Per-coin composite regime cache, keyed by uppercase symbol. Reuses 4h fallback TTL. */
+  private perCoinCache = new Map<string, CachedComposite>();
+  /** Per-coin "no regime row yet" cache. Same 4h TTL as perCoinCache. */
+  private perCoinCacheMisses = new Map<string, number>();
 
   constructor(
     private readonly marketRegimeService: MarketRegimeService,
@@ -140,6 +144,85 @@ export class CompositeRegimeService implements OnModuleInit {
    */
   isOverrideActive(): boolean {
     return this.override?.active ?? false;
+  }
+
+  /**
+   * Cache age + staleness flag for the BTC-global composite. Used by the
+   * regime fitness gate to decide ALLOW_STALE.
+   */
+  getCacheStatus(): { stale: boolean; ageMs: number } {
+    if (!this.cached) return { stale: true, ageMs: Number.MAX_SAFE_INTEGER };
+    const ageMs = Date.now() - this.cached.updatedAt.getTime();
+    return { stale: ageMs > STALE_FALLBACK_MS, ageMs };
+  }
+
+  /**
+   * Per-coin composite regime: combines the coin's volatility regime with the
+   * BTC-global trend filter. The trend filter is a macro signal, so it applies
+   * to every coin regardless of which asset's volatility we're combining.
+   *
+   * Falls back to the BTC-global composite when:
+   *   - the symbol is BTC (short-circuit)
+   *   - no `market_regimes` row exists yet for the coin
+   *   - any error occurs during lookup (fail-open)
+   *
+   * Cached entries within 4h are returned without re-querying.
+   */
+  async getCompositeRegimeForCoin(symbol: string): Promise<CompositeRegimeType> {
+    const upper = symbol.toUpperCase();
+    if (upper === 'BTC') return this.getCompositeRegime();
+
+    const existing = this.perCoinCache.get(upper);
+    if (existing && Date.now() - existing.updatedAt.getTime() < STALE_FALLBACK_MS) {
+      return existing.regime;
+    }
+
+    const missAt = this.perCoinCacheMisses.get(upper);
+    if (missAt) {
+      if (Date.now() - missAt < STALE_FALLBACK_MS) {
+        return this.getCompositeRegime();
+      }
+      this.perCoinCacheMisses.delete(upper);
+    }
+
+    try {
+      const coinRegime = await this.marketRegimeService.getCurrentRegime(upper);
+      if (!coinRegime) {
+        this.perCoinCacheMisses.set(upper, Date.now());
+        return this.getCompositeRegime();
+      }
+      const trendAboveSma = this.getTrendAboveSma();
+      const composite = this.classify(coinRegime.regime, trendAboveSma);
+
+      this.perCoinCache.set(upper, {
+        regime: composite,
+        volatilityRegime: coinRegime.regime,
+        trendAboveSma,
+        btcPrice: this.cached?.btcPrice ?? 0,
+        sma200Value: this.cached?.sma200Value ?? 0,
+        updatedAt: new Date()
+      });
+      this.perCoinCacheMisses.delete(upper);
+      return composite;
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Per-coin composite for ${upper} failed: ${err.message}`);
+      return this.getCompositeRegime();
+    }
+  }
+
+  /**
+   * Per-coin volatility regime — the underlying `MarketRegimeType` used to
+   * compute the composite. Returns null when no data is available so callers
+   * can decide between fallback strategies.
+   *
+   * Reads from the per-coin cache populated by `getCompositeRegimeForCoin`.
+   * For BTC, returns the global cached volatility regime.
+   */
+  getVolatilityRegimeForCoin(symbol: string): MarketRegimeType | null {
+    const upper = symbol.toUpperCase();
+    if (upper === 'BTC') return this.cached?.volatilityRegime ?? null;
+    return this.perCoinCache.get(upper)?.volatilityRegime ?? null;
   }
 
   /**

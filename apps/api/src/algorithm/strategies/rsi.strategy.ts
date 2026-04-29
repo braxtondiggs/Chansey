@@ -7,7 +7,14 @@ import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import {
+  AlgorithmContext,
+  AlgorithmResult,
+  ChartDataPoint,
+  SignalType,
+  TradingSignal,
+  TradingStyle
+} from '../interfaces';
 
 interface RSIConfig {
   period: number;
@@ -29,6 +36,7 @@ interface RSIConfig {
 @Injectable()
 export class RSIStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'rsi-momentum-001';
+  readonly tradingStyle = TradingStyle.MEAN_REVERTING;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,

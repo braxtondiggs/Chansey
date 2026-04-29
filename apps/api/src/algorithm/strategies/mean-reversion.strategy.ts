@@ -13,7 +13,14 @@ import {
   IndicatorRequirement,
   IndicatorService
 } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import {
+  AlgorithmContext,
+  AlgorithmResult,
+  ChartDataPoint,
+  SignalType,
+  TradingSignal,
+  TradingStyle
+} from '../interfaces';
 
 /**
  * Mean Reversion Algorithm Strategy
@@ -27,6 +34,7 @@ import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingS
 @Injectable()
 export class MeanReversionStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'mean-reversion-001';
+  readonly tradingStyle = TradingStyle.MEAN_REVERTING;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,

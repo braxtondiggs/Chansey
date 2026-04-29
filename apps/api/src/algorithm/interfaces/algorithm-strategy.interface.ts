@@ -1,5 +1,6 @@
 import { type AlgorithmContext } from './algorithm-context.interface';
 import { type AlgorithmResult } from './algorithm-result.interface';
+import { type TradingStyle } from './trading-style.enum';
 
 import { type ParameterConstraint } from '../../optimization/interfaces/parameter-space.interface';
 import { type Algorithm } from '../algorithm.entity';
@@ -29,6 +30,14 @@ export interface AlgorithmStrategy {
    * Description of what the algorithm does
    */
   readonly description: string;
+
+  /**
+   * Trading style classification — read by the regime fitness gate to skip
+   * incompatible (style, market regime) pairings before any OPTIMIZE compute
+   * is spent. Declared as an abstract field on `BaseAlgorithmStrategy` so
+   * every concrete strategy must declare it.
+   */
+  readonly tradingStyle: TradingStyle;
 
   /**
    * Initialize the algorithm with configuration

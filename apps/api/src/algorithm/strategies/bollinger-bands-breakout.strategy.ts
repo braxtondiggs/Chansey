@@ -23,7 +23,7 @@ import {
   IndicatorRequirement,
   IndicatorService
 } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, TradingSignal } from '../interfaces';
+import { AlgorithmContext, AlgorithmResult, ChartDataPoint, TradingSignal, TradingStyle } from '../interfaces';
 
 /**
  * Bollinger Bands Breakout Strategy
@@ -39,6 +39,7 @@ import { AlgorithmContext, AlgorithmResult, ChartDataPoint, TradingSignal } from
 @Injectable()
 export class BollingerBandsBreakoutStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'bb-breakout-001';
+  readonly tradingStyle = TradingStyle.TREND_FOLLOWING;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,

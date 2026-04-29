@@ -544,6 +544,276 @@ describe('CompositeRegimeService', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // getCompositeRegimeForCoin() / getVolatilityRegimeForCoin() / getCacheStatus()
+  // ---------------------------------------------------------------------------
+  describe('getCompositeRegimeForCoin', () => {
+    it('short-circuits for BTC, returning the BTC-global composite', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.LOW_VOLATILITY
+      } as any);
+      await service.refresh();
+
+      mockMarketRegimeService.getCurrentRegime.mockClear();
+      const result = await service.getCompositeRegimeForCoin('BTC');
+
+      expect(result).toBe(CompositeRegimeType.BULL);
+      // Should not have called getCurrentRegime — short-circuit
+      expect(mockMarketRegimeService.getCurrentRegime).not.toHaveBeenCalled();
+    });
+
+    it('falls back to BTC-global composite when no market_regimes row exists for the coin', async () => {
+      // First populate BTC composite as BULL
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.LOW_VOLATILITY
+      } as any);
+      await service.refresh();
+
+      // Now look up an unknown coin — return null for that coin
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue(null);
+      const result = await service.getCompositeRegimeForCoin('PENGU');
+
+      expect(result).toBe(CompositeRegimeType.BULL);
+    });
+
+    it('classifies per-coin composite combining coin volatility with BTC trend', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000; // above SMA → trendAboveSma = true
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValueOnce({
+        regime: MarketRegimeType.NORMAL // BTC vol
+      } as any);
+      await service.refresh();
+
+      // Coin lookup: HIGH_VOLATILITY + above SMA → NEUTRAL
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.HIGH_VOLATILITY,
+        asset: 'PENGU'
+      } as any);
+
+      const result = await service.getCompositeRegimeForCoin('PENGU');
+
+      expect(result).toBe(CompositeRegimeType.NEUTRAL);
+      expect(service.getVolatilityRegimeForCoin('PENGU')).toBe(MarketRegimeType.HIGH_VOLATILITY);
+    });
+
+    it('reuses cached entry within 4 hours without re-querying', async () => {
+      // Populate BTC global first
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValueOnce({
+        regime: MarketRegimeType.NORMAL
+      } as any);
+      await service.refresh();
+
+      // First call to coin populates cache
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.LOW_VOLATILITY
+      } as any);
+      await service.getCompositeRegimeForCoin('PENGU');
+      mockMarketRegimeService.getCurrentRegime.mockClear();
+
+      // Second call within 4h should hit cache
+      const result = await service.getCompositeRegimeForCoin('PENGU');
+
+      expect(result).toBe(CompositeRegimeType.BULL);
+      expect(mockMarketRegimeService.getCurrentRegime).not.toHaveBeenCalled();
+    });
+
+    it('re-queries when cached entry is older than 4 hours', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValueOnce({
+        regime: MarketRegimeType.NORMAL
+      } as any);
+      await service.refresh();
+
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.LOW_VOLATILITY
+      } as any);
+      await service.getCompositeRegimeForCoin('PENGU');
+
+      // Manually expire the per-coin cache
+      const perCoinCache = (service as any).perCoinCache as Map<string, any>;
+      const entry = perCoinCache.get('PENGU');
+      entry.updatedAt = new Date(Date.now() - 5 * 60 * 60 * 1000);
+      mockMarketRegimeService.getCurrentRegime.mockClear();
+
+      await service.getCompositeRegimeForCoin('PENGU');
+
+      expect(mockMarketRegimeService.getCurrentRegime).toHaveBeenCalledWith('PENGU');
+    });
+
+    it('uppercases the symbol before lookup', async () => {
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.NORMAL
+      } as any);
+
+      await service.getCompositeRegimeForCoin('pengu');
+
+      expect(mockMarketRegimeService.getCurrentRegime).toHaveBeenCalledWith('PENGU');
+    });
+
+    it('fails open to BTC-global composite on error', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValueOnce({
+        regime: MarketRegimeType.NORMAL
+      } as any);
+      await service.refresh();
+
+      mockMarketRegimeService.getCurrentRegime.mockRejectedValue(new Error('Database timeout'));
+      const result = await service.getCompositeRegimeForCoin('PENGU');
+
+      expect(result).toBe(CompositeRegimeType.BULL);
+    });
+
+    describe('negative cache (missing per-coin row)', () => {
+      const seedBtcGlobalAsBull = async () => {
+        const summaries = generatePriceSummaries(250, 50000, 0.001);
+        summaries[0].close = 70000;
+        mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+        mockMarketRegimeService.getCurrentRegime.mockResolvedValueOnce({
+          regime: MarketRegimeType.NORMAL
+        } as any);
+        await service.refresh();
+      };
+
+      it('skips re-querying within 4h after a null lookup', async () => {
+        await seedBtcGlobalAsBull();
+
+        mockMarketRegimeService.getCurrentRegime.mockResolvedValue(null);
+        const first = await service.getCompositeRegimeForCoin('PENGU');
+        expect(first).toBe(CompositeRegimeType.BULL);
+        expect(mockMarketRegimeService.getCurrentRegime).toHaveBeenCalledWith('PENGU');
+
+        mockMarketRegimeService.getCurrentRegime.mockClear();
+        const second = await service.getCompositeRegimeForCoin('PENGU');
+        expect(second).toBe(CompositeRegimeType.BULL);
+        expect(mockMarketRegimeService.getCurrentRegime).not.toHaveBeenCalled();
+      });
+
+      it('clears the miss entry once a regime row lands', async () => {
+        await seedBtcGlobalAsBull();
+
+        mockMarketRegimeService.getCurrentRegime.mockResolvedValue(null);
+        await service.getCompositeRegimeForCoin('PENGU');
+        expect((service as any).perCoinCacheMisses.has('PENGU')).toBe(true);
+
+        // A regime row appears for PENGU
+        mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+          regime: MarketRegimeType.LOW_VOLATILITY
+        } as any);
+
+        // Manually expire the negative cache so the next call re-queries
+        (service as any).perCoinCacheMisses.set('PENGU', Date.now() - 5 * 60 * 60 * 1000);
+
+        const result = await service.getCompositeRegimeForCoin('PENGU');
+        expect(result).toBe(CompositeRegimeType.BULL); // LOW_VOLATILITY + above SMA → BULL
+        expect((service as any).perCoinCacheMisses.has('PENGU')).toBe(false);
+      });
+
+      it('re-queries once the negative cache entry is older than 4h and evicts the stale entry', async () => {
+        await seedBtcGlobalAsBull();
+
+        mockMarketRegimeService.getCurrentRegime.mockResolvedValue(null);
+        await service.getCompositeRegimeForCoin('PENGU');
+
+        // Age the miss entry past 4h
+        const staleTimestamp = Date.now() - 5 * 60 * 60 * 1000;
+        (service as any).perCoinCacheMisses.set('PENGU', staleTimestamp);
+        mockMarketRegimeService.getCurrentRegime.mockClear();
+
+        await service.getCompositeRegimeForCoin('PENGU');
+        expect(mockMarketRegimeService.getCurrentRegime).toHaveBeenCalledWith('PENGU');
+        // Stale entry was evicted: any new miss recorded must have a different (fresher) timestamp
+        expect((service as any).perCoinCacheMisses.get('PENGU')).not.toBe(staleTimestamp);
+      });
+
+      it('does NOT cache transient errors as a permanent miss', async () => {
+        await seedBtcGlobalAsBull();
+
+        mockMarketRegimeService.getCurrentRegime.mockRejectedValueOnce(new Error('Database timeout'));
+        const first = await service.getCompositeRegimeForCoin('PENGU');
+        expect(first).toBe(CompositeRegimeType.BULL);
+        expect((service as any).perCoinCacheMisses.has('PENGU')).toBe(false);
+
+        mockMarketRegimeService.getCurrentRegime.mockClear();
+        mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+          regime: MarketRegimeType.LOW_VOLATILITY
+        } as any);
+        await service.getCompositeRegimeForCoin('PENGU');
+        expect(mockMarketRegimeService.getCurrentRegime).toHaveBeenCalledWith('PENGU');
+      });
+    });
+  });
+
+  describe('getVolatilityRegimeForCoin', () => {
+    it('returns null when symbol not cached', () => {
+      expect(service.getVolatilityRegimeForCoin('UNKNOWN')).toBeNull();
+    });
+
+    it('returns BTC global volatility regime for BTC symbol', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.LOW_VOLATILITY
+      } as any);
+      await service.refresh();
+
+      expect(service.getVolatilityRegimeForCoin('BTC')).toBe(MarketRegimeType.LOW_VOLATILITY);
+      expect(service.getVolatilityRegimeForCoin('btc')).toBe(MarketRegimeType.LOW_VOLATILITY);
+    });
+  });
+
+  describe('getCacheStatus', () => {
+    it('returns stale=true with MAX_SAFE_INTEGER age before any refresh', () => {
+      const status = service.getCacheStatus();
+      expect(status.stale).toBe(true);
+      expect(status.ageMs).toBe(Number.MAX_SAFE_INTEGER);
+    });
+
+    it('returns stale=false after successful refresh', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.NORMAL
+      } as any);
+      await service.refresh();
+
+      const status = service.getCacheStatus();
+      expect(status.stale).toBe(false);
+      expect(status.ageMs).toBeLessThan(1000);
+    });
+
+    it('reports stale=true when cache is older than 4 hours', async () => {
+      const summaries = generatePriceSummaries(250, 50000, 0.001);
+      summaries[0].close = 70000;
+      mockOhlcService.findAllByDay.mockResolvedValue({ [BTC_COIN_ID]: summaries });
+      mockMarketRegimeService.getCurrentRegime.mockResolvedValue({
+        regime: MarketRegimeType.NORMAL
+      } as any);
+      await service.refresh();
+
+      const cached = (service as any).cached;
+      cached.updatedAt = new Date(Date.now() - 5 * 60 * 60 * 1000);
+
+      const status = service.getCacheStatus();
+      expect(status.stale).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // getStatus()
   // ---------------------------------------------------------------------------
   describe('getStatus', () => {

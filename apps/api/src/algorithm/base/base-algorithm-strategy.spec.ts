@@ -3,11 +3,18 @@ import { type SchedulerRegistry } from '@nestjs/schedule';
 import { BaseAlgorithmStrategy } from './base-algorithm-strategy';
 
 import { AlgorithmStatus } from '../algorithm.entity';
-import { type AlgorithmContext, type AlgorithmResult, SignalType, type TradingSignal } from '../interfaces';
+import {
+  type AlgorithmContext,
+  type AlgorithmResult,
+  SignalType,
+  type TradingSignal,
+  TradingStyle
+} from '../interfaces';
 
 /** Concrete subclass that exposes protected methods for testing. */
 class TestStrategy extends BaseAlgorithmStrategy {
   readonly id = 'test-strategy';
+  readonly tradingStyle = TradingStyle.MULTI_SIGNAL;
   executeMock = jest.fn<Promise<AlgorithmResult>, [AlgorithmContext]>();
 
   constructor() {

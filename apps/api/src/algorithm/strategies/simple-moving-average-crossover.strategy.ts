@@ -17,7 +17,14 @@ import {
   IndicatorRequirement,
   IndicatorService
 } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import {
+  AlgorithmContext,
+  AlgorithmResult,
+  ChartDataPoint,
+  SignalType,
+  TradingSignal,
+  TradingStyle
+} from '../interfaces';
 
 /**
  * Simple Moving Average Crossover Strategy
@@ -30,6 +37,7 @@ import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingS
 @Injectable()
 export class SimpleMovingAverageCrossoverStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'sma-crossover-001';
+  readonly tradingStyle = TradingStyle.TREND_FOLLOWING;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,
