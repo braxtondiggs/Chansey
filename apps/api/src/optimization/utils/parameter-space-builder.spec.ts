@@ -1,4 +1,4 @@
-import { buildParameterSpace } from './parameter-space-builder';
+import { buildParameterSpace, chooseNaturalStep } from './parameter-space-builder';
 
 import { type ParameterConstraint } from '../interfaces/parameter-space.interface';
 
@@ -25,7 +25,7 @@ describe('buildParameterSpace', () => {
     );
   });
 
-  it('should convert float numeric fields with computed step', () => {
+  it('should convert float numeric fields with a natural step', () => {
     const schema = {
       stopLoss: { type: 'number', default: 0.05, min: 0.01, max: 0.2 }
     };
@@ -43,8 +43,8 @@ describe('buildParameterSpace', () => {
         priority: 'high'
       })
     );
-    // Step = (0.2 - 0.01) / 10 = 0.019, rounded to 0.02
-    expect(space.parameters[0].step).toBe(0.02);
+    // range = 0.19. Largest natural step with ≥ 8 grid points: 0.025 → 7.6 (no), 0.01 → 19 (yes)
+    expect(space.parameters[0].step).toBe(0.01);
   });
 
   it('should detect float when default is non-integer despite integer min/max', () => {
@@ -186,6 +186,52 @@ describe('buildParameterSpace', () => {
     const range = 0.02 - 0.01;
     expect(space.parameters[0].step).toBeGreaterThan(0);
     expect(space.parameters[0].step).toBeLessThanOrEqual(range);
+  });
+
+  describe('natural step picker', () => {
+    it('picks step=1 for stopLossPercent-style range (1.5..15)', () => {
+      // range = 13.5. 13.5/2 = 6.75 (no), 13.5/1 = 13.5 (yes)
+      expect(chooseNaturalStep(13.5)).toBe(1);
+    });
+
+    it('picks step=0.1 for ~1-unit range (e.g. multiplier 0.1..1.0)', () => {
+      // range = 0.9. 0.9/0.25 = 3.6 (no), 0.9/0.1 = 9 (yes)
+      expect(chooseNaturalStep(0.9)).toBe(0.1);
+    });
+
+    it('picks step=0.005 for very small range (range=0.05)', () => {
+      // range = 0.05. 0.05/0.01 = 5 (no, < 8), 0.05/0.005 = 10 (yes)
+      expect(chooseNaturalStep(0.05)).toBe(0.005);
+    });
+
+    it('falls back to smallest natural step for sub-floor ranges', () => {
+      // Even 0.005 only yields 2 grid points across 0.01 — but it's our floor.
+      expect(chooseNaturalStep(0.01)).toBe(0.005);
+    });
+
+    it.each([
+      ['zero', 0],
+      ['negative', -1],
+      ['NaN', NaN],
+      ['Infinity', Infinity]
+    ])('returns floor step for invalid range: %s', (_label, range) => {
+      expect(chooseNaturalStep(range)).toBe(0.005);
+    });
+
+    it('caps at the largest natural step for very large ranges', () => {
+      // range=100. 100/10 = 10 ≥ 8, so step=10 (the largest in NATURAL_STEPS).
+      expect(chooseNaturalStep(100)).toBe(10);
+    });
+
+    it('respects an explicit schema step over the natural picker', () => {
+      const schema = {
+        ratio: { type: 'number', default: 0.5, min: 0, max: 1, step: 0.07 }
+      };
+
+      const space = buildParameterSpace('test-001', schema);
+
+      expect(space.parameters[0].step).toBe(0.07);
+    });
   });
 
   it('should not clamp user-provided step', () => {

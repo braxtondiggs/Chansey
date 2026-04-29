@@ -131,7 +131,8 @@ export class OptimizationEvaluationService {
         trainStartDate: window.trainStartDate.toISOString().split('T')[0],
         trainEndDate: window.trainEndDate.toISOString().split('T')[0],
         testStartDate: window.testStartDate.toISOString().split('T')[0],
-        testEndDate: window.testEndDate.toISOString().split('T')[0]
+        testEndDate: window.testEndDate.toISOString().split('T')[0],
+        tradeCount: testMetrics.tradeCount
       });
 
       totalTrainScore += trainScore;

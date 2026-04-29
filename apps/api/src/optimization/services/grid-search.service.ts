@@ -117,6 +117,24 @@ export class GridSearchService {
       values.push(param.type === 'integer' ? Math.round(max) : Math.round(max * 10000) / 10000);
     }
 
+    // For float ranges, also union in natural anchors so textbook values
+    // (min, default, max, plus integer anchors inside the range) are always reachable
+    // even when the chosen step skips them.
+    if (param.type === 'float') {
+      const round4 = (v: number) => Math.round(v * 10000) / 10000;
+      const anchors = new Set<number>([round4(min), round4(param.default as number), round4(max)]);
+      const firstInt = Math.ceil(min);
+      const lastInt = Math.floor(max);
+      for (let i = firstInt; i <= lastInt; i++) {
+        anchors.add(i);
+      }
+      const merged = new Set<number>(values);
+      for (const a of anchors) {
+        if (a >= min && a <= max) merged.add(a);
+      }
+      return Array.from(merged).sort((a, b) => a - b);
+    }
+
     return values;
   }
 

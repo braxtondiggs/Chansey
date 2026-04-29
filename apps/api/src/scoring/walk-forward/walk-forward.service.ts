@@ -20,6 +20,13 @@ export interface GenerateWindowsParams {
 }
 
 /**
+ * Minimum number of days a clamped final test window must cover to be retained.
+ * Matches the validateConfig floor for testDays — anything shorter is statistically
+ * too noisy to be useful and falls back to the legacy "skip the last window" behavior.
+ */
+export const MIN_TEST_WINDOW_DAYS = 14;
+
+/**
  * Walk-Forward Analysis Service
  * Generates train/test windows for out-of-sample validation
  * Prevents overfitting by testing strategies on unseen data
@@ -45,6 +52,14 @@ export class WalkForwardService {
       throw new Error('startDate must be before endDate');
     }
 
+    // Anchored window generation isn't implemented — the prior code path pinned
+    // trainStart to startDate, so trainEnd/testEnd never advanced and the loop
+    // only exited via the 1000-window safety cap. Throwing closes that latent
+    // infinite-loop trap and makes the limitation explicit at the call site.
+    if (method === 'anchored') {
+      throw new Error("Anchored walk-forward windows are not yet implemented. Use method: 'rolling'.");
+    }
+
     const windows: WalkForwardWindowConfig[] = [];
     let windowIndex = 0;
     let currentDate = new Date(startDate);
@@ -66,8 +81,20 @@ export class WalkForwardService {
       testStartDate.setDate(testStartDate.getDate() + 1); // Next day after train end
       const testEndDate = this.addDays(testStartDate, testDays);
 
-      // Check if test window exceeds end date
+      // Check if test window exceeds end date — clamp to endDate when the remainder is
+      // statistically meaningful, otherwise fall back to skipping. This prevents the
+      // validator from systematically ignoring the most recent ~stepDays of market data.
       if (testEndDate > endDate) {
+        const remainingDays = this.daysBetween(testStartDate, endDate);
+        if (remainingDays >= MIN_TEST_WINDOW_DAYS) {
+          windows.push({
+            windowIndex,
+            trainStartDate,
+            trainEndDate,
+            testStartDate,
+            testEndDate: new Date(endDate)
+          });
+        }
         continueGenerating = false;
         continue;
       }
@@ -135,8 +162,8 @@ export class WalkForwardService {
       errors.push('trainDays should be at least 30 for statistical significance');
     }
 
-    if (config.testDays < 14) {
-      errors.push('testDays should be at least 14 for meaningful out-of-sample testing');
+    if (config.testDays < MIN_TEST_WINDOW_DAYS) {
+      errors.push(`testDays should be at least ${MIN_TEST_WINDOW_DAYS} for meaningful out-of-sample testing`);
     }
 
     if (config.stepDays > config.trainDays) {

@@ -6,6 +6,31 @@ import { type OptimizationConfig } from '../interfaces';
 export const ZERO_TRADE_PENALTY = -0.5;
 
 /**
+ * Per-window trade-count floor below which the objective score is scaled away from a
+ * full-trade window. Positive scores shrink toward zero and negative scores deepen
+ * away from zero, so a 1-trade window can never out-rank a 5-trade window with the
+ * same sharpe — regardless of sign.
+ */
+export const MIN_TRADES_PER_WINDOW = 5;
+
+/**
+ * Floor for the downside-deviation denominator in Sortino. Anything smaller is treated
+ * as effectively-zero noise — without this, a return of 0.05 over a downside-deviation
+ * of 0.001 produced a Sortino of ~30, blowing past sensible Sharpe-equivalent ranges.
+ * 0.005 ≈ 0.5% return std-dev, the smallest dispersion that's still statistically real.
+ */
+export const MIN_DOWNSIDE_DEVIATION = 0.005;
+
+/**
+ * Per-run total-trades floor below which the SQL ranking score is downscaled by
+ * `LEAST(1.0, totalTrades / MIN_TOTAL_TRADES)`. Combos that traded fewer than this
+ * across all walk-forward windows are penalized linearly so a 5-trade combo can't
+ * ride a high `avgTestScore` to rank 1 over a combo with a similar score and
+ * statistically-meaningful trade count.
+ */
+export const MIN_TOTAL_TRADES = 30;
+
+/**
  * Normalization ranges for composite score calculation.
  * Each metric is normalized to [0, 1] using: (value - min) / (max - min)
  */
@@ -58,14 +83,13 @@ export function calculateObjectiveScore(metrics: WindowMetrics, objective: Optim
       break;
     case 'sortino_ratio': {
       // Sortino ratio: (Return - Risk Free Rate) / Downside Deviation
-      // Uses 2% annual risk-free rate, consistent with Sharpe calculation
+      // Uses 2% annual risk-free rate, consistent with Sharpe calculation.
+      // Floor the denominator so vanishingly small downside dispersion can no longer
+      // inflate Sortino past sensible bounds (the previous === 0 fallback let values
+      // like 0.001 through, producing scores in the 30–100 range).
       const riskFreeRate = 0.02;
-      if (!metrics.downsideDeviation || metrics.downsideDeviation === 0) {
-        // Fallback to Sharpe when no downside volatility (all returns positive)
-        score = metrics.sharpeRatio;
-      } else {
-        score = (metrics.totalReturn - riskFreeRate) / metrics.downsideDeviation;
-      }
+      const downsideDeviation = Math.max(metrics.downsideDeviation ?? 0, MIN_DOWNSIDE_DEVIATION);
+      score = (metrics.totalReturn - riskFreeRate) / downsideDeviation;
       break;
     }
     case 'composite':
@@ -77,6 +101,18 @@ export function calculateObjectiveScore(metrics: WindowMetrics, objective: Optim
 
   // Guard non-finite values and clamp to prevent downstream overflow
   if (!Number.isFinite(score)) return 0;
+
+  // Symmetric drag-down for low-trade windows: shrink positive scores toward zero,
+  // deepen negative scores away from zero. Multiplying both signs by `factor < 1`
+  // would actually *improve* a losing window's rank — a 1-trade losing window with
+  // sharpe -2 would score -0.4 vs a 5-trade -2 → -2, the opposite of "low trades = noisy".
+  // factor is bounded (1/MIN_TRADES_PER_WINDOW = 0.2) since tradeCount=0 is short-circuited
+  // above; the existing ±MAX_SHARPE clamp below catches divisions like -50/0.2 = -250.
+  if (metrics.tradeCount < MIN_TRADES_PER_WINDOW) {
+    const factor = metrics.tradeCount / MIN_TRADES_PER_WINDOW;
+    score = score >= 0 ? score * factor : score / factor;
+  }
+
   return Math.max(-SharpeRatioCalculator.MAX_SHARPE, Math.min(SharpeRatioCalculator.MAX_SHARPE, score));
 }
 
@@ -165,19 +201,4 @@ export function calculateImprovement(bestScore: number, baselineScore: number): 
   const improvement = ((bestScore - baselineScore) / denominator) * 100;
 
   return Math.max(-MAX_IMPROVEMENT, Math.min(MAX_IMPROVEMENT, improvement));
-}
-
-/**
- * Compute a composite ranking score that balances raw performance with consistency.
- * - Consistency 100 → 1.0x multiplier, Consistency 0 → 0.6x
- * - Each overfitting window → -10% penalty (floor at 0.5x)
- */
-export function computeRankingScore(
-  avgTestScore: number,
-  consistencyScore: number,
-  overfittingWindows: number
-): number {
-  const consistencyMultiplier = 0.6 + 0.4 * (consistencyScore / 100);
-  const overfitPenalty = Math.max(0.5, 1.0 - 0.1 * overfittingWindows);
-  return avgTestScore * consistencyMultiplier * overfitPenalty;
 }

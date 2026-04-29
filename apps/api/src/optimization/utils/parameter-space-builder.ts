@@ -24,6 +24,46 @@ interface ConfigSchemaField {
 const NON_OPTIMIZABLE_PARAMS = new Set(['enabled', 'riskLevel', 'cooldownMs', 'maxTradesPerDay', 'minSellPercent']);
 
 /**
+ * Step values traders actually pick in the wild — quarters, fifths, halves, integers.
+ * Sorted ascending. The picker walks this list to find the largest step that still
+ * yields a useful number of grid points, so float ranges land on natural anchors
+ * (2.0, 0.5, 5%) instead of arbitrary values like 2.55 or 0.37.
+ */
+const NATURAL_STEPS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 2.5, 5, 10] as const;
+
+/**
+ * Minimum number of grid points a chosen step should produce.
+ * Below this we fall back to the previous (smaller) step so the grid stays useful.
+ */
+const MIN_GRID_POINTS = 8;
+
+/**
+ * Pick a "natural" step size for a float range.
+ *
+ * Walks NATURAL_STEPS from smallest to largest and returns the largest step that
+ * still produces ≥ MIN_GRID_POINTS samples across `range`. Falls back to the
+ * smallest natural step (0.005) if even that overshoots the floor — anchor
+ * injection in the grid expander then ensures min/default/max are still reachable.
+ *
+ * The chosen step is also clamped to `range` when `range` is smaller than the
+ * smallest natural step (e.g., 0.001), so the step never overshoots the field's
+ * actual span — callers can rely on `step <= range` without an extra `Math.min`.
+ */
+export function chooseNaturalStep(range: number): number {
+  if (!Number.isFinite(range) || range <= 0) return NATURAL_STEPS[0];
+
+  let chosen: number = NATURAL_STEPS[0];
+  for (const candidate of NATURAL_STEPS) {
+    if (range / candidate >= MIN_GRID_POINTS) {
+      chosen = candidate;
+    } else {
+      break;
+    }
+  }
+  return Math.min(chosen, range);
+}
+
+/**
  * Check whether a schema field is worth optimizing.
  * - Numeric fields need both min and max with min < max
  * - Categorical fields (enum) need at least 2 values
@@ -91,8 +131,7 @@ function toParameterDefinition(name: string, field: ConfigSchemaField): Paramete
   } else if (isInteger) {
     step = 1;
   } else {
-    const raw = Math.round((range / 10) * 100) / 100;
-    step = Math.min(Math.max(raw, range / 100), range);
+    step = chooseNaturalStep(range);
   }
 
   return {

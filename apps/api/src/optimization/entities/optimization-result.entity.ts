@@ -24,6 +24,7 @@ export interface WindowResult {
   trainEndDate: string;
   testStartDate: string;
   testEndDate: string;
+  tradeCount: number;
 }
 
 /**

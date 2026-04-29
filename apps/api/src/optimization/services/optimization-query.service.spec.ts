@@ -64,6 +64,23 @@ describe('OptimizationQueryService', () => {
       expect(sqlQuery).toContain('"overfittingWindows"');
       expect(sqlQuery).toContain('GREATEST(0.5');
     });
+
+    it('parks zero-trade rows last via CASE...NULLS LAST', async () => {
+      // Rows with total_trades = 0 (empty array, all-zero array, or NULL windowResults)
+      // emit NULL from the CASE so DESC NULLS LAST sorts them after every combo that
+      // actually traded — even combos with negative avgTestScore. A plain `0` multiplier
+      // would have ranked them above any negative-score combo under DESC.
+      optimizationResultRepo.findOne.mockResolvedValue(null);
+
+      await service.rankResults('run-1');
+
+      const sqlQuery = (optimizationResultRepo.query as jest.Mock).mock.calls[0][0] as string;
+      expect(sqlQuery).toContain('total_trades = 0');
+      expect(sqlQuery).toContain('NULLS LAST');
+      expect(sqlQuery).toContain('WITH totals AS');
+      // The trade multiplier still references MIN_TOTAL_TRADES (= 30) as the denominator
+      expect(sqlQuery).toContain('LEAST(1.0, total_trades::float / 30');
+    });
   });
 
   describe('findStrategyConfig', () => {
