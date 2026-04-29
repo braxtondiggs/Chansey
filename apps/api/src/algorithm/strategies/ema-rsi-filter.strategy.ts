@@ -7,7 +7,14 @@ import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import {
+  AlgorithmContext,
+  AlgorithmResult,
+  ChartDataPoint,
+  SignalType,
+  TradingSignal,
+  TradingStyle
+} from '../interfaces';
 
 interface EMARSIFilterConfig {
   fastEmaPeriod: number;
@@ -34,6 +41,7 @@ interface EMARSIFilterConfig {
 @Injectable()
 export class EMARSIFilterStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'ema-rsi-filter-001';
+  readonly tradingStyle = TradingStyle.TREND_FOLLOWING;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,

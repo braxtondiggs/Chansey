@@ -7,11 +7,18 @@ import { Queue } from 'bullmq';
 import { DEFAULT_VOLATILITY_CONFIG } from '@chansey/api-interfaces';
 
 import { CoinService } from '../coin/coin.service';
+import { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MarketRegimeService } from '../market-regime/market-regime.service';
 import { OHLCService } from '../ohlc/ohlc.service';
 import { OHLCBackfillService } from '../ohlc/services/ohlc-backfill.service';
 import { toErrorInfo } from '../shared/error.util';
+
+/** Default asset list used when the dynamic resolver fails — keeps regime tracking from going dark. */
+const DEFAULT_MONITORED_ASSETS = ['BTC', 'ETH', 'SOL', 'POL'] as const;
+
+/** Bound concurrent BullMQ enqueues per regime sweep so Redis backpressure stays bounded as the universe grows. */
+const ENQUEUE_BATCH_SIZE = 10;
 
 /**
  * Market Regime Check Task
@@ -22,16 +29,14 @@ import { toErrorInfo } from '../shared/error.util';
 export class MarketRegimeTask {
   private readonly logger = new Logger(MarketRegimeTask.name);
 
-  // Track assets to monitor
-  private readonly monitoredAssets = ['BTC', 'ETH', 'SOL', 'POL'] as const;
-
   constructor(
     @InjectQueue('regime-check-queue') private regimeQueue: Queue,
     private readonly marketRegimeService: MarketRegimeService,
     private readonly compositeRegimeService: CompositeRegimeService,
     private readonly ohlcService: OHLCService,
     private readonly coinService: CoinService,
-    private readonly backfillService: OHLCBackfillService
+    private readonly backfillService: OHLCBackfillService,
+    private readonly coinSelectionService: CoinSelectionService
   ) {}
 
   /**
@@ -42,8 +47,11 @@ export class MarketRegimeTask {
   async scheduleRegimeCheck() {
     this.logger.log('Starting scheduled market regime check');
 
-    for (const asset of this.monitoredAssets) {
-      await this.queueRegimeCheck(asset);
+    const assets = await this.resolveMonitoredAssets();
+
+    for (let i = 0; i < assets.length; i += ENQUEUE_BATCH_SIZE) {
+      const batch = assets.slice(i, i + ENQUEUE_BATCH_SIZE);
+      await Promise.all(batch.map((asset) => this.queueRegimeCheck(asset)));
     }
 
     try {
@@ -52,6 +60,25 @@ export class MarketRegimeTask {
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.error(`Failed to refresh composite regime: ${err.message}`);
+    }
+  }
+
+  /**
+   * Resolve the set of assets to track by reading every coin in any user's
+   * coin_selection (AUTOMATIC + MANUAL + WATCHED), then unioning with BTC
+   * which the BTC-global trend-filter macro signal always requires.
+   *
+   * Falls back to the legacy hardcoded set on any error so regime tracking
+   * never goes dark.
+   */
+  private async resolveMonitoredAssets(): Promise<string[]> {
+    try {
+      const symbols = await this.coinSelectionService.getEligibleSymbolsForRegimeTracking();
+      return Array.from(new Set([...symbols, 'BTC']));
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.error(`Failed to resolve monitored assets, using default set: ${err.message}`);
+      return [...DEFAULT_MONITORED_ASSETS];
     }
   }
 
@@ -199,12 +226,13 @@ export class MarketRegimeTask {
    */
   async getQueueStats() {
     const jobCounts = await this.regimeQueue.getJobCounts();
+    const monitoredAssets = await this.resolveMonitoredAssets();
     return {
       waiting: jobCounts.waiting,
       active: jobCounts.active,
       completed: jobCounts.completed,
       failed: jobCounts.failed,
-      monitoredAssets: [...this.monitoredAssets]
+      monitoredAssets
     };
   }
 }

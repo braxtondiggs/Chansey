@@ -10,23 +10,28 @@
  */
 
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { format } from 'date-fns';
 import { In, Repository } from 'typeorm';
 
-import { StrategyStatus } from '@chansey/api-interfaces';
+import { AuditEventType, CompositeRegimeType, MarketRegimeType, StrategyStatus } from '@chansey/api-interfaces';
 
 import { PipelineOrchestrationResult, buildStageConfigFromRisk } from './dto/pipeline-orchestration.dto';
 
 import { AlgorithmService } from '../algorithm/algorithm.service';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
+import { AuditService } from '../audit/audit.service';
+import { CoinSelectionType } from '../coin-selection/coin-selection-type.enum';
+import { CoinSelectionRelations } from '../coin-selection/coin-selection.entity';
 import { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
+import { RegimeFitnessService, RegimeSnapshot } from '../market-regime/regime-fitness.service';
 import { ParameterSpace } from '../optimization/interfaces/parameter-space.interface';
 import { buildParameterSpace } from '../optimization/utils/parameter-space-builder';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
-import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
+import { PIPELINE_EVENTS, PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
 import { CUSTOM_RISK_LEVEL, MIN_TRADING_COINS } from '../risk/risk.constants';
 import { toErrorInfo } from '../shared/error.util';
@@ -55,7 +60,10 @@ export class PipelineOrchestrationService {
     private readonly pipelineOrchestrator: PipelineOrchestratorService,
     private readonly algorithmService: AlgorithmService,
     private readonly algorithmRegistry: AlgorithmRegistry,
-    private readonly coinSelectionService: CoinSelectionService
+    private readonly coinSelectionService: CoinSelectionService,
+    private readonly regimeFitnessService: RegimeFitnessService,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly auditService: AuditService
   ) {}
 
   /**
@@ -211,6 +219,10 @@ export class PipelineOrchestrationService {
 
       this.logger.log(`Found ${strategyConfigs.length} eligible strategy configs for user ${userId}`);
 
+      // Snapshot the regime once per user — used by the regime-fitness gate to skip
+      // (style, regime) pairings that historical data shows are broken.
+      const regimeSnapshot = await this.snapshotUserRegime(user);
+
       // Process each strategy config with stagger delay to avoid rate-limiting external APIs
       for (let idx = 0; idx < strategyConfigs.length; idx++) {
         const strategyConfig = strategyConfigs[idx];
@@ -218,7 +230,7 @@ export class PipelineOrchestrationService {
           await new Promise((r) => setTimeout(r, STRATEGY_STAGGER_DELAY_MS));
         }
         try {
-          await this.processStrategyConfig(user, strategyConfig, riskLevel, result);
+          await this.processStrategyConfig(user, strategyConfig, riskLevel, result, regimeSnapshot);
         } catch (error: unknown) {
           const err = toErrorInfo(error);
           const errorMsg = `Failed to process strategy config ${strategyConfig.id}: ${err.message}`;
@@ -311,23 +323,56 @@ export class PipelineOrchestrationService {
 
   /**
    * Build a ParameterSpace from the strategy's schema and constraints.
-   * Returns null if the strategy has no optimizable parameters or is not registered.
+   * Returns the parameter space (null if strategy has no optimizable parameters or is not registered)
+   * along with the resolved strategyId so the regime gate can be evaluated without a second registry lookup.
    */
-  private async buildParameterSpaceForStrategy(strategyConfig: StrategyConfig): Promise<ParameterSpace | null> {
+  private async buildParameterSpaceForStrategy(
+    strategyConfig: StrategyConfig
+  ): Promise<{ space: ParameterSpace | null; strategyId: string | null }> {
     try {
       const strategy = await this.algorithmRegistry.getStrategyForAlgorithm(strategyConfig.algorithmId);
-      if (!strategy?.getConfigSchema) return null;
+      if (!strategy?.getConfigSchema) return { space: null, strategyId: strategy?.id ?? null };
 
       const schema = strategy.getConfigSchema();
       const constraints = strategy.getParameterConstraints?.() ?? [];
       const space = buildParameterSpace(strategy.id, schema, constraints, strategyConfig.version);
 
-      return space.parameters.length > 0 ? space : null;
+      return { space: space.parameters.length > 0 ? space : null, strategyId: strategy.id };
     } catch (error: unknown) {
       const err = toErrorInfo(error);
       this.logger.warn(`Could not build parameter space for algorithm ${strategyConfig.algorithmId}: ${err.message}`);
-      return null;
+      return { space: null, strategyId: null };
     }
+  }
+
+  /**
+   * Resolve the user's coin universe and snapshot the per-coin regime data.
+   *
+   * Scope: AUTOMATIC + MANUAL selections only. WATCHED selections are excluded
+   * because the watchlist reflects interest, not trading exposure — letting a
+   * single low-volatility watchlist coin block TREND_FOLLOWING / VOLATILITY_EXPANSION
+   * strategies that operate on the user's actual trading set would be incorrect.
+   *
+   * Falls back to ['BTC'] if the user has no eligible selections so the gate has
+   * at least one anchor symbol to vote against.
+   */
+  private async snapshotUserRegime(user: User): Promise<RegimeSnapshot> {
+    let symbols: string[] = [];
+    try {
+      const selections = await this.coinSelectionService.getCoinSelectionsByUser(user, [CoinSelectionRelations.COIN]);
+      const set = new Set<string>();
+      for (const selection of selections) {
+        if (selection.type === CoinSelectionType.WATCHED) continue;
+        const sym = selection.coin?.symbol;
+        if (sym) set.add(sym.toUpperCase());
+      }
+      symbols = Array.from(set);
+    } catch (error: unknown) {
+      const err = toErrorInfo(error);
+      this.logger.warn(`Failed to load coin selections for regime snapshot (user=${user.id}): ${err.message}`);
+    }
+    if (symbols.length === 0) symbols = ['BTC'];
+    return this.regimeFitnessService.snapshotRegime(symbols);
   }
 
   /**
@@ -337,7 +382,8 @@ export class PipelineOrchestrationService {
     user: User,
     strategyConfig: StrategyConfig,
     riskLevel: number,
-    result: PipelineOrchestrationResult
+    result: PipelineOrchestrationResult,
+    regimeSnapshot: RegimeSnapshot
   ): Promise<void> {
     const strategyConfigId = strategyConfig.id;
     const strategyName = strategyConfig.name ?? 'Unknown';
@@ -358,7 +404,56 @@ export class PipelineOrchestrationService {
     const stageConfig = buildStageConfigFromRisk(riskLevel);
 
     // Build ParameterSpace from strategy schema + constraints
-    const parameterSpace = await this.buildParameterSpaceForStrategy(strategyConfig);
+    const { space: parameterSpace, strategyId } = await this.buildParameterSpaceForStrategy(strategyConfig);
+
+    // Regime fitness gate: skip strategies that don't fit the current per-coin universe regime.
+    // Fail-open: only BLOCK when style is known AND data is fresh AND override inactive.
+    if (strategyId) {
+      const fitness = this.regimeFitnessService.evaluate(strategyId, regimeSnapshot);
+      if (fitness.decision === 'BLOCK') {
+        const perCoinPayload = serializePerCoin(regimeSnapshot);
+        this.logger.log(
+          `Skipping ${strategyName} for user ${user.id}: universe regime ${regimeSnapshot.universeRegime} not eligible for ${fitness.style} (${fitness.reason})`
+        );
+        result.skippedConfigs.push({
+          strategyConfigId,
+          strategyName,
+          reason: `regime gate: ${fitness.reason}`
+        });
+        this.eventEmitter.emit(PIPELINE_EVENTS.PIPELINE_REGIME_SKIPPED, {
+          userId: user.id,
+          strategyConfigId,
+          strategyId,
+          strategyName,
+          style: fitness.style,
+          universeRegime: regimeSnapshot.universeRegime,
+          perCoin: perCoinPayload,
+          reason: fitness.reason
+        });
+        try {
+          await this.auditService.createAuditLog({
+            eventType: AuditEventType.REGIME_GATE_SKIPPED,
+            entityType: 'StrategyConfig',
+            entityId: strategyConfigId,
+            userId: user.id,
+            metadata: {
+              strategyId,
+              strategyName,
+              style: fitness.style,
+              reason: fitness.reason,
+              universeRegime: regimeSnapshot.universeRegime,
+              perCoin: perCoinPayload,
+              btcTrendAboveSma: regimeSnapshot.btcTrendAboveSma
+            }
+          });
+        } catch (error: unknown) {
+          const err = toErrorInfo(error);
+          this.logger.warn(`Failed to write REGIME_GATE_SKIPPED audit log: ${err.message}`);
+        }
+        return;
+      }
+    }
+
     const initialStage = parameterSpace ? PipelineStage.OPTIMIZE : PipelineStage.HISTORICAL;
 
     // Create the pipeline
@@ -387,4 +482,19 @@ export class PipelineOrchestrationService {
 
     this.logger.log(`Created and started pipeline ${pipeline.id} for user ${user.id}, ` + `strategy ${strategyName}`);
   }
+}
+
+/**
+ * Convert the per-coin regime map into a plain object payload for events and
+ * audit-log metadata. Includes both composite + volatility so post-hoc operators
+ * can tell which coin's volatility regime triggered a BLOCK from the audit row alone.
+ */
+function serializePerCoin(
+  snapshot: RegimeSnapshot
+): Record<string, { composite: CompositeRegimeType; volatility: MarketRegimeType | null }> {
+  const out: Record<string, { composite: CompositeRegimeType; volatility: MarketRegimeType | null }> = {};
+  for (const [symbol, entry] of snapshot.perCoin.entries()) {
+    out[symbol] = { composite: entry.composite, volatility: entry.volatility };
+  }
+  return out;
 }

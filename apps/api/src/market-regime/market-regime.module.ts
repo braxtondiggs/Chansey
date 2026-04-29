@@ -6,9 +6,11 @@ import { MarketRegime } from './entities/market-regime.entity';
 import { MarketRegimeController } from './market-regime.controller';
 import { MarketRegimeService } from './market-regime.service';
 import { RegimeChangeDetector } from './regime-change.detector';
+import { RegimeFitnessService } from './regime-fitness.service';
 import { RegimeGateService } from './regime-gate.service';
 import { VolatilityCalculator } from './volatility.calculator';
 
+import { AlgorithmModule } from '../algorithm/algorithm.module';
 import { AuditModule } from '../audit/audit.module';
 import { CoinModule } from '../coin/coin.module';
 import { OHLCModule } from '../ohlc/ohlc.module';
@@ -21,6 +23,7 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
     TypeOrmModule.forFeature([MarketRegime, StrategyConfig, Deployment]),
     forwardRef(() => CoinModule),
     forwardRef(() => OHLCModule),
+    forwardRef(() => AlgorithmModule),
     AuditModule,
     SharedCacheModule
   ],
@@ -29,9 +32,17 @@ import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
     VolatilityCalculator,
     RegimeChangeDetector,
     CompositeRegimeService,
-    RegimeGateService
+    RegimeGateService,
+    RegimeFitnessService
   ],
   controllers: [MarketRegimeController],
-  exports: [MarketRegimeService, VolatilityCalculator, RegimeChangeDetector, CompositeRegimeService, RegimeGateService]
+  exports: [
+    MarketRegimeService,
+    VolatilityCalculator,
+    RegimeChangeDetector,
+    CompositeRegimeService,
+    RegimeGateService,
+    RegimeFitnessService
+  ]
 })
 export class MarketRegimeModule {}

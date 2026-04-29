@@ -27,7 +27,7 @@ import {
   IndicatorRequirement,
   IndicatorService
 } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, TradingSignal } from '../interfaces';
+import { AlgorithmContext, AlgorithmResult, ChartDataPoint, TradingSignal, TradingStyle } from '../interfaces';
 
 /**
  * ATR Trailing Stop Strategy
@@ -45,6 +45,7 @@ import { AlgorithmContext, AlgorithmResult, ChartDataPoint, TradingSignal } from
 @Injectable()
 export class ATRTrailingStopStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'atr-trailing-stop-001';
+  readonly tradingStyle = TradingStyle.VOLATILITY_EXPANSION;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,

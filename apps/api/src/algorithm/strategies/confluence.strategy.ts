@@ -32,7 +32,8 @@ import {
   ConfluenceConfig,
   ConfluenceScore,
   IndicatorSignal,
-  TradingSignal
+  TradingSignal,
+  TradingStyle
 } from '../interfaces';
 
 /**
@@ -54,6 +55,7 @@ import {
 @Injectable()
 export class ConfluenceStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'confluence-001';
+  readonly tradingStyle = TradingStyle.MULTI_SIGNAL;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,

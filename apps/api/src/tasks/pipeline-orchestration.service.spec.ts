@@ -1,9 +1,10 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { type Repository } from 'typeorm';
 
-import { StrategyStatus } from '@chansey/api-interfaces';
+import { AuditEventType, CompositeRegimeType, MarketRegimeType, StrategyStatus } from '@chansey/api-interfaces';
 
 import {
   PIPELINE_STANDARD_CAPITAL,
@@ -15,10 +16,13 @@ import { PipelineOrchestrationService } from './pipeline-orchestration.service';
 
 import { AlgorithmService } from '../algorithm/algorithm.service';
 import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.service';
+import { AuditService } from '../audit/audit.service';
+import { CoinSelectionType } from '../coin-selection/coin-selection-type.enum';
 import { CoinSelectionService } from '../coin-selection/coin-selection.service';
 import { ExchangeKey } from '../exchange/exchange-key/exchange-key.entity';
+import { RegimeFitnessService } from '../market-regime/regime-fitness.service';
 import { Pipeline } from '../pipeline/entities/pipeline.entity';
-import { PipelineStage, PipelineStatus } from '../pipeline/interfaces';
+import { PIPELINE_EVENTS, PipelineStage, PipelineStatus } from '../pipeline/interfaces';
 import { PipelineOrchestratorService } from '../pipeline/services/pipeline-orchestrator.service';
 import { CUSTOM_RISK_LEVEL, MIN_TRADING_COINS } from '../risk/risk.constants';
 import { StrategyConfig } from '../strategy/entities/strategy-config.entity';
@@ -36,6 +40,9 @@ describe('PipelineOrchestrationService', () => {
   let algorithmService: jest.Mocked<AlgorithmService>;
   let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
   let coinSelectionService: jest.Mocked<CoinSelectionService>;
+  let regimeFitnessService: jest.Mocked<RegimeFitnessService>;
+  let eventEmitter: jest.Mocked<EventEmitter2>;
+  let auditService: jest.Mocked<AuditService>;
 
   const mockUser = {
     id: 'user-123',
@@ -136,7 +143,32 @@ describe('PipelineOrchestrationService', () => {
         {
           provide: CoinSelectionService,
           useValue: {
-            getManualCoinSelectionSymbols: jest.fn().mockResolvedValue([])
+            getManualCoinSelectionSymbols: jest.fn().mockResolvedValue([]),
+            getCoinSelectionsByUser: jest.fn().mockResolvedValue([])
+          }
+        },
+        {
+          provide: RegimeFitnessService,
+          useValue: {
+            snapshotRegime: jest.fn().mockResolvedValue({
+              universeRegime: CompositeRegimeType.BULL,
+              perCoin: new Map([['BTC', { composite: CompositeRegimeType.BULL, volatility: MarketRegimeType.NORMAL }]]),
+              btcTrendAboveSma: true,
+              status: { stale: false, ageMs: 1000 }
+            }),
+            evaluate: jest.fn().mockReturnValue({ decision: 'ALLOW', reason: 'fits regime' })
+          }
+        },
+        {
+          provide: EventEmitter2,
+          useValue: {
+            emit: jest.fn()
+          }
+        },
+        {
+          provide: AuditService,
+          useValue: {
+            createAuditLog: jest.fn().mockResolvedValue(undefined)
           }
         }
       ]
@@ -152,6 +184,9 @@ describe('PipelineOrchestrationService', () => {
     algorithmService = module.get(AlgorithmService);
     algorithmRegistry = module.get(AlgorithmRegistry);
     coinSelectionService = module.get(CoinSelectionService);
+    regimeFitnessService = module.get(RegimeFitnessService);
+    eventEmitter = module.get(EventEmitter2);
+    auditService = module.get(AuditService);
   });
 
   describe('getEligibleUsers', () => {
@@ -403,6 +438,173 @@ describe('PipelineOrchestrationService', () => {
 
       expect(result.pipelinesCreated).toBe(0);
       expect(result.errors[0]).toContain('User not found');
+    });
+
+    describe('regime fitness gate', () => {
+      beforeEach(() => {
+        algorithmRegistry.getStrategyForAlgorithm.mockResolvedValue({
+          id: 'ema-crossover-001',
+          getConfigSchema: () => ({})
+        } as any);
+      });
+
+      it('should skip strategy and emit event + audit log on BLOCK decision', async () => {
+        regimeFitnessService.evaluate = jest.fn().mockReturnValue({
+          decision: 'BLOCK',
+          reason: 'TREND_FOLLOWING in NEUTRAL universe with low-volatility coin(s)',
+          style: 'TREND_FOLLOWING'
+        });
+
+        const result = await service.orchestrateForUser('user-123');
+
+        expect(result.pipelinesCreated).toBe(0);
+        expect(result.skippedConfigs).toHaveLength(1);
+        expect(result.skippedConfigs[0].reason).toContain('regime gate:');
+        expect(pipelineOrchestrator.createPipeline).not.toHaveBeenCalled();
+        expect(eventEmitter.emit).toHaveBeenCalledWith(
+          PIPELINE_EVENTS.PIPELINE_REGIME_SKIPPED,
+          expect.objectContaining({
+            userId: 'user-123',
+            strategyConfigId: 'strategy-123',
+            strategyId: 'ema-crossover-001',
+            style: 'TREND_FOLLOWING'
+          })
+        );
+        expect(auditService.createAuditLog).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventType: AuditEventType.REGIME_GATE_SKIPPED,
+            entityType: 'StrategyConfig',
+            entityId: 'strategy-123',
+            userId: 'user-123'
+          })
+        );
+      });
+
+      it('should NOT call createPipeline when blocked', async () => {
+        regimeFitnessService.evaluate = jest.fn().mockReturnValue({
+          decision: 'BLOCK',
+          reason: 'incompatible',
+          style: 'TREND_FOLLOWING'
+        });
+
+        await service.orchestrateForUser('user-123');
+
+        expect(pipelineOrchestrator.createPipeline).not.toHaveBeenCalled();
+        expect(pipelineOrchestrator.startPipeline).not.toHaveBeenCalled();
+      });
+
+      it('should call createPipeline when ALLOW', async () => {
+        regimeFitnessService.evaluate = jest.fn().mockReturnValue({ decision: 'ALLOW', reason: 'fits' });
+
+        const result = await service.orchestrateForUser('user-123');
+
+        expect(result.pipelinesCreated).toBe(1);
+        expect(pipelineOrchestrator.createPipeline).toHaveBeenCalled();
+        expect(eventEmitter.emit).not.toHaveBeenCalledWith(PIPELINE_EVENTS.PIPELINE_REGIME_SKIPPED, expect.anything());
+      });
+
+      it('should call createPipeline when ALLOW_OVERRIDE', async () => {
+        regimeFitnessService.evaluate = jest.fn().mockReturnValue({ decision: 'ALLOW_OVERRIDE', reason: 'override' });
+
+        const result = await service.orchestrateForUser('user-123');
+
+        expect(result.pipelinesCreated).toBe(1);
+        expect(pipelineOrchestrator.createPipeline).toHaveBeenCalled();
+      });
+
+      it('should call createPipeline when ALLOW_STALE', async () => {
+        regimeFitnessService.evaluate = jest.fn().mockReturnValue({ decision: 'ALLOW_STALE', reason: 'stale' });
+
+        const result = await service.orchestrateForUser('user-123');
+
+        expect(result.pipelinesCreated).toBe(1);
+      });
+
+      it('should snapshot the regime once per user', async () => {
+        await service.orchestrateForUser('user-123');
+
+        expect(regimeFitnessService.snapshotRegime).toHaveBeenCalledTimes(1);
+      });
+
+      it('should still create pipeline when audit log throws', async () => {
+        regimeFitnessService.evaluate = jest.fn().mockReturnValue({
+          decision: 'BLOCK',
+          reason: 'incompatible',
+          style: 'TREND_FOLLOWING'
+        });
+        auditService.createAuditLog = jest.fn().mockRejectedValue(new Error('Audit DB down'));
+
+        const result = await service.orchestrateForUser('user-123');
+
+        // Still skipped, but no error blocks orchestration
+        expect(result.pipelinesCreated).toBe(0);
+        expect(result.skippedConfigs).toHaveLength(1);
+      });
+
+      it('should include per-coin volatility in BLOCK event + audit payload', async () => {
+        regimeFitnessService.snapshotRegime = jest.fn().mockResolvedValue({
+          universeRegime: CompositeRegimeType.NEUTRAL,
+          perCoin: new Map([
+            ['BTC', { composite: CompositeRegimeType.BULL, volatility: MarketRegimeType.NORMAL }],
+            ['PENGU', { composite: CompositeRegimeType.NEUTRAL, volatility: MarketRegimeType.LOW_VOLATILITY }]
+          ]),
+          btcTrendAboveSma: true,
+          status: { stale: false, ageMs: 1000 }
+        });
+        regimeFitnessService.evaluate = jest.fn().mockReturnValue({
+          decision: 'BLOCK',
+          reason: 'TREND_FOLLOWING in NEUTRAL universe with low-volatility coin(s)',
+          style: 'TREND_FOLLOWING'
+        });
+
+        await service.orchestrateForUser('user-123');
+
+        expect(eventEmitter.emit).toHaveBeenCalledWith(
+          PIPELINE_EVENTS.PIPELINE_REGIME_SKIPPED,
+          expect.objectContaining({
+            perCoin: {
+              BTC: { composite: CompositeRegimeType.BULL, volatility: MarketRegimeType.NORMAL },
+              PENGU: { composite: CompositeRegimeType.NEUTRAL, volatility: MarketRegimeType.LOW_VOLATILITY }
+            }
+          })
+        );
+        expect(auditService.createAuditLog).toHaveBeenCalledWith(
+          expect.objectContaining({
+            metadata: expect.objectContaining({
+              perCoin: {
+                BTC: { composite: CompositeRegimeType.BULL, volatility: MarketRegimeType.NORMAL },
+                PENGU: { composite: CompositeRegimeType.NEUTRAL, volatility: MarketRegimeType.LOW_VOLATILITY }
+              }
+            })
+          })
+        );
+      });
+
+      it('should exclude WATCHED selections from regime snapshot symbols', async () => {
+        coinSelectionService.getCoinSelectionsByUser = jest.fn().mockResolvedValue([
+          { type: CoinSelectionType.AUTOMATIC, coin: { symbol: 'btc' } },
+          { type: CoinSelectionType.MANUAL, coin: { symbol: 'eth' } },
+          { type: CoinSelectionType.WATCHED, coin: { symbol: 'pengu' } }
+        ]);
+
+        await service.orchestrateForUser('user-123');
+
+        expect(regimeFitnessService.snapshotRegime).toHaveBeenCalledTimes(1);
+        const symbolsArg = (regimeFitnessService.snapshotRegime as jest.Mock).mock.calls[0][0] as string[];
+        expect(symbolsArg).toEqual(expect.arrayContaining(['BTC', 'ETH']));
+        expect(symbolsArg).not.toContain('PENGU');
+        expect(symbolsArg).toHaveLength(2);
+      });
+
+      it('should fall back to [BTC] when user only has WATCHED selections', async () => {
+        coinSelectionService.getCoinSelectionsByUser = jest
+          .fn()
+          .mockResolvedValue([{ type: CoinSelectionType.WATCHED, coin: { symbol: 'pengu' } }]);
+
+        await service.orchestrateForUser('user-123');
+
+        expect(regimeFitnessService.snapshotRegime).toHaveBeenCalledWith(['BTC']);
+      });
     });
   });
 

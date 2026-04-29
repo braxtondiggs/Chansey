@@ -7,7 +7,14 @@ import { ExitConfig, StopLossType, TakeProfitType } from '../../order/interfaces
 import { toErrorInfo } from '../../shared/error.util';
 import { BaseAlgorithmStrategy } from '../base/base-algorithm-strategy';
 import { IIndicatorProvider, IndicatorCalculatorMap, IndicatorRequirement, IndicatorService } from '../indicators';
-import { AlgorithmContext, AlgorithmResult, ChartDataPoint, SignalType, TradingSignal } from '../interfaces';
+import {
+  AlgorithmContext,
+  AlgorithmResult,
+  ChartDataPoint,
+  SignalType,
+  TradingSignal,
+  TradingStyle
+} from '../interfaces';
 
 interface BollingerSqueezeConfig {
   period: number;
@@ -49,6 +56,7 @@ interface BollingerBandsData {
 @Injectable()
 export class BollingerBandSqueezeStrategy extends BaseAlgorithmStrategy implements IIndicatorProvider {
   readonly id = 'bb-squeeze-001';
+  readonly tradingStyle = TradingStyle.VOLATILITY_EXPANSION;
 
   constructor(
     schedulerRegistry: SchedulerRegistry,
