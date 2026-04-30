@@ -5,11 +5,23 @@ import {
   calculateConsistencyScore,
   calculateImprovement,
   calculateObjectiveScore,
-  computeRankingScore,
+  MIN_DOWNSIDE_DEVIATION,
+  MIN_TRADES_PER_WINDOW,
   ZERO_TRADE_PENALTY
 } from './optimization-scoring.util';
 
 import { type OptimizationConfig } from '../interfaces';
+
+const baseMetrics: WindowMetrics = {
+  sharpeRatio: 1.5,
+  totalReturn: 0.25,
+  maxDrawdown: -0.15,
+  winRate: 0.6,
+  tradeCount: 100,
+  profitFactor: 2.0,
+  volatility: 0.2,
+  downsideDeviation: 0.15
+};
 
 describe('optimization-scoring.util', () => {
   describe('calculateObjectiveScore', () => {
@@ -23,17 +35,6 @@ describe('optimization-scoring.util', () => {
         minimize: false,
         weights
       });
-    };
-
-    const baseMetrics: WindowMetrics = {
-      sharpeRatio: 1.5,
-      totalReturn: 0.25,
-      maxDrawdown: -0.15,
-      winRate: 0.6,
-      tradeCount: 100,
-      profitFactor: 2.0,
-      volatility: 0.2,
-      downsideDeviation: 0.15
     };
 
     it.each([
@@ -69,9 +70,18 @@ describe('optimization-scoring.util', () => {
       expect(score).toBeCloseTo(1.533, 2);
     });
 
-    it('should fallback to sharpe when downsideDeviation is 0', () => {
-      const score = calculateScore({ downsideDeviation: 0, tradeCount: 100 }, 'sortino_ratio');
-      expect(score).toBe(1.5);
+    it.each([
+      ['zero', 0],
+      ['below floor', 0.001]
+    ])('should floor sortino downsideDeviation at MIN_DOWNSIDE_DEVIATION when %s', (_, ddev) => {
+      const score = calculateScore({ downsideDeviation: ddev, tradeCount: 100 }, 'sortino_ratio');
+      expect(score).toBeCloseTo((0.25 - 0.02) / MIN_DOWNSIDE_DEVIATION, 2);
+    });
+
+    it('should not floor a downsideDeviation already above the floor', () => {
+      const score = calculateScore({ downsideDeviation: 0.01, tradeCount: 100 }, 'sortino_ratio');
+      // (0.25 - 0.02) / 0.01 = 23
+      expect(score).toBeCloseTo(23, 2);
     });
 
     it('should default to sharpe ratio for unknown metric', () => {
@@ -92,9 +102,45 @@ describe('optimization-scoring.util', () => {
       expect(score).toBe(-0.5);
     });
 
-    it('should return 0 for non-finite scores (NaN, Infinity)', () => {
-      // Force NaN via 0/0 in calmar path
-      const metrics = { ...baseMetrics, totalReturn: NaN, tradeCount: 50 };
+    it.each([1, 4])('should linearly scale a positive %i-trade window toward zero', (trades) => {
+      const metrics = { ...baseMetrics, tradeCount: trades };
+      const score = calculateObjectiveScore(metrics, { metric: 'sharpe_ratio', minimize: false });
+      expect(score).toBeCloseTo(1.5 * (trades / MIN_TRADES_PER_WINDOW), 4);
+    });
+
+    it.each([
+      ['at the floor', MIN_TRADES_PER_WINDOW],
+      ['above the floor', 50]
+    ])('should not scale a window %s (%i trades)', (_, trades) => {
+      const metrics = { ...baseMetrics, tradeCount: trades };
+      const score = calculateObjectiveScore(metrics, { metric: 'sharpe_ratio', minimize: false });
+      expect(score).toBe(1.5);
+    });
+
+    it.each([
+      // 1-trade window → factor=0.2 → -2 / 0.2 = -10
+      [1, -2, -10],
+      // 4-trade window → factor=0.8 → -2 / 0.8 = -2.5
+      [4, -2, -2.5]
+    ])('should deepen a negative %i-trade window away from zero', (trades, sharpe, expected) => {
+      const metrics = { ...baseMetrics, sharpeRatio: sharpe, tradeCount: trades };
+      const score = calculateObjectiveScore(metrics, { metric: 'sharpe_ratio', minimize: false });
+      expect(score).toBeCloseTo(expected, 4);
+    });
+
+    it('should clamp extreme negatives produced by the symmetric scaler to -MAX_SHARPE', () => {
+      // 1-trade × sharpe -50 → -50/0.2 = -250 → clamped to -100
+      const metrics = { ...baseMetrics, sharpeRatio: -50, tradeCount: 1 };
+      const score = calculateObjectiveScore(metrics, { metric: 'sharpe_ratio', minimize: false });
+      expect(score).toBe(-100);
+    });
+
+    it.each([
+      ['NaN', NaN],
+      ['Infinity', Infinity],
+      ['-Infinity', -Infinity]
+    ])('should return 0 for non-finite scores (%s)', (_, val) => {
+      const metrics = { ...baseMetrics, totalReturn: val, tradeCount: 50 };
       expect(calculateObjectiveScore(metrics, { metric: 'total_return', minimize: false })).toBe(0);
     });
 
@@ -108,17 +154,6 @@ describe('optimization-scoring.util', () => {
   });
 
   describe('calculateCompositeScore', () => {
-    const baseMetrics: WindowMetrics = {
-      sharpeRatio: 1.5,
-      totalReturn: 0.25,
-      maxDrawdown: -0.15,
-      winRate: 0.6,
-      tradeCount: 100,
-      profitFactor: 2.0,
-      volatility: 0.2,
-      downsideDeviation: 0.15
-    };
-
     it('should return a score between 0 and 1 with default weights', () => {
       const score = calculateCompositeScore(baseMetrics);
       expect(score).toBeGreaterThan(0);
@@ -225,27 +260,6 @@ describe('optimization-scoring.util', () => {
     it('should cap at ±500%', () => {
       expect(calculateImprovement(100, 1)).toBe(500);
       expect(calculateImprovement(-100, 1)).toBe(-500);
-    });
-  });
-
-  describe('computeRankingScore', () => {
-    it('should give full multiplier (1.0x) at consistency=100 with no overfitting', () => {
-      expect(computeRankingScore(2.0, 100, 0)).toBeCloseTo(2.0, 4);
-    });
-
-    it('should apply 0.6x multiplier at consistency=0', () => {
-      expect(computeRankingScore(2.0, 0, 0)).toBeCloseTo(1.2, 4);
-    });
-
-    it('should apply overfitting penalty of -10% per window', () => {
-      const clean = computeRankingScore(2.0, 100, 0);
-      const penalized = computeRankingScore(2.0, 100, 2);
-      expect(penalized).toBeCloseTo(clean * 0.8, 4);
-    });
-
-    it('should floor overfitting penalty at 0.5x', () => {
-      // 10 windows → max(0.5, 1.0-1.0) = 0.5
-      expect(computeRankingScore(2.0, 100, 10)).toBeCloseTo(1.0, 4);
     });
   });
 });

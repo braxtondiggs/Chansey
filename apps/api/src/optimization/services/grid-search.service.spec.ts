@@ -120,7 +120,9 @@ describe('GridSearchService', () => {
 
       const values = service.expandParameter(param);
 
-      expect(values).toContain(0.0333);
+      // Step walks 0, 0.0333..., 0.0666..., 0.0999... — only 0.0667 is reachable
+      // through round4 of the mid-step value (anchors only contribute min/default/max).
+      expect(values).toEqual([0, 0.0333, 0.0667, 0.1]);
     });
 
     it('should include max value when step does not land exactly', () => {
@@ -139,6 +141,69 @@ describe('GridSearchService', () => {
       expect(values).toContain(10);
       expect(values).toContain(14);
       expect(values).toContain(15);
+    });
+
+    it('injects natural anchors for float ranges (min, default, max, integer anchors)', () => {
+      // stopLossPercent-style range: step=1 on a float scale walks 1.5, 2.5, 3.5, ...
+      // Natural anchors should add the integers 2, 3, 4, ..., 15 so 5%/10% are reachable.
+      const param = createParam({
+        name: 'stopLossPercent',
+        type: 'float',
+        min: 1.5,
+        max: 15,
+        step: 1,
+        default: 2.5
+      });
+
+      const values = service.expandParameter(param);
+
+      // Half-step grid: 1.5, 2.5, 3.5 ... 14.5, 15
+      // Plus integer anchors inside [1.5, 15]: 2, 3, 4, ..., 15
+      expect(values).toContain(1.5);
+      expect(values).toContain(2);
+      expect(values).toContain(2.5);
+      expect(values).toContain(5); // textbook 5% stop-loss must be reachable
+      expect(values).toContain(10);
+      expect(values).toContain(15);
+      // Strictly increasing
+      for (let i = 1; i < values.length; i++) {
+        expect(values[i] as number).toBeGreaterThan(values[i - 1] as number);
+      }
+    });
+
+    it('does not inject extra anchors for integer fields', () => {
+      const param = createParam({
+        name: 'period',
+        type: 'integer',
+        min: 5,
+        max: 50,
+        step: 5,
+        default: 14
+      });
+
+      const values = service.expandParameter(param);
+
+      // Only step-walked values (5, 10, 15, 20, 25, 30, 35, 40, 45, 50)
+      expect(values).toEqual([5, 10, 15, 20, 25, 30, 35, 40, 45, 50]);
+      // Default of 14 is not an anchor on integer fields
+      expect(values).not.toContain(14);
+    });
+
+    it('always includes min, default, and max for float ranges', () => {
+      const param = createParam({
+        name: 'ratio',
+        type: 'float',
+        min: 0.1,
+        max: 0.9,
+        step: 0.25,
+        default: 0.45
+      });
+
+      const values = service.expandParameter(param);
+
+      expect(values).toContain(0.1);
+      expect(values).toContain(0.45);
+      expect(values).toContain(0.9);
     });
   });
 
