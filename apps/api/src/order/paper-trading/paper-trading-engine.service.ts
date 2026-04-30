@@ -417,7 +417,7 @@ export class PaperTradingEngineService {
             // signals. STOP_LOSS / TAKE_PROFIT / SHORT_EXIT bypass the cap.
             const isBypass = signal.originalType !== undefined && THROTTLE_BYPASS_TYPES.has(signal.originalType);
             if (!isBypass) {
-              this.throttleService.markExecuted(session.id, now.getTime());
+              this.throttleService.markExecuted(session.id, signal, now.getTime());
             }
 
             if (signal.action === 'BUY') {

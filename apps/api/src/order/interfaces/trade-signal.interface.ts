@@ -1,5 +1,6 @@
 import { type ExitConfig } from './exit-config.interface';
 
+import { type SignalType as AlgoSignalType } from '../../algorithm/interfaces';
 import { type PriceSummary } from '../../ohlc/ohlc-candle.entity';
 
 /**
@@ -41,4 +42,8 @@ export interface TradeSignalWithExit extends TradeSignal {
   portfolioValue?: number;
   /** Allocation percentage of portfolio for this trade */
   allocationPercentage?: number;
+  /** Coin UUID from the originating algorithm signal — used to stamp the throttle ledger after order placement */
+  coinId?: string;
+  /** Original algorithm signal type — preserved so callers can identify bypass signals (STOP_LOSS / TAKE_PROFIT / SHORT_EXIT) */
+  originalType?: AlgoSignalType;
 }

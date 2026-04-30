@@ -457,7 +457,7 @@ export class OptimizationCoreService {
       // accounting that historical optimization scores were calibrated to.
       for (const accepted of strategySignals) {
         if (accepted.originalType === undefined || !THROTTLE_BYPASS_TYPES.has(accepted.originalType)) {
-          this.signalThrottle.markExecuted(throttleState, timestamp.getTime());
+          this.signalThrottle.markExecuted(throttleState, accepted, timestamp.getTime());
         }
       }
 

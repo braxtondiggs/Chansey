@@ -14,7 +14,7 @@ import { DEFAULT_QUOTE_CURRENCY, EXCHANGE_QUOTE_CURRENCY } from '../../exchange/
 import { ExchangeSelectionService } from '../../exchange/exchange-selection/exchange-selection.service';
 import { toErrorInfo } from '../../shared/error.util';
 import { StrategyConfig } from '../../strategy/entities/strategy-config.entity';
-import { SignalThrottleService, THROTTLE_BYPASS_TYPES, ThrottleState } from '../backtest/shared/throttle';
+import { SignalThrottleService, ThrottleState } from '../backtest/shared/throttle';
 import { TradeSignalWithExit } from '../interfaces/trade-signal.interface';
 
 export interface GenerateSignalResult {
@@ -103,15 +103,11 @@ export class TradeSignalGeneratorService {
       now
     ).accepted;
 
-    // Preserve prior cap-burn-on-accept behavior. filterSignals now defers
-    // daily-cap accounting so paper-trading executor rejections don't burn
-    // the window; this caller only ever picks one signal anyway, but mark
-    // each acceptance so the rolling 24h count keeps tracking activations.
-    for (const accepted of throttleOutput) {
-      if (accepted.originalType === undefined || !THROTTLE_BYPASS_TYPES.has(accepted.originalType)) {
-        this.signalThrottle.markExecuted(throttleState, now);
-      }
-    }
+    // Throttle stamping is deferred to markExecuted(), which the orchestrator
+    // invokes only after tradeExecutionService.executeTradeSignal succeeds.
+    // This prevents runners-up (the N-1 signals discarded by the strength ×
+    // confidence pick below) and signals dropped by downstream entry gates
+    // from burning a 24h cooldown.
 
     if (throttleOutput.length === 0) {
       const bestThrottled = actionableSignals.reduce((best, cur) =>
@@ -220,9 +216,28 @@ export class TradeSignalGeneratorService {
         marketType: marketContext.marketType,
         leverage: marketContext.leverage,
         positionSide,
-        exitConfig
+        exitConfig,
+        coinId: bestSignal.coinId,
+        originalType: bestSignal.type
       }
     };
+  }
+
+  /**
+   * Stamp the throttle ledger for a signal that was actually executed on an exchange.
+   * Mirrors the deferral pattern in paper-trading-engine: callers invoke this only
+   * on the success branch of executeTradeSignal so silent-drops by downstream
+   * entry gates and runners-up never burn a 24h cooldown.
+   *
+   * Bypass signals (STOP_LOSS / TAKE_PROFIT / SHORT_EXIT) are intentionally skipped.
+   */
+  markExecuted(activationId: string, signal: TradeSignalWithExit): void {
+    this.signalThrottle.markExecutedFromAlgo(
+      this.throttleStates.get(activationId),
+      signal.originalType,
+      signal.coinId,
+      Date.now()
+    );
   }
 
   /** Prune throttle states for deactivated activations to prevent unbounded growth */

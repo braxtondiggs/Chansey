@@ -11,7 +11,7 @@ import { AlgorithmRegistry } from '../algorithm/registry/algorithm-registry.serv
 import { AlgorithmContextBuilder } from '../algorithm/services/algorithm-context-builder.service';
 import { CompositeRegimeService } from '../market-regime/composite-regime.service';
 import { MetricsService } from '../metrics/metrics.service';
-import { SignalThrottleService, THROTTLE_BYPASS_TYPES, ThrottleState } from '../order/backtest/shared/throttle';
+import { SignalThrottleService, ThrottleState } from '../order/backtest/shared/throttle';
 import { ExitConfig } from '../order/interfaces/exit-config.interface';
 import { toErrorInfo } from '../shared/error.util';
 
@@ -25,6 +25,10 @@ export interface TradingSignal {
   confidence?: number;
   /** Strategy-provided exit configuration (per-signal > result-level) */
   exitConfig?: Partial<ExitConfig>;
+  /** Coin UUID from the originating algorithm signal — used to stamp the throttle ledger after order placement */
+  coinId?: string;
+  /** Original algorithm signal type — preserved so callers can identify bypass signals (STOP_LOSS / TAKE_PROFIT / SHORT_EXIT) */
+  originalType?: SignalType;
 }
 
 export interface MarketData {
@@ -140,15 +144,11 @@ export class StrategyExecutorService {
         throttleNow
       );
 
-      // Preserve prior cap-burn-on-accept behavior. filterSignals now defers
-      // daily-cap accounting so paper-trading executor rejections don't burn
-      // the window; for live strategy activations we count each acceptance
-      // here to keep the rolling 24h cap tracking activation cadence.
-      for (const accepted of throttleOutput) {
-        if (accepted.originalType === undefined || !THROTTLE_BYPASS_TYPES.has(accepted.originalType)) {
-          this.signalThrottle.markExecuted(throttleState, throttleNow);
-        }
-      }
+      // Throttle stamping is deferred to markExecuted(), which the caller
+      // invokes only after the order has been successfully placed. This
+      // prevents runners-up (the N-1 signals discarded by the confidence
+      // sort below) and signals that are silently dropped by downstream
+      // gates from burning a 24h cooldown.
 
       if (throttleRejected.length > 0) {
         this.metricsService.recordSignalThrottleSuppressed(strategy.id, throttleRejected.length);
@@ -218,6 +218,24 @@ export class StrategyExecutorService {
     }
 
     return signals;
+  }
+
+  /**
+   * Stamp the throttle ledger for a signal that was actually placed on an exchange.
+   * Mirrors paper-trading-engine.service: callers invoke this only on the success
+   * branch of order placement, so silent-drops by downstream gates and runners-up
+   * discarded by the confidence sort never burn a 24h cooldown.
+   *
+   * Bypass signals (STOP_LOSS / TAKE_PROFIT / SHORT_EXIT) are intentionally skipped —
+   * engine-level guards prevent cross-batch bypass spam.
+   */
+  markExecuted(strategyId: string, signal: TradingSignal): void {
+    this.signalThrottle.markExecutedFromAlgo(
+      this.throttleStates.get(strategyId)?.state,
+      signal.originalType,
+      signal.coinId,
+      Date.now()
+    );
   }
 
   validateSignal(signal: TradingSignal, availableCapital: number): { valid: boolean; reason?: string } {
@@ -330,7 +348,9 @@ export class StrategyExecutorService {
       price,
       reason: signal.reason,
       confidence: signal.confidence,
-      exitConfig
+      exitConfig,
+      coinId: signal.coinId,
+      originalType: signal.type
     };
   }
 

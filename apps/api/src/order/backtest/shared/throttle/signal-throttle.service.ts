@@ -11,6 +11,7 @@ import {
   ThrottleState
 } from './signal-throttle.interface';
 
+import { SignalType as AlgoSignalType } from '../../../../algorithm/interfaces';
 import { TradingSignal as AlgorithmTradingSignal } from '../../../../algorithm/interfaces/algorithm-result.interface';
 import { TradingSignal } from '../types';
 
@@ -24,17 +25,31 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
  * 2. Cap daily trade frequency (rolling 24h window)
  * 3. Floor sell percentages (prevent micro-sell fragmentation)
  *
- * Risk-control signals (STOP_LOSS, TAKE_PROFIT) bypass daily cap and min sell %,
- * but respect per-coin+direction cooldowns to prevent duplicate signal spam.
+ * Risk-control signals (STOP_LOSS, TAKE_PROFIT, SHORT_EXIT) bypass the daily
+ * cap and the minimum-sell-percent floor. They check the per-coin+direction
+ * cooldown ledger but callers do not invoke `markExecuted` on them, so they
+ * do not write to that ledger themselves. In practice the cooldown only
+ * blocks a bypass signal if a regular SELL/exit on the same coin+direction
+ * was recently executed; when cooldown is enabled, consecutive bypass signals
+ * on the same coin are deduplicated within a single batch by the transient
+ * `Set`, but not across batches (and when `cooldownMs = 0` the dedup does not
+ * run at all — duplicates are accepted by design). Engine-level guards
+ * (held-coin / no-position checks) are responsible for preventing cross-batch
+ * bypass spam.
  *
  * State is passed explicitly to support checkpoint/resume without service-level mutability.
  *
- * Acceptance vs. execution accounting: `filterSignals` only updates the
- * cooldown ledger (`lastSignalTime`) when it accepts a signal. Daily-cap
- * accounting (`tradeTimestamps`) is deferred to `markExecuted`, which the
- * caller invokes once the trade has actually been placed. This prevents
- * downstream rejections (e.g. unresolved symbols, insufficient funds) from
- * burning the daily cap and silently locking out the rest of the window.
+ * Acceptance vs. execution accounting: `filterSignals` does not write to the
+ * persisted ledgers at all. Both the cooldown ledger (`lastSignalTime`) and
+ * daily-cap window (`tradeTimestamps`) are deferred to `markExecuted`, which
+ * the caller invokes once the trade has actually been placed. Within a single
+ * batch, when cooldown is enabled `filterSignals` uses a transient `Set` to
+ * dedupe same coin+direction signals so the first-passing one accepts and
+ * the rest reject — but that dedup is discarded after the call (and skipped
+ * entirely when `cooldownMs = 0`, since there is no cooldown semantic to
+ * defend). This prevents downstream rejections (e.g. unresolved symbols,
+ * insufficient funds, held-coin silent drops) from burning the daily cap or
+ * sliding the cooldown forward.
  */
 @Injectable()
 export class SignalThrottleService {
@@ -67,7 +82,9 @@ export class SignalThrottleService {
 
   /**
    * Filter an array of trading signals through throttle rules.
-   * Mutates `state` in place for accepted signals.
+   * Prunes stale entries from `state`; does NOT stamp the cooldown ledger
+   * (`lastSignalTime`) or daily-cap window (`tradeTimestamps`) for accepted
+   * signals — callers must invoke `markExecuted` after the trade fills.
    *
    * @returns Accepted signals (possibly with adjusted percentage) and rejected signals (original refs).
    */
@@ -94,6 +111,14 @@ export class SignalThrottleService {
     const accepted: TradingSignal[] = [];
     const rejected: TradingSignal[] = [];
 
+    // When cooldown is enabled, tracks coin+direction keys accepted earlier
+    // in this batch so duplicate signals within the same call reject all but
+    // the first. When cooldown is 0 the engine accepts duplicates by design
+    // (no cooldown semantics to defend). Discarded when filterSignals returns
+    // — does NOT touch persistent state. Persistent cooldown stamps come from
+    // `markExecuted` once a trade actually fills.
+    const batchAccepted = new Set<CooldownKey>();
+
     for (const signal of signals) {
       if (signal.action === 'HOLD') {
         rejected.push(signal);
@@ -110,7 +135,11 @@ export class SignalThrottleService {
             rejected.push(signal);
             continue; // Duplicate risk-control signal — suppress
           }
-          state.lastSignalTime[key] = currentTimestampMs;
+          if (batchAccepted.has(key)) {
+            rejected.push(signal);
+            continue; // Duplicate within same batch — suppress
+          }
+          batchAccepted.add(key);
         }
         accepted.push(signal);
         continue;
@@ -125,6 +154,10 @@ export class SignalThrottleService {
         if (lastTime !== undefined && currentTimestampMs - lastTime < config.cooldownMs) {
           rejected.push(signal);
           continue; // Still in cooldown — suppress
+        }
+        if (batchAccepted.has(key)) {
+          rejected.push(signal);
+          continue; // Duplicate within same batch — suppress
         }
       }
 
@@ -143,12 +176,13 @@ export class SignalThrottleService {
         }
       }
 
-      // Accept signal — update cooldown ledger (use original `signal` for cooldown key).
-      // Daily-cap accounting is deferred to markExecuted() so failed executions
-      // don't burn the rolling 24h window.
+      // Track in-batch acceptance so subsequent same-key signals in this batch
+      // reject. Persistent cooldown stamping is deferred to markExecuted() so
+      // downstream rejections (held-coin drops, insufficient funds, etc.)
+      // don't slide the cooldown forward.
       if (config.cooldownMs > 0) {
         const key: CooldownKey = `${signal.coinId}:${direction}`;
-        state.lastSignalTime[key] = currentTimestampMs;
+        batchAccepted.add(key);
       }
 
       accepted.push(effectiveSignal);
@@ -158,13 +192,41 @@ export class SignalThrottleService {
   }
 
   /**
-   * Mark a signal as actually executed. Updates the rolling 24h trade window
-   * used by the daily cap. Call this only after the trade has been placed —
-   * signals that get rejected downstream (unresolved symbol, insufficient
-   * funds, etc.) must NOT consume a slot.
+   * Mark a signal as actually executed. Stamps the cooldown ledger
+   * (`lastSignalTime`) for the signal's coin+direction and appends to the
+   * rolling 24h trade window (`tradeTimestamps`) used by the daily cap.
+   * Call this only after the trade has been placed — signals that get
+   * rejected downstream (unresolved symbol, insufficient funds, held-coin
+   * silent drops, etc.) must NOT consume a cooldown slot or daily-cap slot.
    */
-  markExecuted(state: ThrottleState, currentTimestampMs: number): void {
+  markExecuted(state: ThrottleState, signal: TradingSignal, currentTimestampMs: number): void {
+    // HOLD signals never reach execution (filterSignals rejects them) — guard
+    // narrows the type so the cooldown key matches CooldownKey's contract.
+    if (signal.action === 'HOLD') return;
+    const key: CooldownKey = `${signal.coinId}:${signal.action}`;
+    state.lastSignalTime[key] = currentTimestampMs;
     state.tradeTimestamps.push(currentTimestampMs);
+  }
+
+  /**
+   * Higher-level wrapper used by live execution paths after an order is successfully placed.
+   * Encapsulates the null-state guard, bypass-type guard, and algorithm→throttle conversion
+   * so callers (strategy-executor, trade-signal-generator) don't duplicate the boilerplate.
+   *
+   * Returns true if the ledger was stamped, false if any guard short-circuited.
+   */
+  markExecutedFromAlgo(
+    state: ThrottleState | undefined,
+    signalType: AlgoSignalType | undefined,
+    coinId: string | undefined,
+    currentTimestampMs: number
+  ): boolean {
+    if (!state || !signalType || !coinId) return false;
+    if (THROTTLE_BYPASS_TYPES.has(signalType)) return false;
+    const action = SIGNAL_TYPE_TO_ACTION[signalType];
+    if (!action || action === 'HOLD') return false;
+    this.markExecuted(state, { action, coinId, reason: '' }, currentTimestampMs);
+    return true;
   }
 
   /** Serialize throttle state for checkpoint persistence */

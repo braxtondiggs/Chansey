@@ -60,7 +60,8 @@ describe('TradeOrchestratorService', () => {
     mockUserRepo = { find: jest.fn().mockResolvedValue([]) };
     mockTradeSignalGenerator = {
       generateTradeSignal: jest.fn().mockResolvedValue({ signal: null }),
-      pruneThrottleStates: jest.fn()
+      pruneThrottleStates: jest.fn(),
+      markExecuted: jest.fn()
     };
     mockEntryGate = {
       checkEntryGates: jest.fn().mockResolvedValue({ allowed: true }),
@@ -243,6 +244,11 @@ describe('TradeOrchestratorService', () => {
 
       expect(result.successCount).toBe(1);
       expect(mockTradeExecutionService.executeTradeSignal).toHaveBeenCalled();
+      expect(mockTradeSignalGenerator.markExecuted).toHaveBeenCalledTimes(1);
+      expect(mockTradeSignalGenerator.markExecuted).toHaveBeenCalledWith(
+        'activation-1',
+        expect.objectContaining({ symbol: 'BTC/USDT' })
+      );
       expect(mockLiveSignalService.recordOutcome).toHaveBeenCalledWith(
         expect.objectContaining({ status: SignalStatus.PLACED, orderId: 'order-1' })
       );
@@ -278,6 +284,7 @@ describe('TradeOrchestratorService', () => {
 
       expect(result.failCount).toBe(1);
       expect(mockEntryGate.clearCooldownOnFailure).toHaveBeenCalledWith('user-1', 'BTC/USDT', 'BUY');
+      expect(mockTradeSignalGenerator.markExecuted).not.toHaveBeenCalled();
       expect(mockLiveSignalService.recordOutcome).toHaveBeenCalledWith(
         expect.objectContaining({
           status: SignalStatus.FAILED,

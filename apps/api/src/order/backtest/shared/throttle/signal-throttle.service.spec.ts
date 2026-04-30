@@ -77,9 +77,21 @@ describe('SignalThrottleService', () => {
     });
 
     describe('cooldown', () => {
+      // Persisting cooldown across batches now requires the caller to invoke
+      // markExecuted — filterSignals no longer writes to state.lastSignalTime.
+      const acceptAndMark = (
+        signal: TradingSignal,
+        state: ReturnType<typeof service.createState>,
+        cfg: SignalThrottleConfig,
+        ts: number
+      ) => {
+        service.filterSignals([signal], state, cfg, ts);
+        service.markExecuted(state, signal, ts);
+      };
+
       it('same coin+direction within cooldownMs is suppressed', () => {
         const state = service.createState();
-        service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
+        acceptAndMark(makeBuy('btc'), state, config, BASE_TIME);
 
         const { accepted } = service.filterSignals([makeBuy('btc')], state, config, BASE_TIME + ONE_HOUR);
         expect(accepted).toHaveLength(0);
@@ -87,7 +99,7 @@ describe('SignalThrottleService', () => {
 
       it('BUY cooldown does not block SELL for same coin', () => {
         const state = service.createState();
-        service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
+        acceptAndMark(makeBuy('btc'), state, config, BASE_TIME);
 
         const { accepted } = service.filterSignals([makeSell('btc', 0.8, 0.6)], state, config, BASE_TIME + ONE_HOUR);
         expect(accepted).toHaveLength(1);
@@ -96,7 +108,7 @@ describe('SignalThrottleService', () => {
 
       it('BUY cooldown for BTC does not block BUY for ETH', () => {
         const state = service.createState();
-        service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
+        acceptAndMark(makeBuy('btc'), state, config, BASE_TIME);
 
         const { accepted } = service.filterSignals([makeBuy('eth')], state, config, BASE_TIME + ONE_HOUR);
         expect(accepted).toHaveLength(1);
@@ -105,7 +117,7 @@ describe('SignalThrottleService', () => {
 
       it('signal passes after cooldownMs elapsed', () => {
         const state = service.createState();
-        service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
+        acceptAndMark(makeBuy('btc'), state, config, BASE_TIME);
 
         const { accepted } = service.filterSignals([makeBuy('btc')], state, config, BASE_TIME + ONE_DAY);
         expect(accepted).toHaveLength(1);
@@ -115,7 +127,7 @@ describe('SignalThrottleService', () => {
         const state = service.createState();
         const noCooldown: SignalThrottleConfig = { ...config, cooldownMs: 0, maxTradesPerDay: 100 };
 
-        service.filterSignals([makeBuy('btc')], state, noCooldown, BASE_TIME);
+        acceptAndMark(makeBuy('btc'), state, noCooldown, BASE_TIME);
         const { accepted } = service.filterSignals([makeBuy('btc')], state, noCooldown, BASE_TIME + 1);
         expect(accepted).toHaveLength(1);
       });
@@ -129,7 +141,7 @@ describe('SignalThrottleService', () => {
 
       it('cooldown-rejected signal appears in rejected array', () => {
         const state = service.createState();
-        service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
+        acceptAndMark(makeBuy('btc'), state, config, BASE_TIME);
 
         const signal = makeBuy('btc');
         const { accepted, rejected } = service.filterSignals([signal], state, config, BASE_TIME + ONE_HOUR);
@@ -140,9 +152,10 @@ describe('SignalThrottleService', () => {
     });
 
     describe('daily trade limit', () => {
-      // Daily-cap accounting moved out of filterSignals into markExecuted, so
-      // these scenarios now mirror what callers do: filter, then mark each
-      // accepted (non-bypass) signal as executed before the next batch.
+      // Both cooldown and daily-cap accounting moved out of filterSignals into
+      // markExecuted, so these scenarios now mirror what callers do: filter,
+      // then mark each accepted (non-bypass) signal as executed before the
+      // next batch.
       const filterAndMark = (
         signals: TradingSignal[],
         state: ReturnType<typeof service.createState>,
@@ -157,7 +170,7 @@ describe('SignalThrottleService', () => {
               s.originalType !== AlgoSignalType.TAKE_PROFIT &&
               s.originalType !== AlgoSignalType.SHORT_EXIT)
           ) {
-            service.markExecuted(state, ts);
+            service.markExecuted(state, s, ts);
           }
         }
         return result;
@@ -211,8 +224,8 @@ describe('SignalThrottleService', () => {
 
       it('markExecuted updates the rolling 24h window', () => {
         const state = service.createState();
-        service.markExecuted(state, BASE_TIME);
-        service.markExecuted(state, BASE_TIME + 1000);
+        service.markExecuted(state, makeBuy('btc'), BASE_TIME);
+        service.markExecuted(state, makeBuy('eth'), BASE_TIME + 1000);
         expect(state.tradeTimestamps).toEqual([BASE_TIME, BASE_TIME + 1000]);
       });
     });
@@ -237,8 +250,9 @@ describe('SignalThrottleService', () => {
         // Fill daily cap with a normal trade. filterSignals no longer auto-bumps
         // the rolling window — the caller must mark execution explicitly.
         const noCooldownStrict: SignalThrottleConfig = { ...strictConfig, cooldownMs: 0 };
-        service.filterSignals([makeBuy('btc')], state, noCooldownStrict, BASE_TIME);
-        service.markExecuted(state, BASE_TIME);
+        const buy = makeBuy('btc');
+        service.filterSignals([buy], state, noCooldownStrict, BASE_TIME);
+        service.markExecuted(state, buy, BASE_TIME);
 
         // Risk-control signal still passes despite daily cap reached
         const { accepted } = service.filterSignals([makeSignal()], state, noCooldownStrict, BASE_TIME + ONE_HOUR);
@@ -249,15 +263,31 @@ describe('SignalThrottleService', () => {
       it.each([
         ['STOP_LOSS', () => makeStopLoss('btc')],
         ['TAKE_PROFIT', () => makeTakeProfit('btc')]
-      ] as const)('%s respects cooldown', (_label, makeSignal) => {
+      ] as const)('%s respects cooldown after markExecuted persists the stamp', (_label, makeSignal) => {
         const state = service.createState();
         // First risk-control signal passes
-        const { accepted: r1 } = service.filterSignals([makeSignal()], state, strictConfig, BASE_TIME);
+        const first = makeSignal();
+        const { accepted: r1 } = service.filterSignals([first], state, strictConfig, BASE_TIME);
         expect(r1).toHaveLength(1);
+        // markExecuted is the sole writer of lastSignalTime — caller must
+        // invoke it to persist the cooldown stamp across batches.
+        service.markExecuted(state, first, BASE_TIME);
 
         // Second within cooldown is suppressed
         const { accepted: r2 } = service.filterSignals([makeSignal()], state, strictConfig, BASE_TIME + ONE_HOUR);
         expect(r2).toHaveLength(0);
+      });
+
+      it('STOP_LOSS without markExecuted does NOT persist cooldown across batches', () => {
+        const state = service.createState();
+        // filterSignals alone no longer stamps lastSignalTime — held-coin
+        // silent-drop scenarios that never reach markExecuted must not lock
+        // out future signals on the same coin+direction.
+        service.filterSignals([makeStopLoss('btc')], state, strictConfig, BASE_TIME);
+        expect(state.lastSignalTime['btc:SELL']).toBeUndefined();
+
+        const { accepted } = service.filterSignals([makeStopLoss('btc')], state, strictConfig, BASE_TIME + ONE_HOUR);
+        expect(accepted).toHaveLength(1);
       });
 
       it('bypass signals do not count against daily limit', () => {
@@ -272,9 +302,12 @@ describe('SignalThrottleService', () => {
         expect(accepted).toHaveLength(1);
       });
 
-      it('bypass signals set cooldown — blocks subsequent normal SELL for same coin', () => {
+      it('bypass signals set cooldown after markExecuted — blocks subsequent normal SELL for same coin', () => {
         const state = service.createState();
-        service.filterSignals([makeStopLoss('btc')], state, config, BASE_TIME);
+        const sl = makeStopLoss('btc');
+        service.filterSignals([sl], state, config, BASE_TIME);
+        // Caller must invoke markExecuted to persist the cooldown stamp.
+        service.markExecuted(state, sl, BASE_TIME);
 
         // Normal SELL for same coin+direction within cooldown is suppressed
         const { accepted } = service.filterSignals([makeSell('btc', 0.8, 0.6)], state, config, BASE_TIME + ONE_HOUR);
@@ -352,16 +385,47 @@ describe('SignalThrottleService', () => {
       });
     });
 
-    it('should update state.lastSignalTime on accepted signals; tradeTimestamps only via markExecuted', () => {
+    it('filterSignals does NOT touch state; markExecuted is the sole writer of lastSignalTime and tradeTimestamps', () => {
       const state = service.createState();
-      service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
+      const buy = makeBuy('btc');
+      service.filterSignals([buy], state, config, BASE_TIME);
 
-      expect(state.lastSignalTime['btc:BUY']).toBe(BASE_TIME);
-      // filterSignals no longer touches tradeTimestamps — that's markExecuted's job.
+      // Both ledgers stay untouched — neither cooldown stamp nor daily-cap
+      // entry is written until the caller marks execution. This prevents
+      // downstream silent drops (held-coin, insufficient funds, unresolved
+      // symbols) from sliding the cooldown forward or burning the daily cap.
+      expect(state.lastSignalTime['btc:BUY']).toBeUndefined();
       expect(state.tradeTimestamps).toEqual([]);
 
-      service.markExecuted(state, BASE_TIME);
+      service.markExecuted(state, buy, BASE_TIME);
+      expect(state.lastSignalTime['btc:BUY']).toBe(BASE_TIME);
       expect(state.tradeTimestamps).toEqual([BASE_TIME]);
+    });
+
+    it('lastSignalTime is NOT stamped when filterSignals accepts but markExecuted is never called', () => {
+      // Regression test for the held-coin silent-drop bug: filterSignals
+      // accepts a BUY for a coin that's already held, the engine drops it
+      // silently without invoking markExecuted, and the next BUY one bar
+      // later must still pass the throttle (cooldown not slid forward).
+      const state = service.createState();
+
+      service.filterSignals([makeBuy('btc')], state, config, BASE_TIME);
+      // Engine silently drops the signal — markExecuted is never called.
+      expect(state.lastSignalTime['btc:BUY']).toBeUndefined();
+
+      // Subsequent BUY one hour later still passes — cooldown wasn't burned.
+      const { accepted } = service.filterSignals([makeBuy('btc')], state, config, BASE_TIME + ONE_HOUR);
+      expect(accepted).toHaveLength(1);
+    });
+
+    it('intra-batch dedup rejects same coin+direction duplicates without persisting state', () => {
+      const state = service.createState();
+      const signals = [makeBuy('btc'), makeBuy('btc'), makeBuy('btc')];
+      const { accepted, rejected } = service.filterSignals(signals, state, config, BASE_TIME);
+      expect(accepted).toHaveLength(1);
+      expect(rejected).toHaveLength(2);
+      // Persistent ledger remains empty — dedup is transient.
+      expect(state.lastSignalTime['btc:BUY']).toBeUndefined();
     });
   });
 
@@ -473,9 +537,11 @@ describe('SignalThrottleService', () => {
   describe('serialize / deserialize', () => {
     it('roundtrip preserves state', () => {
       const state = service.createState();
-      service.filterSignals([makeBuy('btc'), makeSell('eth', 0.8, 0.6)], state, DEFAULT_THROTTLE_CONFIG, BASE_TIME);
-      service.markExecuted(state, BASE_TIME);
-      service.markExecuted(state, BASE_TIME);
+      const buy = makeBuy('btc');
+      const sell = makeSell('eth', 0.8, 0.6);
+      service.filterSignals([buy, sell], state, DEFAULT_THROTTLE_CONFIG, BASE_TIME);
+      service.markExecuted(state, buy, BASE_TIME);
+      service.markExecuted(state, sell, BASE_TIME);
 
       const serialized = service.serialize(state);
       const restored = service.deserialize(serialized);
@@ -486,6 +552,76 @@ describe('SignalThrottleService', () => {
       // Ensure it's a deep copy — mutations don't leak
       restored.tradeTimestamps.push(999);
       expect(state.tradeTimestamps).not.toContain(999);
+    });
+  });
+
+  describe('markExecutedFromAlgo', () => {
+    it('returns false when state is undefined', () => {
+      const result = service.markExecutedFromAlgo(undefined, AlgoSignalType.BUY, 'btc', BASE_TIME);
+      expect(result).toBe(false);
+    });
+
+    it('returns false when signalType is undefined', () => {
+      const state = service.createState();
+      const result = service.markExecutedFromAlgo(state, undefined, 'btc', BASE_TIME);
+      expect(result).toBe(false);
+      expect(state.lastSignalTime).toEqual({});
+      expect(state.tradeTimestamps).toEqual([]);
+    });
+
+    it('returns false when coinId is undefined', () => {
+      const state = service.createState();
+      const result = service.markExecutedFromAlgo(state, AlgoSignalType.BUY, undefined, BASE_TIME);
+      expect(result).toBe(false);
+      expect(state.lastSignalTime).toEqual({});
+    });
+
+    it('returns false and skips stamping for STOP_LOSS bypass type', () => {
+      const state = service.createState();
+      const result = service.markExecutedFromAlgo(state, AlgoSignalType.STOP_LOSS, 'btc', BASE_TIME);
+      expect(result).toBe(false);
+      expect(state.lastSignalTime).toEqual({});
+      expect(state.tradeTimestamps).toEqual([]);
+    });
+
+    it('returns false and skips stamping for TAKE_PROFIT bypass type', () => {
+      const state = service.createState();
+      const result = service.markExecutedFromAlgo(state, AlgoSignalType.TAKE_PROFIT, 'btc', BASE_TIME);
+      expect(result).toBe(false);
+    });
+
+    it('returns false and skips stamping for SHORT_EXIT bypass type', () => {
+      const state = service.createState();
+      const result = service.markExecutedFromAlgo(state, AlgoSignalType.SHORT_EXIT, 'btc', BASE_TIME);
+      expect(result).toBe(false);
+    });
+
+    it('returns false for HOLD signal type', () => {
+      const state = service.createState();
+      const result = service.markExecutedFromAlgo(state, AlgoSignalType.HOLD, 'btc', BASE_TIME);
+      expect(result).toBe(false);
+    });
+
+    it('stamps the throttle ledger for a regular BUY signal', () => {
+      const state = service.createState();
+      const result = service.markExecutedFromAlgo(state, AlgoSignalType.BUY, 'btc', BASE_TIME);
+      expect(result).toBe(true);
+      expect(state.lastSignalTime).toEqual({ 'btc:BUY': BASE_TIME });
+      expect(state.tradeTimestamps).toEqual([BASE_TIME]);
+    });
+
+    it('stamps the throttle ledger for a regular SELL signal', () => {
+      const state = service.createState();
+      const result = service.markExecutedFromAlgo(state, AlgoSignalType.SELL, 'eth', BASE_TIME);
+      expect(result).toBe(true);
+      expect(state.lastSignalTime).toEqual({ 'eth:SELL': BASE_TIME });
+    });
+
+    it('stamps OPEN_SHORT for SHORT_ENTRY signal', () => {
+      const state = service.createState();
+      const result = service.markExecutedFromAlgo(state, AlgoSignalType.SHORT_ENTRY, 'btc', BASE_TIME);
+      expect(result).toBe(true);
+      expect(state.lastSignalTime).toEqual({ 'btc:OPEN_SHORT': BASE_TIME });
     });
   });
 });
