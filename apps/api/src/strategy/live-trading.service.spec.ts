@@ -92,7 +92,8 @@ describe('LiveTradingService', () => {
 
     strategyExecutor = {
       executeStrategy: jest.fn(),
-      validateSignal: jest.fn()
+      validateSignal: jest.fn(),
+      markExecuted: jest.fn()
     } as unknown as jest.Mocked<StrategyExecutorService>;
 
     balanceService = {
@@ -592,6 +593,82 @@ describe('LiveTradingService', () => {
         SignalStatus.BLOCKED,
         expect.objectContaining({ reasonCode: SignalReasonCode.TRADE_COOLDOWN })
       );
+    });
+
+    it('calls strategyExecutor.markExecuted on successful order placement', async () => {
+      setupSignalPath();
+      const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+      strategyExecutor.executeStrategy.mockResolvedValue(signal);
+      strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+      await service.executeLiveTrading();
+
+      expect(strategyExecutor.markExecuted).toHaveBeenCalledTimes(1);
+      expect(strategyExecutor.markExecuted).toHaveBeenCalledWith('strategy-1', signal);
+    });
+
+    it('does NOT call markExecuted when order placement is blocked', async () => {
+      setupSignalPath();
+      orderPlacement.placeOrder.mockResolvedValue(blockedResult);
+      const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+      strategyExecutor.executeStrategy.mockResolvedValue(signal);
+      strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+      await service.executeLiveTrading();
+
+      expect(strategyExecutor.markExecuted).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        'regime gate',
+        () => {
+          signalFilterChain.apply.mockReturnValue({
+            signals: [],
+            maxAllocation: 1,
+            minAllocation: 0,
+            regimeGateBlockedCount: 1,
+            regimeMultiplier: 1
+          } as any);
+        }
+      ],
+      [
+        'drawdown gate',
+        () => {
+          preTradeRiskGate.checkDrawdown.mockResolvedValue({ allowed: false, reason: 'drawdown breach' } as any);
+        }
+      ],
+      [
+        'daily loss gate',
+        () => {
+          dailyLossLimitGate.isEntryBlocked.mockResolvedValue({ blocked: true, reason: 'daily loss exceeded' } as any);
+        }
+      ],
+      [
+        'concentration gate',
+        () => {
+          concentrationGate.checkTrade.mockReturnValue({ allowed: false, reason: 'over concentrated' } as any);
+        }
+      ],
+      [
+        'BUY-already-held check',
+        () => {
+          positionTracking.getPositions.mockResolvedValue([
+            { symbol: 'BTC/USDT', positionSide: 'long', quantity: '0.01', strategyConfigId: 'strategy-1' } as any
+          ]);
+        }
+      ]
+    ])('does NOT call markExecuted when picked signal is silently dropped by %s', async (_label, setupGate) => {
+      setupSignalPath();
+      setupGate();
+      const signal: TradingSignal = { action: 'buy', symbol: 'BTC/USDT', quantity: 0.01, price: 30000 } as any;
+      strategyExecutor.executeStrategy.mockResolvedValue(signal);
+      strategyExecutor.validateSignal.mockReturnValue({ valid: true });
+
+      await service.executeLiveTrading();
+
+      expect(orderPlacement.placeOrder).not.toHaveBeenCalled();
+      expect(strategyExecutor.markExecuted).not.toHaveBeenCalled();
     });
 
     it('records concentration-reduced reason when quantity is adjusted', async () => {

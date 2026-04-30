@@ -504,7 +504,11 @@ describe('PaperTradingEngineService', () => {
       await service.processTick(makeSession(), exchangeKey);
 
       expect(throttleService.markExecuted).toHaveBeenCalledTimes(1);
-      expect(throttleService.markExecuted).toHaveBeenCalledWith('session-1', expect.any(Number));
+      expect(throttleService.markExecuted).toHaveBeenCalledWith(
+        'session-1',
+        expect.objectContaining({ action: 'BUY' }),
+        expect.any(Number)
+      );
     });
 
     it('does NOT mark the throttle as executed when the order is rejected', async () => {
@@ -520,6 +524,49 @@ describe('PaperTradingEngineService', () => {
 
       await service.processTick(makeSession(), exchangeKey);
 
+      expect(throttleService.markExecuted).not.toHaveBeenCalled();
+    });
+
+    it('silently dropped duplicate-BUY for held coin does NOT update cooldown', async () => {
+      // Regression for the cooldown lock-out bug: a BUY signal for an
+      // already-held coin is silently dropped before the executor runs, so
+      // the throttle's lastSignalTime ledger must NOT be stamped — otherwise
+      // every subsequent BUY for that coin slides the cooldown forward
+      // forever, locking out re-entries even after the position closes.
+      const { service, throttleService, orderExecutor, algorithmRegistry } = createService({
+        accounts: [
+          { currency: 'USD', available: 5000, total: 5000 },
+          { currency: 'BTC', available: 1, total: 1, averageCost: 40000 }
+        ]
+      });
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [
+          { type: SignalType.BUY, coinId: 'BTC', strength: 0.1, quantity: 0.1, confidence: 0.8, reason: 'entry' }
+        ]
+      });
+
+      await service.processTick(makeSession(), exchangeKey);
+
+      // The engine drops the BUY before reaching the executor (held-coin guard)
+      expect(orderExecutor.execute).not.toHaveBeenCalled();
+      // No execution → no cooldown stamp → cooldown stays clear for next tick
+      expect(throttleService.markExecuted).not.toHaveBeenCalled();
+    });
+
+    it('silently dropped SELL for unheld coin does NOT update cooldown', async () => {
+      // Mirror of the held-coin case for SELL signals: when no position is
+      // held, the SELL is dropped before the executor runs and must not burn
+      // a cooldown slot.
+      const { service, throttleService, orderExecutor, algorithmRegistry } = createService();
+      algorithmRegistry.executeAlgorithm.mockResolvedValue({
+        success: true,
+        signals: [{ type: SignalType.SELL, coinId: 'BTC', strength: 0.5, confidence: 0.8, reason: 'exit' }]
+      });
+
+      await service.processTick(makeSession(), exchangeKey);
+
+      expect(orderExecutor.execute).not.toHaveBeenCalled();
       expect(throttleService.markExecuted).not.toHaveBeenCalled();
     });
 

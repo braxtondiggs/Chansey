@@ -379,6 +379,7 @@ export class LiveTradingService implements OnApplicationShutdown {
 
           const orderResult = await this.orderPlacement.placeOrder(user, strategy.id, signal, strategy);
           if (orderResult.status === 'placed') {
+            this.strategyExecutor.markExecuted(strategy.id, signal);
             await this.liveSignalService.recordFromTradingSignal(user.id, strategy.id, signal, SignalStatus.PLACED, {
               reasonCode: placedReasonCode,
               reason: placedReason,

@@ -259,6 +259,7 @@ export class TradeOrchestratorService {
 
       try {
         const order = await this.tradeExecutionService.executeTradeSignal(signal);
+        this.tradeSignalGenerator.markExecuted(activation.id, signal);
         await this.recordActivationSignalOutcome(activation, signal, SignalStatus.PLACED, {
           orderId: order.id,
           quantity: Number(order.executedQuantity ?? order.quantity ?? signal.quantity)

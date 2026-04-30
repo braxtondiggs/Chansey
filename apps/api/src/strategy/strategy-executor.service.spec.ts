@@ -26,6 +26,8 @@ interface MockBundle {
     createState: jest.Mock;
     resolveConfig: jest.Mock;
     filterSignals: jest.Mock;
+    markExecuted: jest.Mock;
+    markExecutedFromAlgo: jest.Mock;
     toThrottleSignal: jest.Mock;
   };
   compositeRegimeService: {
@@ -58,6 +60,7 @@ async function createMockModule(
     resolveConfig: jest.fn().mockReturnValue({ cooldownMs: 86_400_000, maxTradesPerDay: 6, minSellPercent: 0.5 }),
     filterSignals: jest.fn().mockImplementation((signals) => ({ accepted: signals, rejected: [] })),
     markExecuted: jest.fn(),
+    markExecutedFromAlgo: jest.fn().mockReturnValue(true),
     toThrottleSignal: jest.fn().mockImplementation((s: any) => {
       const map: Record<string, string> = {
         BUY: 'BUY',
@@ -495,6 +498,127 @@ describe('StrategyExecutorService – validateSignal', () => {
     const result = service.validateSignal(signal, 100);
 
     expect(result.valid).toBe(true);
+  });
+});
+
+describe('StrategyExecutorService – markExecuted deferral', () => {
+  let service: StrategyExecutorService;
+  let algorithmRegistry: jest.Mocked<AlgorithmRegistry>;
+  let signalThrottle: MockBundle['signalThrottle'];
+
+  const coins: Partial<Coin>[] = [
+    { id: 'btc-id', symbol: 'BTC' },
+    { id: 'eth-id', symbol: 'ETH' },
+    { id: 'sol-id', symbol: 'SOL' }
+  ];
+
+  const strategy = {
+    id: 'strat-1',
+    algorithm: { id: 'algo-1' },
+    parameters: { cooldownMs: 3600_000 }
+  } as any;
+
+  const marketData: MarketData[] = [
+    { symbol: 'BTC/USDT', price: 50000, timestamp: new Date() },
+    { symbol: 'ETH/USDT', price: 3000, timestamp: new Date() },
+    { symbol: 'SOL/USDT', price: 100, timestamp: new Date() }
+  ];
+
+  beforeEach(async () => {
+    const mocks = await createMockModule(coins);
+    service = mocks.service;
+    algorithmRegistry = mocks.algorithmRegistry;
+    signalThrottle = mocks.signalThrottle;
+  });
+
+  it('does NOT stamp lastSignalTime for runners-up that are not chosen as best', async () => {
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [
+        { type: SignalType.BUY, coinId: 'btc-id', strength: 0.9, confidence: 0.95, reason: 'btc top' },
+        { type: SignalType.BUY, coinId: 'eth-id', strength: 0.6, confidence: 0.85, reason: 'eth runner-up' },
+        { type: SignalType.BUY, coinId: 'sol-id', strength: 0.5, confidence: 0.75, reason: 'sol runner-up' }
+      ],
+      timestamp: new Date()
+    });
+
+    const result = await service.executeStrategy(strategy, marketData, [], 10000);
+
+    expect(result?.symbol).toBe('BTC/USDT');
+    // Bug pattern: previously markExecuted was called for every accepted signal pre-pick.
+    // Post-fix: executeStrategy must NOT stamp the throttle ledger at all.
+    expect(signalThrottle.markExecutedFromAlgo).not.toHaveBeenCalled();
+    expect(signalThrottle.markExecuted).not.toHaveBeenCalled();
+  });
+
+  it('markExecuted stamps lastSignalTime when invoked with the chosen signal', async () => {
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [{ type: SignalType.BUY, coinId: 'btc-id', strength: 0.9, confidence: 0.95, reason: 'btc' }],
+      timestamp: new Date()
+    });
+
+    const signal = await service.executeStrategy(strategy, marketData, [], 10000);
+    if (!signal) throw new Error('expected signal');
+    expect(signalThrottle.markExecutedFromAlgo).not.toHaveBeenCalled();
+
+    service.markExecuted(strategy.id, signal);
+
+    expect(signalThrottle.markExecutedFromAlgo).toHaveBeenCalledTimes(1);
+    const [, signalType, coinId] = signalThrottle.markExecutedFromAlgo.mock.calls[0];
+    expect(signalType).toBe(SignalType.BUY);
+    expect(coinId).toBe('btc-id');
+  });
+
+  it('markExecuted forwards undefined state to markExecutedFromAlgo for unknown strategyId', () => {
+    // Bypass / state-null guards live in markExecutedFromAlgo; the public method
+    // hands off and lets the throttle service decide whether to stamp.
+    const signal: TradingSignal = {
+      action: 'buy',
+      symbol: 'BTC/USDT',
+      quantity: 0.1,
+      price: 50000,
+      coinId: 'btc-id',
+      originalType: SignalType.BUY
+    };
+
+    service.markExecuted('does-not-exist', signal);
+
+    expect(signalThrottle.markExecutedFromAlgo).toHaveBeenCalledTimes(1);
+    const [state] = signalThrottle.markExecutedFromAlgo.mock.calls[0];
+    expect(state).toBeUndefined();
+  });
+
+  it.each([
+    ['STOP_LOSS', SignalType.STOP_LOSS],
+    ['TAKE_PROFIT', SignalType.TAKE_PROFIT],
+    ['SHORT_EXIT', SignalType.SHORT_EXIT]
+  ])('markExecuted forwards %s originalType for the throttle service to skip', async (_label, originalType) => {
+    // Seed throttle state so the strategyId is registered
+    algorithmRegistry.executeAlgorithm.mockResolvedValue({
+      success: true,
+      signals: [{ type: SignalType.BUY, coinId: 'btc-id', strength: 0.9, confidence: 0.95, reason: 'seed' }],
+      timestamp: new Date()
+    });
+    await service.executeStrategy(strategy, marketData, [], 10000);
+    signalThrottle.markExecutedFromAlgo.mockClear();
+
+    const bypassSignal: TradingSignal = {
+      action: originalType === SignalType.SHORT_EXIT ? 'short_exit' : 'sell',
+      symbol: 'BTC/USDT',
+      quantity: 0.1,
+      price: 50000,
+      coinId: 'btc-id',
+      originalType
+    };
+
+    service.markExecuted(strategy.id, bypassSignal);
+
+    // Bypass check lives in SignalThrottleService.markExecutedFromAlgo (covered by its own spec).
+    // Here we verify the public method forwards the bypass type so the service can short-circuit.
+    expect(signalThrottle.markExecutedFromAlgo).toHaveBeenCalledTimes(1);
+    const [, signalType] = signalThrottle.markExecutedFromAlgo.mock.calls[0];
+    expect(signalType).toBe(originalType);
   });
 });
 

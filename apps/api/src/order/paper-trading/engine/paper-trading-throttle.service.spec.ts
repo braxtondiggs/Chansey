@@ -78,13 +78,14 @@ describe('PaperTradingThrottleService', () => {
   it('markExecuted forwards to SignalThrottleService when state exists', () => {
     const { service, signalThrottle } = buildService();
     service.getOrCreate('s1');
-    service.markExecuted('s1', 1_700_000_000_000);
-    expect(signalThrottle.markExecuted).toHaveBeenCalledWith(expect.any(Object), 1_700_000_000_000);
+    const signal = { symbol: 'BTC', action: 'BUY', coinId: 'BTC' } as any;
+    service.markExecuted('s1', signal, 1_700_000_000_000);
+    expect(signalThrottle.markExecuted).toHaveBeenCalledWith(expect.any(Object), signal, 1_700_000_000_000);
   });
 
   it('markExecuted is a no-op when session has no state', () => {
     const { service, signalThrottle } = buildService();
-    service.markExecuted('missing', 1);
+    service.markExecuted('missing', { symbol: 'BTC', action: 'BUY', coinId: 'BTC' } as any, 1);
     expect(signalThrottle.markExecuted).not.toHaveBeenCalled();
   });
 

@@ -236,7 +236,7 @@ export class BacktestBarProcessor {
     // mark them executed here.
     for (const accepted of throttled) {
       if (accepted.originalType === undefined || !THROTTLE_BYPASS_TYPES.has(accepted.originalType)) {
-        this.signalThrottle.markExecuted(ctx.throttleState, timestamp.getTime());
+        this.signalThrottle.markExecuted(ctx.throttleState, accepted, timestamp.getTime());
       }
     }
 
